@@ -1,7 +1,10 @@
 module Tcl
 
-const libtcl = "/usr/lib/x86_64-linux-gnu/libtcl.so"
-const libtk = "/usr/lib/x86_64-linux-gnu/libtk.so"
+if isfile(joinpath(dirname(@__FILE__),"..","deps","libs.jl"))
+    include("../deps/libs.jl")
+else
+    error("Tcl not properly installed.  Please edit file \"../deps/libs.jl\"")
+end
 
 import Base: show, showerror, getindex, setindex!, haskey
 
@@ -63,8 +66,6 @@ end
 
 showerror(io::IO, e::TclError) = print(io, "Tcl/Tk error: ", e.msg)
 
-tclerror(msg::String) = throw(TclError(msg))
-
 """
 
 A new Tcl interpreter is created by the command:
@@ -82,10 +83,11 @@ be specified as a string or as a symbol):
 
     interp["x"]          # yields value of variable "x"
     interp[:tcl_version] # yields version of Tcl
-    interp[:x] = 33      # set the value of "x" and yields its value (as a string)
+    interp[:x] = 33      # set the value of "x" and yields its value
+                         # (as a string)
 
 The Tcl interpreter is initialized and will be deleted when object is no longer
-in use.  If Tk has been propoerly installed, then:
+in use.  If Tk has been properly installed, then:
 
     interp("package require Tk")
 
@@ -113,6 +115,10 @@ end
 (interp::TclInterp)(script::String) = tcleval(interp, script)
 
 local tclinterp::TclInterp
+
+tclerror(msg::String) = throw(TclError(msg))
+tclerror(interp::TclInterp) = tclerror(tclresult(interp))
+
 
 # Processing Tcl/Tk events.  The function `tcldoevents` must be repeatedly
 # called too process events when Tk is loaded.
@@ -148,6 +154,8 @@ end
 tclresult(interp::TclInterp) =
     unsafe_string(ccall((:Tcl_GetStringResult, libtcl),
                         Ptr{UInt8}, (Ptr{Void},), interp.ptr))
+
+protect(str::String) = "{"*str*"}" # FIXME: Improve this.
 
 function tcleval(interp::TclInterp, script::String)
     code = ccall((:Tcl_Eval,libtcl), Cint, (Ptr{Void}, Ptr{UInt8}),
@@ -220,146 +228,7 @@ setindex!(interp::TclInterp, value, key) = tclsetvar(interp, key, value)
 haskey(interp::TclInterp, key) = tclexists(interp, key)
 
 
-# Wrappers for some Tk dialog widgets.
-
-protect(str::String) = "{"*str*"}" # FIXME: Improve this.
-
-function choosedirectory(interp::TclInterp;
-                         initialdir::String=EMPTY,
-                         title::String=EMPTY,
-                         parent::String=EMPTY,
-                         mustexist::Bool=false)
-    requiretk(interp)
-    script = "tk_chooseDirectory"
-    for (opt, val) in ((" -initialdir ", initialdir),
-                       (" -parent ", parent),
-                       (" -title ", title))
-        if length(val) > 0
-            script *= opt*protect(val)
-        end
-    end
-    if mustexist
-        script *= " -mustexist true"
-    end
-    tcleval(interp, script)
-end
-
+include("dialog.jl")
 include("photo.jl")
-
-"""
-
-## Keywords:
-
-- `confirmoverwrite` Configures how the Save dialog reacts when the
-  selected file already exists, and saving would overwrite it.  A true value
-  requests a confirmation dialog be presented to the user.  A false value
-  requests that the overwrite take place without confirmation.  Default value
-  is true.
-
-- `defaultextension` Specifies a string that will be appended to the filename
-  if the user enters a filename without an extension. The default value is the
-  empty string, which means no extension will be appended to the filename in
-  any case. This option is ignored on Mac OS X, which does not require
-  extensions to filenames, and the UNIX implementation guesses reasonable
-  values for this from the `filetypes` option when this is not supplied.
-
-- `filetypes` If a File types listbox exists in the file dialog on the
-  particular platform, this option gives the filetypes in this listbox.  When
-  the user choose a filetype in the listbox, only the files of that type are
-  listed. If this option is unspecified, or if it is set to the empty list, or
-  if the File types listbox is not supported by the particular platform then
-  all files are listed regardless of their types.  See the section SPECIFYING
-  FILE PATTERNS below for a discussion on the contents of filePatternList.
-
-- `initialdir` Specifies that the files in directory should be displayed when
-  the dialog pops up. If this parameter is not specified, the initial direc‐
-  tory defaults to the current working directory on non-Windows systems and on
-  Windows systems prior to Vista.  On Vista and later systems, the initial
-  directory defaults to the last user-selected directory for the
-  application. If the parameter specifies a relative path, the return value
-  will convert the relative path to an absolute path.
-
-- `initialfile` Specifies a filename to be displayed in the dialog when it pops
-  up.
-
-- `message` Specifies a message to include in the client area of the dialog.
-  This is only available on Mac OS X.
-
-- `multiple` Allows the user to choose multiple files from the Open dialog.
-
-- `parent` Makes window the logical parent of the file dialog. The file dialog
-  is displayed on top of its parent window. On Mac OS X, this turns the file
-  dialog into a sheet attached to the parent window.
-
-- `title` Specifies a string to display as the title of the dialog box. If this
-  option is not specified, then a default title is displayed.
-
-- `typevariable` The global variable variableName is used to preselect which
-  filter is used from filterList when the dialog box is opened and is updated
-  when the dialog box is closed, to the last selected filter. The variable is
-  read once at the beginning to select the appropriate filter.  If the variable
-  does not exist, or its value does not match any filter typename, or is empty
-  ({}), the dialog box will revert to the default behavior of selecting the
-  first filter in the list. If the dialog is canceled, the variable is not
-  modified.
-
-"""
-function getopenfile(interp::TclInterp;
-                     defaultextension::String = EMPTY,
-                     filetypes::String = EMPTY,
-                     initialdir::String = EMPTY,
-                     initialfile::String = EMPTY,
-                     message::String = EMPTY,
-                     multiple::Bool = false,
-                     parent::String = EMPTY, # FIXME:
-                     title::String = EMPTY,
-                     typevariable::String = EMPTY)
-    requiretk(interp)
-    script = "tk_getOpenFile -multiple "*string(multiple)
-    for (opt, val) in ((" -defaultextension ", defaultextension),
-                       (" -filetypes ", filetypes),
-                       (" -initialdir ", initialdir),
-                       (" -initialfile ", initialfile),
-                       (" -parent ", parent),
-                       (" -title ", title),
-                       (" -typevariable ", typevariable))
-        if length(val) > 0
-            script *= opt*protect(val)
-        end
-    end
-    if is_apple() && length(message) > 0
-        script *= " -message "*protect(message)
-    end
-    tcleval(interp, script)
-end
-
-function getsavefile(interp::TclInterp;
-                     confirmoverwrite::Bool = true,
-                     defaultextension::String = EMPTY,
-                     filetypes::String = EMPTY,
-                     initialdir::String = EMPTY,
-                     initialfile::String = EMPTY,
-                     message::String = EMPTY,
-                     parent::String = EMPTY, # FIXME:
-                     title::String = EMPTY,
-                     typevariable::String = EMPTY)
-    requiretk(interp)
-    script = "tk_getSaveFile -confirmoverwrite "*string(confirmoverwrite)
-    for (opt, val) in ((" -defaultextension ", defaultextension),
-                       (" -filetypes ", filetypes),
-                       (" -initialdir ", initialdir),
-                       (" -initialfile ", initialfile),
-                       (" -parent ", parent),
-                       (" -title ", title),
-                       (" -typevariable ", typevariable))
-        if length(val) > 0
-            script *= opt*protect(val)
-        end
-    end
-    if is_apple() && length(message) > 0
-        script *= " -message "*protect(message)
-    end
-    tcleval(interp, script)
-end
 
 end # module
