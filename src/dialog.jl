@@ -1,6 +1,43 @@
 # Wrappers for some Tk dialog widgets.
 
-function choosedirectory(interp::TclInterp;
+"""
+
+Example:
+
+    answer = Tcl.messagebox(interp; message="Really quit?", icon="question",
+        buttons="yesno", detail="Select \"Yes\" to make the application exit")
+    if answer == "yes"
+        quit()
+    elseif answer == "no"
+        Tcl.messagebox(interp; message="I know you like this application!",
+            buttons="ok")
+    end
+"""
+function messagebox(interp::TclInterp = defaultinterpreter();
+                    default::String = EMPTY,
+                    detail::String = EMPTY,
+                    icon::String = EMPTY,
+                    message::String = EMPTY,
+                    title::String = EMPTY,
+                    parent::String = EMPTY,
+                    buttons::String = EMPTY)
+    requiretk(interp)
+    script = "tk_messageBox"
+    for (opt, val) in ((" -default ", default),
+                       (" -detail ", detail),
+                       (" -icon ", icon),
+                       (" -message ", message),
+                       (" -parent ", parent),
+                       (" -title ", title),
+                       (" -type ", buttons))
+        if length(val) > 0
+            script *= opt*protect(val)
+        end
+    end
+    interp(script)
+end
+
+function choosedirectory(interp::TclInterp = defaultinterpreter();
                          initialdir::String = EMPTY,
                          title::String = EMPTY,
                          parent::String = EMPTY,
@@ -17,7 +54,7 @@ function choosedirectory(interp::TclInterp;
     if mustexist
         script *= " -mustexist true"
     end
-    tcleval(interp, script)
+    interp(script)
 end
 
 """
@@ -78,7 +115,7 @@ end
   modified.
 
 """
-function getopenfile(interp::TclInterp;
+function getopenfile(interp::TclInterp = defaultinterpreter();
                      defaultextension::String = EMPTY,
                      filetypes::String = EMPTY,
                      initialdir::String = EMPTY,
@@ -104,10 +141,10 @@ function getopenfile(interp::TclInterp;
     if is_apple() && length(message) > 0
         script *= " -message "*protect(message)
     end
-    tcleval(interp, script)
+    interp(script)
 end
 
-function getsavefile(interp::TclInterp;
+function getsavefile(interp::TclInterp = defaultinterpreter();
                      confirmoverwrite::Bool = true,
                      defaultextension::String = EMPTY,
                      filetypes::String = EMPTY,
@@ -133,5 +170,5 @@ function getsavefile(interp::TclInterp;
     if is_apple() && length(message) > 0
         script *= " -message "*protect(message)
     end
-    tcleval(interp, script)
+    interp(script)
 end

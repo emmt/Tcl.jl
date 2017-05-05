@@ -1,3 +1,5 @@
+# Implement reading/writing of Tk "photo" images.
+
 type TkPhotoImageBlock
     # Pointer to the first pixel.
     ptr::Ptr{UInt8}
@@ -33,9 +35,14 @@ function findphoto(interp::TclInterp, name::String)
     return imgptr
 end
 
+getpixels(name::Name, args...) = getpixels(defaultinterpreter(), name, args...)
+
+getpixels(interp::TclInterp, name::Symbol, args...) =
+    getpixels(interp, string(name), args...)
+
 function getpixels(interp::TclInterp, name::String,
                    colormode::Symbol = :gray)
-    # Get photo image.
+    # Get photo image data.
     imgptr = findphoto(interp, name)
     block = TkPhotoImageBlock()
     code = ccall((:Tk_PhotoGetImage, libtk), Cint,
@@ -44,13 +51,11 @@ function getpixels(interp::TclInterp, name::String,
     if code != 1
         error("unexpected returned code")
     end
-    println(block)
-
     width     = Int(block.width)
     height    = Int(block.height)
     pixelsize = Int(block.pixelsize)
     pitch     = Int(block.pitch)
-    @assert pitch ≥ width
+    @assert pitch ≥ width*pixelsize
     @assert rem(pitch, pixelsize) == 0
     src = unsafe_wrap(Array, block.ptr,
                       (pixelsize, div(pitch, pixelsize), height), false)
@@ -172,6 +177,11 @@ function _setpixels(interp::TclInterp, name::String,
     return nothing
 end
 
+setpixels(name::Name, args...) = setpixels(defaultinterpreter(), name, args...)
+
+setpixels(interp::TclInterp, name::Symbol, args...) =
+    setpixels(interp, string(name), args...)
+
 function setpixels(interp::TclInterp, name::String,
                    src::AbstractArray{UInt8,2})
     block = TkPhotoImageBlock()
@@ -215,7 +225,7 @@ end
 function runtests()
     interp = Tcl.TclInterp();
     interp("package require Tk");
-    tclresume()
+    Tcl.resume()
     name = interp("image create photo -file /home/eric/work/code/CImg/CImg-1.5.5/examples/img/lena.pgm")
     interp("pack [button .b -image $name]")
     d = Tcl.getpixels(interp, name, :red);
