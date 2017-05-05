@@ -312,7 +312,7 @@ Base.haskey(interp::TclInterp, key) = exists(interp, key)
 
 include("private.jl")
 include("callbacks.jl")
-include("dialog.jl")
-include("photo.jl")
+include("dialogs.jl")
+include("images.jl")
 
 end # module
