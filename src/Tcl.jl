@@ -9,15 +9,24 @@ end
 export
     TclInterp,
     TclError,
+    TclList,
     TCL_OK,
     TCL_ERROR,
     TCL_RETURN,
     TCL_BREAK,
     TCL_CONTINUE,
+    TCL_GLOBAL_ONLY,
+    TCL_NAMESPACE_ONLY,
+    TCL_APPEND_VALUE,
+    TCL_LIST_ELEMENT,
+    TCL_LEAVE_ERR_MSG,
+    TCL_DONT_WAIT,
+    TCL_WINDOW_EVENTS,
+    TCL_FILE_EVENTS,
+    TCL_TIMER_EVENTS,
+    TCL_IDLE_EVENTS,
+    TCL_ALL_EVENTS,
     tclerror
-
-typealias Value  Union{String,Real}
-typealias Name   Union{String,Symbol}
 
 const EMPTY = ""
 
@@ -56,6 +65,19 @@ const TCL_ALL_EVENTS    = ~TCL_DONT_WAIT      # Process all kinds of events.
 const TK_PHOTO_COMPOSITE_OVERLAY = convert(Cint, 0)
 const TK_PHOTO_COMPOSITE_SET     = convert(Cint, 1)
 
+typealias Value     Union{AbstractString,Real}
+typealias Name      Union{AbstractString,Symbol}
+typealias AnyFloat  Union{AbstractFloat,Irrational,Rational}
+
+# Method to convert an argument to a string.
+# Note that `string(val)` is about twice as fast as `@sprintf "%d" val`
+@inline __string(val::String) = val
+@inline __string(val::Name) = string(val)
+@inline __string(val::Union{Integer,Cdouble,VersionNumber}) = string(val)
+@inline __string(val::AnyFloat) = string(Cdouble(val))
+
+include("list.jl")
+
 """
 
 A new Tcl interpreter is created by the command:
@@ -67,9 +89,13 @@ instance:
 
     interp("set x 45")
 
-which yields the result of the script (here the string "45").  The object can
-also be used as an array to access global Tcl variables (the variable name can
-be specified as a string or as a symbol):
+which yields the result of the script (here the string "45").  An alternative
+syntax is:
+
+    interp("set", "x", 45)
+
+The object can also be used as an array to access global Tcl variables (the
+variable name can be specified as a string or as a symbol):
 
     interp["x"]          # yields value of variable "x"
     interp[:tcl_version] # yields version of Tcl
@@ -104,11 +130,13 @@ type TclInterp
 end
 
 function __finalize(interp::TclInterp)
-    __deleteinterp(obj)
-    __release(obj.ptr)
+    # According to Tcl doc. Tcl_Release should be finally called after
+    # Tcl_DeleteInterp.
+    __deleteinterp(interp)
+    __release(interp.ptr)
 end
 
-(interp::TclInterp)(script::String) = evaluate(interp, script)
+(interp::TclInterp)(args...) = evaluate(interp, args...)
 
 interpdeleted(interp::TclInterp) = __interpdeleted(interp) != zero(Cint)
 
@@ -124,7 +152,7 @@ string or a Tcl interpreter (in which case the error message is assumed to be
 the current result of the Tcl interpreter).
 
 """
-tclerror(msg::String) = throw(TclError(msg))
+tclerror(msg::AbstractString) = throw(TclError(__string(msg)))
 tclerror(interp::TclInterp) = tclerror(getresult(interp))
 
 Base.showerror(io::IO, e::TclError) = print(io, "Tcl/Tk error: ", e.msg)
@@ -140,7 +168,7 @@ geterrmsg(ex::Exception) = sprint(io -> showerror(io, ex))
 #------------------------------------------------------------------------------
 # Default Tcl interpreter.
 
-local __interp::TclInterp
+global __interp = TclInterp(C_NULL)
 
 """
     Tcl.createdefaultinterpreter()
@@ -150,9 +178,10 @@ creates a new default Tcl interpreter which replaces the existing one if any.
 See also: `Tcl.defaultinterpreter`
 
 """
-createdefaultinterpreter() =
+function createdefaultinterpreter()
+    global __interp
     __interp = TclInterp()
-
+end
 
 """
     Tcl.defaultinterpreter()
@@ -163,7 +192,9 @@ See also: `Tcl.createdefaultinterpreter`
 
 """
 defaultinterpreter() =
-    isdefined(:__interp) ? __interp : createdefaultinterpreter()
+    (__interp.ptr != C_NULL ? __interp : createdefaultinterpreter())
+
+defaultinterpreterexists() = (__interp.ptr != C_NULL)
 
 #------------------------------------------------------------------------------
 # Processing Tcl/Tk events.  The function `doevents` must be repeatedly
@@ -171,13 +202,25 @@ defaultinterpreter() =
 
 local __timer::Timer
 
-function suspend()
-    global __timer
-    if isdefined(:__timer) && isopen(__timer)
-        close(__timer)
-    end
-end
+"""
+    Tcl.resume()
 
+resumes or starts the processing of Tcl/Tk events.  This manages to repeatedly
+call function `Tcl.doevents`.  The method `Tcl.suspend` can be called to
+suspend the processing of events.
+
+Calling `Tcl.resume` is mandatory when Tk extension is loaded.  Thus:
+
+    Tcl.evaluate(interp, "package require Tk")
+    Tcl.resume()
+
+is the recommended way to load Tk package.  Alternatively:
+
+    Tcl.requiretk(interp)
+
+can be called to do that.
+
+"""
 function resume()
     global __timer
     if ! (isdefined(:__timer) && isopen(__timer))
@@ -185,6 +228,27 @@ function resume()
     end
 end
 
+"""
+    Tcl.suspend()
+
+suspends the processing of Tcl/Tk events for all interpreters.  The method
+`Tcl.resume` can be called to resume the processing of events.
+
+"""
+function suspend()
+    global __timer
+    if isdefined(:__timer) && isopen(__timer)
+        close(__timer)
+    end
+end
+
+"""
+    Tcl.doevents(flags = TCL_DONT_WAIT|TCL_ALL_EVENTS)
+
+processes Tcl/Tk events for all interpreters.  Normally this is automatically
+called by the timer set by `Tcl.resume`.
+
+"""
 doevents(::Timer) = doevents()
 
 function doevents(flags::Integer = TCL_DONT_WAIT|TCL_ALL_EVENTS)
@@ -192,7 +256,7 @@ function doevents(flags::Integer = TCL_DONT_WAIT|TCL_ALL_EVENTS)
     end
 end
 
-function requiretk(interp::TclInterp)
+function requiretk(interp::TclInterp = defaultinterpreter())
     evaluate(interp, "package require Tk")
     resume()
 end
@@ -212,12 +276,36 @@ getresult() = getresult(defaultinterpreter())
 
 getresult(interp::TclInterp) = unsafe_string(__getresult(interp))
 
-protect(str::String) = "{"*str*"}" # FIXME: Improve this.
+"""
+    Tcl.evaluate([interp,], cmd)
 
-evaluate(script::String) = evaluate(defaultinterpreter(), script)
+evaluates script or command `cmd` and return the result (as a string) with Tcl
+interpreter `interp` (or in the global interpreter if this argument is
+omitted).  The command `cmd` may be a string or an instance of `TclList`.
+Individual arguments of the command may be provided sperately as:
 
-function evaluate(interp::TclInterp, script::String)
-    __eval(interp, script) == TCL_OK || tclerror(interp)
+    Tcl.evaluate([interp,], arg0, args...)
+
+where `arg0` is the command name and `args...` are any number of arguments.  In
+that case, numbers ar automatically converted to strings and special characters
+in the individual arguments are escaped to build up a command which can be
+parsed as a valid Tcl list whose items are the arguments `arg0`, `args[1]`,
+`args[2]`, ...
+
+"""
+evaluate(arg0::AbstractString, args...) = evaluate(list(arg0, args...))
+
+evaluate(interp::TclInterp, arg0::AbstractString, args...) =
+    evaluate(interp, list(arg0, args...))
+
+evaluate(cmd::TclList) = evaluate(string(cmd))
+
+evaluate(cmd::AbstractString) = evaluate(defaultinterpreter(), cmd)
+
+evaluate(interp::TclInterp, cmd::TclList) = evaluate(interp, string(cmd))
+
+function evaluate(interp::TclInterp, cmd::AbstractString)
+    __eval(interp, cmd) == TCL_OK || tclerror(interp)
     return getresult(interp)
 end
 

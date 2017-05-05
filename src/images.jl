@@ -223,11 +223,19 @@ function setpixels(interp::TclInterp, name::String,
 end
 
 function runtests()
-    interp = Tcl.TclInterp();
-    interp("package require Tk");
-    Tcl.resume()
-    name = interp("image create photo -file /home/eric/work/code/CImg/CImg-1.5.5/examples/img/lena.pgm")
-    interp("pack [button .b -image $name]")
-    d = Tcl.getpixels(interp, name, :red);
+    if false
+        interp = Tcl.defaultinterpreter()
+        interp("package require Tk");
+        Tcl.resume()
+        name = interp("image create photo -file /home/eric/work/code/CImg/CImg-1.5.5/examples/img/lena.pgm")
+        interp("pack [button .b -image $name]")
+        d = Tcl.getpixels(interp, name, :red);
+    else
+        Tcl.evaluate("package require Tk");
+        Tcl.resume()
+        name = Tcl.evaluate("image create photo -file /home/eric/work/code/CImg/CImg-1.5.5/examples/img/lena.pgm")
+        Tcl.evaluate("pack [button .b -image $name]")
+        d = Tcl.getpixels(name, :red);
+    end
     return d;
 end

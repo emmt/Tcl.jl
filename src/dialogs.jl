@@ -22,19 +22,19 @@ function messagebox(interp::TclInterp = defaultinterpreter();
                     parent::String = EMPTY,
                     buttons::String = EMPTY)
     requiretk(interp)
-    script = "tk_messageBox"
-    for (opt, val) in ((" -default ", default),
-                       (" -detail ", detail),
-                       (" -icon ", icon),
-                       (" -message ", message),
-                       (" -parent ", parent),
-                       (" -title ", title),
-                       (" -type ", buttons))
+    cmd = list("tk_messageBox")
+    for (opt, val) in (("-default", default),
+                       ("-detail", detail),
+                       ("-icon", icon),
+                       ("-message", message),
+                       ("-parent", parent),
+                       ("-title", title),
+                       ("-type", buttons))
         if length(val) > 0
-            script *= opt*protect(val)
+            lappend!(cmd, opt, val)
         end
     end
-    interp(script)
+    interp(cmd)
 end
 
 function choosedirectory(interp::TclInterp = defaultinterpreter();
@@ -43,18 +43,18 @@ function choosedirectory(interp::TclInterp = defaultinterpreter();
                          parent::String = EMPTY,
                          mustexist::Bool = false)
     requiretk(interp)
-    script = "tk_chooseDirectory"
-    for (opt, val) in ((" -initialdir ", initialdir),
-                       (" -parent ", parent),
-                       (" -title ", title))
+    cmd = list("tk_chooseDirectory")
+    for (opt, val) in (("-initialdir", initialdir),
+                       ("-parent", parent),
+                       ("-title", title))
         if length(val) > 0
-            script *= opt*protect(val)
+            lappend!(cmd, opt, val)
         end
     end
     if mustexist
-        script *= " -mustexist true"
+        lappend!(cmd, "-mustexist", "true")
     end
-    interp(script)
+    interp(cmd)
 end
 
 """
@@ -126,22 +126,22 @@ function getopenfile(interp::TclInterp = defaultinterpreter();
                      title::String = EMPTY,
                      typevariable::String = EMPTY)
     requiretk(interp)
-    script = "tk_getOpenFile -multiple "*string(multiple)
-    for (opt, val) in ((" -defaultextension ", defaultextension),
-                       (" -filetypes ", filetypes),
-                       (" -initialdir ", initialdir),
-                       (" -initialfile ", initialfile),
-                       (" -parent ", parent),
-                       (" -title ", title),
-                       (" -typevariable ", typevariable))
+    cmd = list("tk_getOpenFile", "-multiple", multiple)
+    for (opt, val) in (("-defaultextension", defaultextension),
+                       ("-filetypes", filetypes),
+                       ("-initialdir", initialdir),
+                       ("-initialfile", initialfile),
+                       ("-parent", parent),
+                       ("-title", title),
+                       ("-typevariable", typevariable))
         if length(val) > 0
-            script *= opt*protect(val)
+            lappend!(cmd, opt, val)
         end
     end
     if is_apple() && length(message) > 0
-        script *= " -message "*protect(message)
+        lappend!(cmd, "-message", message)
     end
-    interp(script)
+    interp(cmd)
 end
 
 function getsavefile(interp::TclInterp = defaultinterpreter();
@@ -155,20 +155,20 @@ function getsavefile(interp::TclInterp = defaultinterpreter();
                      title::String = EMPTY,
                      typevariable::String = EMPTY)
     requiretk(interp)
-    script = "tk_getSaveFile -confirmoverwrite "*string(confirmoverwrite)
-    for (opt, val) in ((" -defaultextension ", defaultextension),
-                       (" -filetypes ", filetypes),
-                       (" -initialdir ", initialdir),
-                       (" -initialfile ", initialfile),
-                       (" -parent ", parent),
-                       (" -title ", title),
-                       (" -typevariable ", typevariable))
+    cmd = list("tk_getSaveFile", "-confirmoverwrite", confirmoverwrite)
+    for (opt, val) in (("-defaultextension", defaultextension),
+                       ("-filetypes", filetypes),
+                       ("-initialdir", initialdir),
+                       ("-initialfile", initialfile),
+                       ("-parent", parent),
+                       ("-title", title),
+                       ("-typevariable", typevariable))
         if length(val) > 0
-            script *= opt*protect(val)
+            lappend!(cmd, opt, val)
         end
     end
     if is_apple() && length(message) > 0
-        script *= " -message "*protect(message)
+        lappend!(cmd, "-message", message)
     end
-    interp(script)
+    interp(cmd)
 end
