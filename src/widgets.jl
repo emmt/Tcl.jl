@@ -13,41 +13,45 @@ abstract TkRoot <: TkWidget
 
 tclrepr(w::TkWidget) = widgetpath(w)
 
-const PREFER_TTK = true
-
-__choosewidgetcommand(cmds::Tuple{String,String}) =
-    (PREFER_TTK ? cmds[2] : cmds[1])
-
-__choosewidgetcommand(cmd::String) = cmd
-
 const __knownwidgets = (
-    (:TkButton, false, ("::button", "::ttk::button"), "btn"),
+    (:TTkButton, false, "::ttk::button", "btn"),
+    (:TTkCheckbutton, false, "::ttk::checkbutton", "cbt"),
+    (:TTkCombobox, false, "::ttk::combobox", "cbx"),
+    (:TTkEntry, false, "::ttk::entry", "ent"),
+    (:TTkFrame, false, "::ttk::frame", "frm"),
+    (:TTkLabel, false, "::ttk::label", "lab"),
+    (:TTkLabelframe, false, "::ttk::labelframe", "lfr"),
+    (:TTkMenubutton, false, "::ttk::menubutton", "mbt"),
+    (:TTkNotebook, false, "::ttk::notebook", "nbk"),
+    (:TTkPanedwindow, false, "::ttk::panedwindow", "pwn"),
+    (:TTkProgressbar, false, "::ttk::progressbar", "pgb"),
+    (:TTkRadiobutton, false, "::ttk::radiobutton", "rbt"),
+    (:TTkScale, false, "::ttk::scale", "scl"),
+    (:TTkScrollbar, false, "::ttk::scrollbar", "sbr"),
+    (:TTkSeparator, false, "::ttk::separator", "sep"),
+    (:TTkSizegrip, false, "::ttk::sizegrip", "szg"),
+    (:TTkSpinbox, false, "::ttk::spinbox", "sbx"),
+    (:TTkTreeview, false, "::ttk::treeview", "trv"),
+    (:TkButton, false, "::button", "btn"),
     (:TkCanvas, false, "::canvas", "cnv"),
-    (:TkCheckbutton, false, ("::checkbutton", "::ttk::checkbutton"), "cbt"),
-    (:TkCombobox, false, "::ttk::combobox", "cbx"),
-    (:TkEntry, false, ("::entry", "::ttk::entry"), "ent"),
-    (:TkFrame, false, ("::frame", "::ttk::frame"), "frm"),
-    (:TkLabel, false, ("::label", "::ttk::label"), "lab"),
-    (:TkLabelframe, false, ("::labelframe", "::ttk::labelframe"), "lfr"),
+    (:TkCheckbutton, false, "::checkbutton", "cbt"),
+    (:TkEntry, false, "::entry", "ent"),
+    (:TkFrame, false, "::frame", "frm"),
+    (:TkLabel, false, "::label", "lab"),
+    (:TkLabelframe, false, "::labelframe", "lfr"),
     (:TkListbox, false, "::listbox", "lbx"),
     (:TkMenu, true, "::menu", ".mnu"),
-    (:TkMenubutton, false, ("::menubutton", "::ttk::menubutton"), "mbt"),
+    (:TkMenubutton, false, "::menubutton", "mbt"),
     (:TkMessage, false, "::message", "msg"),
-    (:TkNotebook, false, "::ttk::notebook", "nbk"),
-    (:TkPanedwindow, false, ("::panedwindow", "::ttk::panedwindow"), "pwn"),
-    (:TkProgressbar, false, "::ttk::progressbar", "pgb"),
-    (:TkRadiobutton, false, ("::radiobutton", "::ttk::radiobutton"), "rbt"),
-    (:TkScale, false, ("::scale", "::ttk::scale"), "scl"),
-    (:TkScrollbar, false, ("::scrollbar", "::ttk::scrollbar"), "sbr"),
-    (:TkSeparator, false, "::ttk::separator", "sep"),
-    (:TkSizegrip, false, "::ttk::sizegrip", "szg"),
-    (:TkSpinbox, false, ("::spinbox", "::ttk::spinbox"), "sbx"),
+    (:TkPanedwindow, false, "::panedwindow", "pwn"),
+    (:TkRadiobutton, false, "::radiobutton", "rbt"),
+    (:TkScale, false, "::scale", "scl"),
+    (:TkScrollbar, false, "::scrollbar", "sbr"),
+    (:TkSpinbox, false, "::spinbox", "sbx"),
     (:TkText, false, "::text", "txt"),
-    (:TkToplevel, true, "::toplevel", ".top"),
-    (:TkTreeview, false, "::ttk::treeview", "trv"))
+    (:TkToplevel, true, "::toplevel", ".top"))
 
-for (cls, top, cmds, pfx) in __knownwidgets
-    local cmd = __choosewidgetcommand(cmds)
+for (cls, top, cmd, pfx) in __knownwidgets
     @eval begin
         if $top
 

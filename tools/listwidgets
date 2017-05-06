@@ -1,0 +1,202 @@
+#! /bin/sh
+#                                                                   -*- TCL -*-
+# The next line restarts using tclsh \
+    exec tclsh "$0" "$@"
+
+package require Tk
+wm withdraw .
+
+set widgets [list button canvas checkbutton entry frame label labelframe \
+                 listbox menu menubutton message panedwindow radiobutton \
+                 scale scrollbar spinbox text toplevel \
+                 ::ttk::button ::ttk::checkbutton ::ttk::combobox \
+                 ::ttk::entry ::ttk::frame ::ttk::label ::ttk::labelframe \
+                 ::ttk::menubutton ::ttk::notebook ::ttk::panedwindow \
+                 ::ttk::progressbar ::ttk::radiobutton ::ttk::scale \
+                 ::ttk::scrollbar ::ttk::separator ::ttk::sizegrip \
+                 ::ttk::spinbox ::ttk::treeview]
+
+proc getwidgetinfo cmd {
+  set w ".dummy"
+  $cmd $w
+  set cls [winfo class $w]
+  set top [expr {[winfo toplevel $w] eq $w}]
+  destroy $w
+  list $cls $top
+}
+
+array unset data
+array unset class
+array unset istop
+foreach w $widgets {
+  set nfo [getwidgetinfo $w]
+  set cls [lindex $nfo 0]
+  set top [lindex $nfo 1]
+  if {[string length $cls] > 1 &&
+      [string index $cls 0] eq "T" &&
+      [string is upper [string index $cls 1]]} {
+    set cls [string range $cls 1 end]
+  }
+  set class($w) $cls
+  set istop($cls) $top
+  lappend data($cls) $w
+}
+
+array set shortcut {
+  button      btn
+  canvas      cnv
+  checkbutton cbt
+  combobox    cbx
+  entry       ent
+  frame       frm
+  label       lab
+  labelframe  lfr
+  listbox     lbx
+  menu        mnu
+  menubutton  mbt
+  message     msg
+  notebook    nbk
+  panedwindow pwn
+  progressbar pgb
+  radiobutton rbt
+  scale       scl
+  scrollbar   sbr
+  separator   sep
+  sizegrip    szg
+  spinbox     sbx
+  text        txt
+  toplevel    top
+  treeview    trv
+}
+
+if {false} {
+  puts "\nStandard Tk widgets:"
+  foreach w $widgets {
+    if {! [string match "::ttk::*" $w]} {
+      set cls [lindex [getwidgetinfo $w] 0]
+      puts "  $cls $w"
+    }
+  }
+
+  puts "\nThemed Tk widgets:"
+  foreach w $widgets {
+    if {[string match "::ttk::*" $w]} {
+      set cls [lindex [getwidgetinfo $w] 0]
+      puts "  $cls $w"
+    }
+  }
+}
+
+if {false} {
+  puts "\nWidgets:"
+  foreach cls [lsort [array names data]] {
+    set value $data($cls)
+    set bad "false"
+    if {[llength $value] == 2} {
+      set a [lindex $value 0]
+      set b [lindex $value 1]
+      if {[string match "::ttk::*" $a] && [string match "\[a-z\]*" $b]} {
+        set w "(\"::$b\", \"$a\")"
+      } elseif {[string match "::ttk::*" $b] && [string match "\[a-z\]*" $a]} {
+        set w "(\"::$a\", \"$b\")"
+      } else {
+        set bad "true"
+      }
+    } elseif {[llength $value] == 1} {
+      set a [lindex $value 0]
+      if {[string match "::ttk::*" $a]} {
+        set w "\"$a\""
+      } elseif {[string match "\[a-z\]*" $a]} {
+        set w "\"::$a\""
+      } else {
+        set bad "true"
+      }
+    } else {
+      set bad "true"
+    }
+    if {$bad} {
+      error "unexpected $cls -> $value"
+    }
+    if {$istop($cls)} {
+      set top "true"
+    } else {
+      set top "false"
+    }
+    puts "    (:Tk$cls, $top, $w, \"\"),"
+  }
+}
+
+for {set pass 1} {$pass <= 2} {incr pass} {
+  foreach cls [lsort [array names data]] {
+    set value $data($cls)
+    set bad "false"
+    set w   ""
+    if {[llength $value] == 2} {
+      set a [lindex $value 0]
+      set b [lindex $value 1]
+      if {[string match "::ttk::*" $a] && [string match "\[a-z\]*" $b]} {
+        if {$pass == 1} {
+          set w $b
+        } else {
+          set w [string range $a 7 end]
+        }
+      } elseif {[string match "::ttk::*" $b] && [string match "\[a-z\]*" $a]} {
+        if {$pass == 1} {
+          set w $a
+        } else {
+          set w [string range $b 7 end]
+        }
+      } else {
+        set bad "true"
+      }
+    } elseif {[llength $value] == 1} {
+      set a [lindex $value 0]
+      if {[string match "\[a-z\]*" $a]} {
+        if {$pass == 1} {
+          set w $a
+        }
+      } elseif {[string match "::ttk::*" $a]} {
+        if {$pass == 2} {
+          set w [string range $a 7 end]
+        }
+      } else {
+        set bad "true"
+      }
+    } else {
+      set bad "true"
+    }
+    if {$bad} {
+      error "unexpected $cls -> $value"
+    }
+    if {$w eq ""} {
+      continue
+    }
+    if {[info exists shortcut($w)]} {
+      set pfx $shortcut($w)
+    } else {
+      set pfx ""
+    }
+    if {$istop($cls)} {
+      set top "true"
+      set pfx ".$pfx"
+    } else {
+      set top "false"
+    }
+    if {$pass == 1} {
+      set cls "Tk$cls"
+      set w "::$w"
+    } else {
+      set cls "TTk$cls"
+      set w "::ttk::$w"
+    }
+    puts "    (:$cls, $top, \"$w\", \"$pfx\"),"
+  }
+}
+#
+# tk_optionMenu
+# tk_dialog
+# tk_messageBox
+# tk_getOpenFile
+# tk_getSaveFile
+# tk_chooseColor
+# tk_chooseDirectory

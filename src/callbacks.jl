@@ -20,7 +20,6 @@ function release(obj)
 end
 
 function __releaseobject(ptr::Ptr{Void}) :: Void
-    println("drop object reference")
     release(unsafe_pointer_to_objref(ptr))
 end
 
