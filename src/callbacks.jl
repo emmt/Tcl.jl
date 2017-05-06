@@ -29,47 +29,48 @@ const __releaseobject_ptr = cfunction(__releaseobject, Void, (Ptr{Void}, ))
 function __evalcommand(fptr::Ptr{Void}, iptr::Ptr{Void},
                        argc::Cint, argv::Ptr{Cstring}) :: Cint
     f = unsafe_pointer_to_objref(fptr)
-    interp = unsafe_pointer_to_objref(iptr)
+    interp = TclInterp(iptr)
     args = [unsafe_string(unsafe_load(argv, i)) for i in 1:argc]
     try
-        result = f(args...)
+        return __setcommandresult(interp, f(args...))
     catch ex
         #println("error during Tk callback: ")
         #Base.display_error(ex, catch_backtrace())
         setresult(interp, "(callback error) " * geterrmsg(ex))
         return TCL_ERROR
     end
-    __setcommandresult(interp, result)
 end
 
-function __setcommandresult(interp::TclInterp, code::Cint, value::String,
-                            free::Ptr{Void} = TCL_VOLATILE)
-    __setresult(interp, value, free)
-    return code
-end
-
-function __setcommandresult(interp::TclInterp, code::Cint, value::Real)
-    __setobjresult(interp, value)
-    return code
-end
-
-__setcommandresult(interp::TclInterp, result::Tuple{Cint,String}) =
+# If the function provides a return code, we do want to returne it to the
+# interpreter, otherwise TCL_OK is assumed.
+__setcommandresult(interp::TclInterp, result::Tuple{Cint,Any}) =
     __setcommandresult(interp, result[1], result[2])
 
-__setcommandresult(interp::TclInterp, value::String) =
-    __setcommandresult(interp, TCL_OK, value, TCL_VOLATILE)
+__setcommandresult(interp::TclInterp, result::Any) =
+    __setcommandresult(interp, TCL_OK, result)
 
-__setcommandresult(interp::TclInterp, value::Real) =
-    __setcommandresult(interp, TCL_OK, value, TCL_VOLATILE)
+__setcommandresult(interp::TclInterp, code::Cint, lst::TclList) =
+    __setcommandresult(interp, code, string(lst))
 
-__setresult(interp::TclInterp, ::Void) =
-    __setcommandresult(interp, TCL_OK, EMPTY, TCL_STATIC)
+__setcommandresult(interp::TclInterp, code::Cint, value::Any) =
+    __setcommandresult(interp, code, tclrepr(lst))
+
+function __setcommandresult(interp::TclInterp, code::Cint, ::Void)
+    __setresult(interp, EMPTY, TCL_STATIC)
+    return code
+end
+
+function __setcommandresult(interp::TclInterp, code::Cint,
+                            result::AbstractString)
+    __setresult(interp, result, TCL_VOLATILE)
+    return code
+end
 
 const __evalcommand_ptr = cfunction(__evalcommand, Cint,
                                     (Ptr{Void}, Ptr{Void}, Cint, Ptr{Cstring}))
 
 """
-    Tcl.createcommand([interp,] name, f) -> name
+       Tcl.createcommand([interp,] name, f) -> name
 
 creates a command named `name` in Tcl interpreter `interp` (or in the global
 Tcl interpreter if this argument is omitted).  The string version of `name` is
@@ -94,7 +95,7 @@ createcommand(name::Name, f::Function) =
     createcommand(defaultinterpreter(), name, f)
 
 createcommand(interp::TclInterp, name::Symbol, f::Function) =
-    createcommand(interp, string(name), f)
+    createcommand(interp, tclrepr(name), f)
 
 function createcommand(interp::TclInterp, name::String, f::Function)
     # Before creating the command, make sure object is not garbage collected
@@ -122,7 +123,7 @@ See also: `Tcl.createcommand`
 deletecommand(name::Name) = deletecommand(defaultinterpreter(), name)
 
 deletecommand(interp::TclInterp, name::Symbol) =
-    deletecommand(interp, string(name))
+    deletecommand(interp, tclrepr(name))
 
 function deletecommand(interp::TclInterp, name::String)
     code = ccall((:Tcl_DeleteCommand, libtcl), Cint, (Ptr{Void}, Cstring),
