@@ -26,7 +26,7 @@ type TkPhotoImageBlock
     TkPhotoImageBlock() = new(C_NULL,0,0,0,0,0,0,0,0)
 end
 
-function findphoto(interp::TclInterp, name::String)
+function findphoto(interp::TclInterp, name::AbstractString)
     imgptr = ccall((:Tk_FindPhoto, libtk), Ptr{Void},
                    (Ptr{Void}, Ptr{UInt8}), interp.ptr, name)
     if imgptr == C_NULL
@@ -38,9 +38,9 @@ end
 getpixels(name::Name, args...) = getpixels(defaultinterpreter(), name, args...)
 
 getpixels(interp::TclInterp, name::Symbol, args...) =
-    getpixels(interp, string(name), args...)
+    getpixels(interp, tclrepr(name), args...)
 
-function getpixels(interp::TclInterp, name::String,
+function getpixels(interp::TclInterp, name::AbstractString,
                    colormode::Symbol = :gray)
     # Get photo image data.
     imgptr = findphoto(interp, name)
@@ -114,19 +114,21 @@ function getpixels(interp::TclInterp, name::String,
     return dst
 end
 
-function getphotosize(interp::TclInterp, name::String)
+function getphotosize(interp::TclInterp, name::AbstractString)
     w, h = _getphotosize(findphoto(interp, name))
     return (Int(w), Int(h))
 end
 
-setphotosize(interp::TclInterp, name::String, width::Integer, height::Integer) =
-    _setphotosize(interp, findphoto(interp, name),
-                  Cint(width), Cint(height))
+function setphotosize(interp::TclInterp, name::AbstractString, width::Integer,
+                      height::Integer)
+    _setphotosize(interp, findphoto(interp, name), Cint(width), Cint(height))
+end
 
 function _getphotosize(imgptr::Ptr{Void})
     width, height = Ref{Cint}(0), Ref{Cint}(0)
     if imgptr != C_NULL
-        ccall((:Tk_PhotoGetSize, libtk), Void, (Ptr{Void}, Ref{Cint}, Ref{Cint}),
+        ccall((:Tk_PhotoGetSize, libtk), Void,
+              (Ptr{Void}, Ref{Cint}, Ref{Cint}),
               imgptr, width, height)
     end
     return (width[], height[])
@@ -143,7 +145,7 @@ function _setphotosize(interp::TclInterp, imgptr::Ptr{Void},
     return nothing
 end
 
-function _setpixels(interp::TclInterp, name::String,
+function _setpixels(interp::TclInterp, name::AbstractString,
                     block::TkPhotoImageBlock,
                     x::Cint = Cint(0), y::Cint = Cint(0),
                     composite::Cint = TK_PHOTO_COMPOSITE_SET)
@@ -180,9 +182,9 @@ end
 setpixels(name::Name, args...) = setpixels(defaultinterpreter(), name, args...)
 
 setpixels(interp::TclInterp, name::Symbol, args...) =
-    setpixels(interp, string(name), args...)
+    setpixels(interp, tclrepr(name), args...)
 
-function setpixels(interp::TclInterp, name::String,
+function setpixels(interp::TclInterp, name::AbstractString,
                    src::AbstractArray{UInt8,2})
     block = TkPhotoImageBlock()
     block.ptr       = pointer(src)
@@ -197,7 +199,7 @@ function setpixels(interp::TclInterp, name::String,
     _setpixels(interp, name, block)
 end
 
-function setpixels(interp::TclInterp, name::String,
+function setpixels(interp::TclInterp, name::AbstractString,
                    src::AbstractArray{UInt8,3})
 
     block = TkPhotoImageBlock()
@@ -223,6 +225,12 @@ function setpixels(interp::TclInterp, name::String,
 end
 
 function runtests()
+    top = TkToplevel(".")
+    cmd = Tcl.createcommand("hitme!", (args...) -> println("Ouch!"))
+    b = TkButton(top; command = cmd, text = "Hit Me Please!")
+    Tcl.evaluate("pack", b)
+end
+function runtests2()
     if false
         interp = Tcl.defaultinterpreter()
         interp("package require Tk");

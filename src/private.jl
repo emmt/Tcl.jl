@@ -20,15 +20,15 @@ __newobject(value::Union{AbstractFloat,Irrational,Rational}) =
 #     ccall((:Tcl_NewStringObj, libtcl), Ptr{Void}, (Cstring, Cint),
 #           value, length(value))
 # FIXME: use Tcl_NewListObj for arrays?
+#
+#__setobjresult(interp::TclInterp, obj::Ptr{Void}) =
+#    ccall((:Tcl_SetObjResult, libtcl), Void, (Ptr{Void}, Ptr{Void}),
+#          interp.ptr, obj)
+#
+#__setresult(interp::TclInterp, result::Real) =
+#    __setobjresult(interp, __newobject(value))
 
-__setobjresult(interp::TclInterp, obj::Ptr{Void}) =
-    ccall((:Tcl_SetObjResult, libtcl), Void, (Ptr{Void}, Ptr{Void}),
-          interp.ptr, obj)
-
-__setresult(interp::TclInterp, result::Real) =
-    __setobjresult(interp, __newobject(value))
-
-__setresult(interp::TclInterp, result::String, free::Ptr{Void}=TCL_VOLATILE) =
+__setresult(interp::TclInterp, result::AbstractString, free::Ptr{Void}) =
     ccall((:Tcl_SetResult, libtcl), Void, (Ptr{Void}, Cstring, Ptr{Void}),
           interp.ptr, result, free)
 
@@ -64,4 +64,3 @@ __preserve(ptr::Ptr{Void}) =
 
 __release(ptr::Ptr{Void}) =
     ccall((:Tcl_Release, libtcl), Void, (Ptr{Void},), ptr)
-

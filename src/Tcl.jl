@@ -10,6 +10,32 @@ export
     TclInterp,
     TclError,
     TclList,
+    TkWidget,
+    TkRoot,
+    TkButton,
+    TkCanvas,
+    TkCheckbutton,
+    TkCombobox,
+    TkEntry,
+    TkFrame,
+    TkLabel,
+    TkLabelframe,
+    TkListbox,
+    TkMenu,
+    TkMenubutton,
+    TkMessage,
+    TkNotebook,
+    TkPanedwindow,
+    TkProgressbar,
+    TkRadiobutton,
+    TkScale,
+    TkScrollbar,
+    TkSeparator,
+    TkSizegrip,
+    TkSpinbox,
+    TkText,
+    TkToplevel,
+    TkTreeview,
     TCL_OK,
     TCL_ERROR,
     TCL_RETURN,
@@ -26,7 +52,8 @@ export
     TCL_TIMER_EVENTS,
     TCL_IDLE_EVENTS,
     TCL_ALL_EVENTS,
-    tclerror
+    tclerror,
+    tclrepr
 
 const EMPTY = ""
 
@@ -68,13 +95,6 @@ const TK_PHOTO_COMPOSITE_SET     = convert(Cint, 1)
 typealias Value     Union{AbstractString,Real}
 typealias Name      Union{AbstractString,Symbol}
 typealias AnyFloat  Union{AbstractFloat,Irrational,Rational}
-
-# Method to convert an argument to a string.
-# Note that `string(val)` is about twice as fast as `@sprintf "%d" val`
-@inline __string(val::String) = val
-@inline __string(val::Name) = string(val)
-@inline __string(val::Union{Integer,Cdouble,VersionNumber}) = string(val)
-@inline __string(val::AnyFloat) = string(Cdouble(val))
 
 include("list.jl")
 
@@ -152,10 +172,10 @@ string or a Tcl interpreter (in which case the error message is assumed to be
 the current result of the Tcl interpreter).
 
 """
-tclerror(msg::AbstractString) = throw(TclError(__string(msg)))
+tclerror(msg::AbstractString) = throw(TclError(string(msg)))
 tclerror(interp::TclInterp) = tclerror(getresult(interp))
 
-Base.showerror(io::IO, e::TclError) = print(io, "Tcl/Tk error: ", e.msg)
+Base.showerror(io::IO, ex::TclError) = print(io, "Tcl/Tk error: ", ex.msg)
 
 """
     geterrmsg(ex)
@@ -264,14 +284,38 @@ end
 #------------------------------------------------------------------------------
 # Evaluation of Tcl scripts.
 
-setresult(result::Value) = setresult(defaultinterpreter(), value)
+"""
+    Tcl.setresult([interp,] args...)
 
-setresult(interp::TclInterp, result::Value) =
-    unsafe_string(__setresult(interp, result))
+set result stored in Tcl interpreter `interp` or in the global interpreter if
+this argument is omitted.  A string representation of the result is returned.
 
-setresult(interp::TclInterp, result::Real) =
-    unsafe_string(__setresult(interp, result))
+"""
+setresult(args...) =
+    setresult(defaultinterpreter(), args...)
 
+setresult(interp::TclInterp, args...) =
+    setresult(interp, list(args...))
+
+setresult(interp::TclInterp, lst::TclList) =
+    setresult(interp, string(lst))
+
+setresult(interp::TclInterp, value::Value) =
+    setresult(interp, tclrepr(value))
+
+setresult(interp::TclInterp, ::Void) =
+    unsafe_string(__setresult(interp, EMPTY, TCL_STATIC))
+
+setresult(interp::TclInterp, result::AbstractString) =
+    unsafe_string(__setresult(interp, result, TCL_VOLATILE))
+
+"""
+    Tcl.getresult([interp])
+
+yields the current result stored in Tcl interpreter `interp` or in the global
+interpreter if this argument is omitted.
+
+"""
 getresult() = getresult(defaultinterpreter())
 
 getresult(interp::TclInterp) = unsafe_string(__getresult(interp))
@@ -293,16 +337,11 @@ parsed as a valid Tcl list whose items are the arguments `arg0`, `args[1]`,
 `args[2]`, ...
 
 """
-evaluate(arg0::AbstractString, args...) = evaluate(list(arg0, args...))
+evaluate(args...) = evaluate(defaultinterpreter(), args...)
 
-evaluate(interp::TclInterp, arg0::AbstractString, args...) =
-    evaluate(interp, list(arg0, args...))
+evaluate(interp::TclInterp, args...) = evaluate(interp, list(args...))
 
-evaluate(cmd::TclList) = evaluate(string(cmd))
-
-evaluate(cmd::AbstractString) = evaluate(defaultinterpreter(), cmd)
-
-evaluate(interp::TclInterp, cmd::TclList) = evaluate(interp, string(cmd))
+evaluate(interp::TclInterp, lst::TclList) = evaluate(interp, string(lst))
 
 function evaluate(interp::TclInterp, cmd::AbstractString)
     __eval(interp, cmd) == TCL_OK || tclerror(interp)
@@ -324,7 +363,7 @@ interpreter if this argument is omitted.
 getvar(name::Name, args...) = getvar(defaultinterpreter(), name, args...)
 
 getvar(interp::TclInterp, name::Symbol, args...) =
-    getvar(interp, string(name), args...)
+    getvar(interp, tclrepr(name), args...)
 
 function getvar(interp::TclInterp, name::String, args...)
     ptr = __getvar(interp.ptr, name, args...)
@@ -345,11 +384,11 @@ interpreter if this argument is omitted.  The result is the string version of
 setvar(name::Name, args...) = setvar(defaultinterpreter(), name, args...)
 
 setvar(interp::TclInterp, name::Symbol, args...) =
-    setvar(interp, string(name), args...)
+    setvar(interp, tclrepr(name), args...)
 
 # FIXME: uset Tcl_ObjSetVar2
 setvar(interp::TclInterp, name::String, value::Real, args...) =
-    setvar(interp, name, string(value), args...)
+    setvar(interp, name, tclrepr(value), args...)
 
 function setvar(interp::TclInterp, name::String, value::String, args...)
     ptr = __setvar(interp, name, value, args...)
@@ -369,7 +408,7 @@ if this argument is omitted.
 unsetvar(name::Name, args...) = unsetvar(defaultinterpreter(), name, args...)
 
 unsetvar(interp::TclInterp, name::Symbol, args...) =
-    unsetvar(interp, string(name), args...)
+    unsetvar(interp, tclrepr(name), args...)
 
 unsetvar(interp::TclInterp, name::String, args...) =
     __unsetvar(interp, name, args...) == TCL_OK || tclerror(interp)
@@ -385,7 +424,7 @@ global interpreter if this argument is omitted.
 exists(var::Name, args...) = exists(defaultinterpreter(), var, args...)
 
 exists(interp::TclInterp, var::Symbol, args...) =
-    exists(interp, string(var), args...)
+    exists(interp, tclrepr(var), args...)
 
 exists(interp::TclInterp, var::String, args...) =
     __getvar(interp.ptr, var, args...) != C_NULL
@@ -400,6 +439,7 @@ Base.haskey(interp::TclInterp, key) = exists(interp, key)
 
 include("private.jl")
 include("callbacks.jl")
+include("widgets.jl")
 include("dialogs.jl")
 include("images.jl")
 
