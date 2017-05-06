@@ -145,6 +145,49 @@ parent(::TkRoot) = nothing
 evaluate(w::TkWidget, args...; kwds...) =
     evaluate(interpreter(w), list(widgetpath(w), args...; kwds...))
 
+"""
+   Tcl.configure(w)
+
+yields all the options of Tk widget `w`, while:
+
+   Tcl.configure(w, opt1=val1, opt2=val2)
+
+change some options of widget `w`.
+
+"""
 configure(w::TkWidget; kwds...) = evaluate(w, "configure"; kwds...)
 
+"""
+
+   Tcl.cget(w, opt)
+
+yields the value of the option `opt` for widget `w`.
+
+"""
 cget(w::TkWidget, opt::Name) = evaluate(w, "cget", "-"*tclrepr(opt))
+
+"""
+    Tcl.grid(args...; kwds...)
+    Tcl.pack(args...; kwds...)
+    Tcl.place(args...; kwds...)
+
+communicate with one of the Tk geometry manager.
+
+"""
+function grid end
+@doc @doc(grid) pack
+@doc @doc(grid) place
+
+for cmd in (:grid, :pack, :place)
+    @eval begin
+        function $cmd(args...; kwds...)
+            for arg in args
+                if isa(arg, TkWidget)
+                    interp = interpreter(arg)
+                    return interp(list($(string(cmd)), args...; kwds...))
+                end
+            end
+            tclerror("missing a widget argument")
+        end
+    end
+end
