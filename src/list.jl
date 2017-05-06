@@ -1,5 +1,34 @@
 # Management of Tcl lists
 
+# A Tcl list is just a dynamic buffer of characters build up in such a way that
+# it produces a valid Tcl list when converted to a string.
+
+type TclList
+    arr::Vector{Char}
+    len::Int
+end
+
+"""
+    tclrepr(arg) :: String
+
+yields a textual representation of `arg` which can be used in Tcl scripts ot
+commands.  This method may be overloaded to implement means to pass other kinds
+of arguments to Tcl.  The returned value **must** be of a type derived from
+`AbstractString`.  Note that `Tcl.evaluate` and similar will take care of
+escaping special characters so spaces, braces, etc. can be present in the
+returned string.
+
+"""
+@inline tclrepr(::Void) = EMPTY
+@inline tclrepr(val::AbstractString) = val
+@inline tclrepr(val::Symbol) = string(val)
+# Note that `string(val)` is about twice as fast as `@sprintf "%d" val`
+@inline tclrepr(val::Union{Integer,Cdouble,VersionNumber}) = string(val)
+@inline tclrepr(val::AnyFloat) = string(Cdouble(val))
+@inline tclrepr(lst::TclList) =
+    tclerror("calling `tclrepr` on `TclList` is forbidden")
+
+
 """
     Tcl.escape(c)
 
@@ -9,14 +38,6 @@ argument or list element.
 """
 @inline escape(c::Char) = (isspace(c) || c == '\\' || c == '[' || c == ']'
                            || c == '{' || c == '}' || c == '$')
-
-# A Tcl list is just a dynamic buffer of characters build up in such a way that
-# it produces a valid Tcl list when converted to a string.
-
-type TclList
-    arr::Vector{Char}
-    len::Int
-end
 
 const LISTCHUNK = 200
 
@@ -76,31 +97,138 @@ Base.show(io::IO, lst::TclList) = show(io, string(lst))
     return j
 end
 
+"""
+    Tcl.list(arg0, args...; kwds...)
+
+yields a textual list of items consisting in the arguments `arg0`, `args...`
+and followed by the keywords as pairs of `-key val`.  The result is such that
+Tcl will correctly parse it as a list with one item for each argument and two
+items for each keyword.  This function is intended to be a helper for
+constructing valid Tcl commands.  See `Tcl.lappend!` and `Tcl.lappendoption!`
+more more details.
+
+"""
 function list(str::AbstractString)
-    lst = TclList(2*length(str))
-    lst.len = __append!(lst.arr, str, last(lst))
-    return lst
+    @inbounds begin
+        len = length(str)
+        lst = TclList(2*max(1, len))
+        if len ≥ 1
+            lst.len = __append!(lst.arr, str, 0)
+        else
+            lst[1] = '{'
+            lst[2] = '}'
+            lst.len = 2
+        end
+        return lst
+    end
 end
 
-list(val::Union{Real,Symbol}) = list(__string(val))
+list(arg0, args...; kwds...) = lappend!(list(tclrepr(arg0)), args...; kwds...)
 
-list(arg0, args...) = lappend!(list(arg0), args...)
+"""
+    Tcl.lappend!(lst, args...; kwds...) -> lst
 
-lappend!(lst::TclList, val::Union{Real,Symbol}) = lappend!(lst, __string(val))
+appends arguments `args...` and keywords `kwds...` at the end of the list
+`lst`.  For instance:
 
-function lappend!(lst::TclList, args...)
+    Tcl.lappend!(lst, arg1, arg2, key1=val1, key2=val2)
+
+appends the following 6 items:
+
+    arg1 arg2 -key1 val1 -key2 val2
+
+to the end of `lst` where all items are converted to their string
+representation and with special characters escaped.  Note that keywords will
+appear as the last added items (whatever their order in the call to
+`Tcl.lappend!`).
+
+"""
+function lappend!(lst::TclList, args...; kwds...)
     for arg in args
-        lappend!(lst, arg)
+        lappenditem!(lst, arg)
+    end
+    for kwd in kwds
+        lappendoption!(lst, kwd)
     end
     return lst
 end
 
-function lappend!(lst::TclList, str::AbstractString)
-    grow!(lst, 1 + 2*length(str))
+function lappenditem!(lst::TclList, str::AbstractString)
     @inbounds begin
+        len = length(str)
+        grow!(lst, 1 + 2*max(1, len))
         j = last(lst) + 1
         lst[j] = ' '
-        lst.len = __append!(lst.arr, str, j)
+        if len ≥ 1
+            lst.len = __append!(lst.arr, str, j)
+        else
+            lst[j+1] = '{'
+            lst[j+2] = '}'
+            lst.len = j+2
+        end
+        return lst
     end
-    return lst
+end
+
+function lappenditem!(lst::TclList, otherlst::TclList)
+    @inbounds begin
+        n = length(otherlst)
+        grow!(lst, 3 + n)
+        j = last(lst) + 2
+        lst[j-1] = ' '
+        lst[j] = '{'
+        for i in 1:n
+            lst[j+i] = otherlst[i]
+        end
+        j += n+1
+        lst[j] = '}'
+        lst.len = j
+        return lst
+    end
+end
+
+lappenditem!(lst::TclList, item) = lappenditem!(lst, tclrepr(item))
+
+"""
+    Tcl.lappendoption!(lst, (opt, val)) -> lst
+
+appends a single option-value pair at the end of the list `lst`.  Option `opt`
+is a `Symbol` and value `val` is anything that can be put in a form
+understandable by Tcl.  Two *items* are added at the end of the list:
+
+    -option value
+
+where `option` and `value` are respectively `opt` and `val` converted to their
+string representation and with special characters escaped. (Note the leading
+hyphen.)
+
+"""
+lappendoption!{T}(lst::TclList, spec::Tuple{Symbol,T}) =
+    lappendoption!(lst, tclrepr(spec[1]), tclrepr(spec[2]))
+
+function lappendoption!(lst::TclList, opt::AbstractString, val::AbstractString)
+    @inbounds begin
+        len1 = length(opt)
+        len2 = length(val)
+        grow!(lst, 3 + 2*max(1, len1) + 2*max(1, len2))
+        j = last(lst)
+        lst[j+1] = ' '
+        lst[j+2] = '-'
+        if len1 ≥ 1
+            j = __append!(lst.arr, opt, j+2)
+        else
+            lst[j+3] = '{'
+            lst[j+4] = '}'
+            j += 4
+        end
+        lst[j+1] = ' '
+        if len2 ≥ 1
+            lst.len = __append!(lst.arr, val, j+1)
+        else
+            lst[j+2] = '{'
+            lst[j+3] = '}'
+            lst.len = j+3
+        end
+        return lst
+    end
 end
