@@ -146,25 +146,37 @@ evaluate(w::TkWidget, args...; kwds...) =
     evaluate(interpreter(w), list(widgetpath(w), args...; kwds...))
 
 """
-   Tcl.configure(w)
+    Tcl.configure(w)
 
 yields all the options of Tk widget `w`, while:
 
-   Tcl.configure(w, opt1=val1, opt2=val2)
+    Tcl.configure(w, opt1=val1, opt2=val2)
 
-change some options of widget `w`.
+change some options of widget `w`.  Options names may be specified as `String`
+or `Symbol`.  Another way to change the settings is:
+
+    w[opt1] = val1
+    w[opt2] = val2
 
 """
 configure(w::TkWidget; kwds...) = evaluate(w, "configure"; kwds...)
 
 """
 
-   Tcl.cget(w, opt)
+    Tcl.cget(w, opt)
 
-yields the value of the option `opt` for widget `w`.
+yields the value of the option `opt` for widget `w`.  Option `opt` may be
+specified as a `String` or as a `Symbol`.  Another way to obtain an option
+value is:
+
+    w[opt]
 
 """
 cget(w::TkWidget, opt::Name) = evaluate(w, "cget", "-"*tclrepr(opt))
+
+Base.getindex(w::TkWidget, key::Name) = cget(w, key)
+Base.setindex!(w::TkWidget, value, key::Name) =
+    evaluate(w, "configure", "-"*tclrepr(key), value)
 
 """
     Tcl.grid(args...; kwds...)
