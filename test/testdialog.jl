@@ -1,3 +1,5 @@
+import Tcl
+
 module TclDialogTests
 
 using Tcl
