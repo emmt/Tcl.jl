@@ -14,13 +14,13 @@ Example:
     end
 """
 function messagebox(interp::TclInterp = defaultinterpreter();
-                    default::String = EMPTY,
-                    detail::String = EMPTY,
-                    icon::String = EMPTY,
-                    message::String = EMPTY,
-                    title::String = EMPTY,
-                    parent::String = EMPTY,
-                    buttons::String = EMPTY)
+                    default::String = NOTHING,
+                    detail::String = NOTHING,
+                    icon::String = NOTHING,
+                    message::String = NOTHING,
+                    title::String = NOTHING,
+                    parent::String = NOTHING,
+                    buttons::String = NOTHING)
     requiretk(interp)
     cmd = list("tk_messageBox")
     for (opt, val) in (("-default", default),
@@ -38,9 +38,9 @@ function messagebox(interp::TclInterp = defaultinterpreter();
 end
 
 function choosedirectory(interp::TclInterp = defaultinterpreter();
-                         initialdir::String = EMPTY,
-                         title::String = EMPTY,
-                         parent::String = EMPTY,
+                         initialdir::String = NOTHING,
+                         title::String = NOTHING,
+                         parent::String = NOTHING,
                          mustexist::Bool = false)
     requiretk(interp)
     cmd = list("tk_chooseDirectory")
@@ -116,15 +116,15 @@ end
 
 """
 function getopenfile(interp::TclInterp = defaultinterpreter();
-                     defaultextension::String = EMPTY,
-                     filetypes::String = EMPTY,
-                     initialdir::String = EMPTY,
-                     initialfile::String = EMPTY,
-                     message::String = EMPTY,
+                     defaultextension::String = NOTHING,
+                     filetypes::String = NOTHING,
+                     initialdir::String = NOTHING,
+                     initialfile::String = NOTHING,
+                     message::String = NOTHING,
                      multiple::Bool = false,
-                     parent::String = EMPTY, # FIXME:
-                     title::String = EMPTY,
-                     typevariable::String = EMPTY)
+                     parent::String = NOTHING, # FIXME:
+                     title::String = NOTHING,
+                     typevariable::String = NOTHING)
     requiretk(interp)
     cmd = list("tk_getOpenFile", "-multiple", multiple)
     for (opt, val) in (("-defaultextension", defaultextension),
@@ -146,14 +146,14 @@ end
 
 function getsavefile(interp::TclInterp = defaultinterpreter();
                      confirmoverwrite::Bool = true,
-                     defaultextension::String = EMPTY,
-                     filetypes::String = EMPTY,
-                     initialdir::String = EMPTY,
-                     initialfile::String = EMPTY,
-                     message::String = EMPTY,
-                     parent::String = EMPTY, # FIXME:
-                     title::String = EMPTY,
-                     typevariable::String = EMPTY)
+                     defaultextension::String = NOTHING,
+                     filetypes::String = NOTHING,
+                     initialdir::String = NOTHING,
+                     initialfile::String = NOTHING,
+                     message::String = NOTHING,
+                     parent::String = NOTHING, # FIXME:
+                     title::String = NOTHING,
+                     typevariable::String = NOTHING)
     requiretk(interp)
     cmd = list("tk_getSaveFile", "-confirmoverwrite", confirmoverwrite)
     for (opt, val) in (("-defaultextension", defaultextension),

@@ -223,27 +223,3 @@ function setpixels(interp::TclInterp, name::AbstractString,
     end
     _setpixels(interp, name, block)
 end
-
-function runtests()
-    top = TkToplevel(".")
-    cmd = Tcl.createcommand("hitme!", (args...) -> println("Ouch!"))
-    b = TkButton(top; command = cmd, text = "Hit Me Please!")
-    Tcl.evaluate("pack", b)
-end
-function runtests2()
-    if false
-        interp = Tcl.defaultinterpreter()
-        interp("package require Tk");
-        Tcl.resume()
-        name = interp("image create photo -file /home/eric/work/code/CImg/CImg-1.5.5/examples/img/lena.pgm")
-        interp("pack [button .b -image $name]")
-        d = Tcl.getpixels(interp, name, :red);
-    else
-        Tcl.evaluate("package require Tk");
-        Tcl.resume()
-        name = Tcl.evaluate("image create photo -file /home/eric/work/code/CImg/CImg-1.5.5/examples/img/lena.pgm")
-        Tcl.evaluate("pack [button .b -image $name]")
-        d = Tcl.getpixels(name, :red);
-    end
-    return d;
-end

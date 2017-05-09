@@ -5,33 +5,34 @@ __counter = 0
 function autoname(prefix::AbstractString="w")
     global __counter
     __counter += 1
-    return prefix*tclrepr(__counter)
+    return prefix*string(__counter)
 end
 
 abstract TkWidget
 abstract TkRoot <: TkWidget
 
-tclrepr(w::TkWidget) = widgetpath(w)
+Base.show{T<:TkWidget}(io::IO, w::T) =
+    print(io, "$T(\"$(widgetpath(w))\")")
 
 const __knownwidgets = (
-    (:TTkButton, false, "::ttk::button", "btn"),
-    (:TTkCheckbutton, false, "::ttk::checkbutton", "cbt"),
-    (:TTkCombobox, false, "::ttk::combobox", "cbx"),
-    (:TTkEntry, false, "::ttk::entry", "ent"),
-    (:TTkFrame, false, "::ttk::frame", "frm"),
-    (:TTkLabel, false, "::ttk::label", "lab"),
-    (:TTkLabelframe, false, "::ttk::labelframe", "lfr"),
-    (:TTkMenubutton, false, "::ttk::menubutton", "mbt"),
-    (:TTkNotebook, false, "::ttk::notebook", "nbk"),
-    (:TTkPanedwindow, false, "::ttk::panedwindow", "pwn"),
-    (:TTkProgressbar, false, "::ttk::progressbar", "pgb"),
-    (:TTkRadiobutton, false, "::ttk::radiobutton", "rbt"),
-    (:TTkScale, false, "::ttk::scale", "scl"),
-    (:TTkScrollbar, false, "::ttk::scrollbar", "sbr"),
-    (:TTkSeparator, false, "::ttk::separator", "sep"),
-    (:TTkSizegrip, false, "::ttk::sizegrip", "szg"),
-    (:TTkSpinbox, false, "::ttk::spinbox", "sbx"),
-    (:TTkTreeview, false, "::ttk::treeview", "trv"),
+    (:TtkButton, false, "::ttk::button", "btn"),
+    (:TtkCheckbutton, false, "::ttk::checkbutton", "cbt"),
+    (:TtkCombobox, false, "::ttk::combobox", "cbx"),
+    (:TtkEntry, false, "::ttk::entry", "ent"),
+    (:TtkFrame, false, "::ttk::frame", "frm"),
+    (:TtkLabel, false, "::ttk::label", "lab"),
+    (:TtkLabelframe, false, "::ttk::labelframe", "lfr"),
+    (:TtkMenubutton, false, "::ttk::menubutton", "mbt"),
+    (:TtkNotebook, false, "::ttk::notebook", "nbk"),
+    (:TtkPanedwindow, false, "::ttk::panedwindow", "pwn"),
+    (:TtkProgressbar, false, "::ttk::progressbar", "pgb"),
+    (:TtkRadiobutton, false, "::ttk::radiobutton", "rbt"),
+    (:TtkScale, false, "::ttk::scale", "scl"),
+    (:TtkScrollbar, false, "::ttk::scrollbar", "sbr"),
+    (:TtkSeparator, false, "::ttk::separator", "sep"),
+    (:TtkSizegrip, false, "::ttk::sizegrip", "szg"),
+    (:TtkSpinbox, false, "::ttk::spinbox", "sbx"),
+    (:TtkTreeview, false, "::ttk::treeview", "trv"),
     (:TkButton, false, "::button", "btn"),
     (:TkCanvas, false, "::canvas", "cnv"),
     (:TkCheckbutton, false, "::checkbutton", "cbt"),
@@ -69,9 +70,11 @@ for (cls, top, cmd, pfx) in __knownwidgets
 
             immutable $cls <: TkWidget
                 parent::TkWidget
+                interp::TclInterp
                 path::String
                 $cls(parent::TkWidget, child::Name=autoname($pfx); kwds...) =
-                    new(parent, __createwidget(parent, $cmd, child; kwds...))
+                    new(parent, interpreter(parent),
+                        __createwidget(parent, $cmd, child; kwds...))
             end
 
         end
@@ -81,12 +84,12 @@ for (cls, top, cmd, pfx) in __knownwidgets
 end
 
 # Private method called to create a child widget.
-function __createwidget(parent::TkWidget, cmd::String, child::Name; kwds...)
-    name = tclrepr(child)
-    for c in name
-        c == '.' && tclerror("illegal window name \"$(name)\"")
+function __createwidget(parent::TkWidget, cmd::String, child::AbstractString;
+                        kwds...)
+    for c in child
+        c == '.' && tclerror("illegal window name \"$(child)\"")
     end
-    path = (widgetpath(parent) == "." ? "." : widgetpath(parent)*".")*name
+    path = (widgetpath(parent) == "." ? "." : widgetpath(parent)*".")*child
     interp = interpreter(parent)
     if parse(Int, interp("winfo", "exists", path)) != 0
         if length(kwds) > 0
@@ -98,12 +101,15 @@ function __createwidget(parent::TkWidget, cmd::String, child::Name; kwds...)
     return path
 end
 
+__createwidget(parent::TkWidget, cmd::String, child::Symbol; kwds...) =
+    __createwidget(parent, cmd, string(child); kwds...)
+
 # Private method called to create a root widget.
-function __createwidget(interp::TclInterp, cmd::String, root::Name; kwds...)
-    path = tclrepr(root)
+function __createwidget(interp::TclInterp, cmd::String, path::AbstractString;
+                        kwds...)
     path[1] == '.' || tclerror("root window name must start with a dot")
     @inbounds for i in 2:length(path)
-        c == '.' && tclerror("illegal root window name \"$(path)\"")
+        path[i] == '.' && tclerror("illegal root window name \"$(path)\"")
     end
     if parse(Int, interp("info exists tk_version")) == 0
         interp("package require Tk")
@@ -118,6 +124,9 @@ function __createwidget(interp::TclInterp, cmd::String, root::Name; kwds...)
     end
     return path
 end
+
+__createwidget(interp::TclInterp, cmd::String, path::Symbol; kwds...) =
+    __createwidget(interp, cmd, string(path); kwds...)
 
 
 @doc """
@@ -136,11 +145,15 @@ To create a new toplevel window:
 # tk_optionMenu tk_dialog tk_messageBox tk_getOpenFile tk_getSaveFile tk_chooseColor tk_chooseDirectory
 
 
-interpreter(w::TkRoot) = w.interp
-interpreter(w::TkWidget) = interpreter(parent(w))
+interpreter(w::TkWidget) = w.interp
 widgetpath(w::TkWidget) = w.path
 parent(w::TkWidget) = w.parent
 parent(::TkRoot) = nothing
+Base.string(w::TkWidget) = widgetpath(w)
+@inline TclObj(w::TkWidget) =
+    TclObj{TkWidget}(ccall((:Tcl_NewStringObj, libtcl), TclObjPtr,
+                           (Ptr{UInt8}, Cint),
+                           widgetpath(w), sizeof(widgetpath(w))))
 
 evaluate(w::TkWidget, args...; kwds...) =
     evaluate(interpreter(w), list(widgetpath(w), args...; kwds...))
@@ -172,11 +185,11 @@ value is:
     w[opt]
 
 """
-cget(w::TkWidget, opt::Name) = evaluate(w, "cget", "-"*tclrepr(opt))
+cget(w::TkWidget, opt::Name) = evaluate(w, "cget", "-"*string(opt))
 
 Base.getindex(w::TkWidget, key::Name) = cget(w, key)
 Base.setindex!(w::TkWidget, value, key::Name) =
-    evaluate(w, "configure", "-"*tclrepr(key), value)
+    evaluate(w, "configure", "-"*string(key), value)
 
 """
     Tcl.grid(args...; kwds...)
@@ -196,7 +209,7 @@ for cmd in (:grid, :pack, :place)
             for arg in args
                 if isa(arg, TkWidget)
                     interp = interpreter(arg)
-                    return interp(list($(string(cmd)), args...; kwds...))
+                    return interp($(string(cmd)), args...; kwds...)
                 end
             end
             tclerror("missing a widget argument")

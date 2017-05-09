@@ -48,14 +48,14 @@ __setcommandresult(interp::TclInterp, result::Tuple{Cint,Any}) =
 __setcommandresult(interp::TclInterp, result::Any) =
     __setcommandresult(interp, TCL_OK, result)
 
-__setcommandresult(interp::TclInterp, code::Cint, lst::TclList) =
-    __setcommandresult(interp, code, string(lst))
+__setcommandresult(interp::TclInterp, code::Cint, obj::TclObj) =
+    error("not yet implemented")
 
 __setcommandresult(interp::TclInterp, code::Cint, value::Any) =
-    __setcommandresult(interp, code, tclrepr(lst))
+    __setcommandresult(interp, code, __newobj(value))
 
 function __setcommandresult(interp::TclInterp, code::Cint, ::Void)
-    __setresult(interp, EMPTY, TCL_STATIC)
+    __setresult(interp, NOTHING, TCL_STATIC)
     return code
 end
 
@@ -101,7 +101,7 @@ function createcommand(interp::TclInterp, name::String, f::Function)
     # until Tcl deletes its reference.
     preserve(f)
     ptr = ccall((:Tcl_CreateCommand, libtcl), Ptr{Void},
-                (Ptr{Void}, Cstring, Ptr{Void}, Ptr{Void}, Ptr{Void}),
+                (TclInterpPtr, Cstring, Ptr{Void}, Ptr{Void}, Ptr{Void}),
                 interp.ptr, name, __evalcommand_ptr, pointer_from_objref(f),
                 __releaseobject_ptr)
     if ptr == C_NULL
@@ -125,8 +125,8 @@ deletecommand(interp::TclInterp, name::Symbol) =
     deletecommand(interp, tclrepr(name))
 
 function deletecommand(interp::TclInterp, name::String)
-    code = ccall((:Tcl_DeleteCommand, libtcl), Cint, (Ptr{Void}, Cstring),
-                 interp.ptr, name)
+    code = ccall((:Tcl_DeleteCommand, libtcl), Cint,
+                 (TclInterpPtr, Cstring), interp.ptr, name)
     if code != TCL_OK
         tclerror(interp)
     end
