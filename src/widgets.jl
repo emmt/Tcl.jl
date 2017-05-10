@@ -14,74 +14,98 @@ Base.show{T<:TkWidget}(io::IO, w::T) = print(io, getpath(w))
 
 Base.string{T<:TkWidget}(w::T) = getpath(w)
 
-const __knownwidgets = (
-    (:TtkButton, false, "::ttk::button", "btn"),
-    (:TtkCheckbutton, false, "::ttk::checkbutton", "cbt"),
-    (:TtkCombobox, false, "::ttk::combobox", "cbx"),
-    (:TtkEntry, false, "::ttk::entry", "ent"),
-    (:TtkFrame, false, "::ttk::frame", "frm"),
-    (:TtkLabel, false, "::ttk::label", "lab"),
-    (:TtkLabelframe, false, "::ttk::labelframe", "lfr"),
-    (:TtkMenubutton, false, "::ttk::menubutton", "mbt"),
-    (:TtkNotebook, false, "::ttk::notebook", "nbk"),
-    (:TtkPanedwindow, false, "::ttk::panedwindow", "pwn"),
-    (:TtkProgressbar, false, "::ttk::progressbar", "pgb"),
-    (:TtkRadiobutton, false, "::ttk::radiobutton", "rbt"),
-    (:TtkScale, false, "::ttk::scale", "scl"),
-    (:TtkScrollbar, false, "::ttk::scrollbar", "sbr"),
-    (:TtkSeparator, false, "::ttk::separator", "sep"),
-    (:TtkSizegrip, false, "::ttk::sizegrip", "szg"),
-    (:TtkSpinbox, false, "::ttk::spinbox", "sbx"),
-    (:TtkTreeview, false, "::ttk::treeview", "trv"),
-    (:TkButton, false, "::button", "btn"),
-    (:TkCanvas, false, "::canvas", "cnv"),
-    (:TkCheckbutton, false, "::checkbutton", "cbt"),
-    (:TkEntry, false, "::entry", "ent"),
-    (:TkFrame, false, "::frame", "frm"),
-    (:TkLabel, false, "::label", "lab"),
-    (:TkLabelframe, false, "::labelframe", "lfr"),
-    (:TkListbox, false, "::listbox", "lbx"),
-    (:TkMenu, true, "::menu", ".mnu"),
-    (:TkMenubutton, false, "::menubutton", "mbt"),
-    (:TkMessage, false, "::message", "msg"),
-    (:TkPanedwindow, false, "::panedwindow", "pwn"),
-    (:TkRadiobutton, false, "::radiobutton", "rbt"),
-    (:TkScale, false, "::scale", "scl"),
-    (:TkScrollbar, false, "::scrollbar", "sbr"),
-    (:TkSpinbox, false, "::spinbox", "sbx"),
-    (:TkText, false, "::text", "txt"),
-    (:TkToplevel, true, "::toplevel", ".top"))
+"""
+    @TkWidget cls cmd pfx
 
-for (cls, top, cmd, pfx) in __knownwidgets
-    @eval begin
-        if $top
+create widget class `cls` based on Tk command `cmd` and using prefix `pfx` for
+automatically defined widget names.
 
-            immutable $cls <: TkRoot
-                interp::TclInterp
-                path::String
-                $cls(interp::TclInterp, name::Name=autoname($pfx); kwds...) =
-                    new(interp, __createwidget(interp, $cmd, name; kwds...))
-            end
+"""
+macro TkWidget(_cls, _cmd, _pfx)
+    cls = esc(_cls)
+    cmd = esc(_cmd)
+    pfx = esc(_pfx)
+    quote
 
-            $cls(name::Name = autoname($pfx); kwds...) =
-                $cls(getinterp(), name; kwds...)
-
-        else
-
-            immutable $cls <: TkWidget
-                parent::TkWidget
-                interp::TclInterp
-                path::String
-                $cls(parent::TkWidget, child::Name=autoname($pfx); kwds...) =
-                    new(parent, getinterp(parent),
-                        __createwidget(parent, $cmd, child; kwds...))
-            end
-
+        immutable $cls <: TkWidget
+            parent::TkWidget
+            interp::TclInterp
+            path::String
+            $cls(parent::TkWidget, child::Name=autoname($pfx); kwds...) =
+                new(parent, getinterp(parent),
+                    __createwidget(parent, $cmd, child; kwds...))
         end
 
         (w::$cls)(args...; kwds...) = evaluate(w, args...; kwds...)
+
     end
 end
+
+"""
+    @TkRoot cls cmd pfx
+
+create a toplevel widget class `cls` based on Tk command `cmd` and using prefix
+`pfx` for automatically defined widget names (`pxf` must start with a dot).
+
+"""
+macro TkRoot(_cls, _cmd, _pfx)
+    cls = esc(_cls)
+    cmd = esc(_cmd)
+    pfx = esc(_pfx)
+    quote
+
+        immutable $cls <: TkRoot
+            interp::TclInterp
+            path::String
+            $cls(interp::TclInterp, name::Name=autoname($pfx); kwds...) =
+                new(interp, __createwidget(interp, $cmd, name; kwds...))
+        end
+
+        $cls(name::Name = autoname($pfx); kwds...) =
+            $cls(getinterp(), name; kwds...)
+
+        (w::$cls)(args...; kwds...) = evaluate(w, args...; kwds...)
+
+    end
+end
+
+@TkRoot   TkToplevel      "::toplevel"          ".top"
+@TkRoot   TkMenu          "::menu"              ".mnu"
+
+@TkWidget TtkButton       "::ttk::button"       "btn"
+@TkWidget TtkCheckbutton  "::ttk::checkbutton"  "cbt"
+@TkWidget TtkCombobox     "::ttk::combobox"     "cbx"
+@TkWidget TtkEntry        "::ttk::entry"        "ent"
+@TkWidget TtkFrame        "::ttk::frame"        "frm"
+@TkWidget TtkLabel        "::ttk::label"        "lab"
+@TkWidget TtkLabelframe   "::ttk::labelframe"   "lfr"
+@TkWidget TtkMenubutton   "::ttk::menubutton"   "mbt"
+@TkWidget TtkNotebook     "::ttk::notebook"     "nbk"
+@TkWidget TtkPanedwindow  "::ttk::panedwindow"  "pwn"
+@TkWidget TtkProgressbar  "::ttk::progressbar"  "pgb"
+@TkWidget TtkRadiobutton  "::ttk::radiobutton"  "rbt"
+@TkWidget TtkScale        "::ttk::scale"        "scl"
+@TkWidget TtkScrollbar    "::ttk::scrollbar"    "sbr"
+@TkWidget TtkSeparator    "::ttk::separator"    "sep"
+@TkWidget TtkSizegrip     "::ttk::sizegrip"     "szg"
+@TkWidget TtkSpinbox      "::ttk::spinbox"      "sbx"
+@TkWidget TtkTreeview     "::ttk::treeview"     "trv"
+@TkWidget TkButton        "::button"            "btn"
+@TkWidget TkCanvas        "::canvas"            "cnv"
+@TkWidget TkCheckbutton   "::checkbutton"       "cbt"
+@TkWidget TkEntry         "::entry"             "ent"
+@TkWidget TkFrame         "::frame"             "frm"
+@TkWidget TkLabel         "::label"             "lab"
+@TkWidget TkLabelframe    "::labelframe"        "lfr"
+@TkWidget TkListbox       "::listbox"           "lbx"
+@TkWidget TkMenubutton    "::menubutton"        "mbt"
+@TkWidget TkMessage       "::message"           "msg"
+@TkWidget TkPanedwindow   "::panedwindow"       "pwn"
+@TkWidget TkRadiobutton   "::radiobutton"       "rbt"
+@TkWidget TkScale         "::scale"             "scl"
+@TkWidget TkScrollbar     "::scrollbar"         "sbr"
+@TkWidget TkSpinbox       "::spinbox"           "sbx"
+@TkWidget TkText          "::text"              "txt"
 
 # Private method called to create a child widget.
 function __createwidget(parent::TkWidget, cmd::String, child::AbstractString;

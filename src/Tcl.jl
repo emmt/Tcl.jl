@@ -7,7 +7,8 @@ else
 end
 
 export
-    @raw_str,
+    @TkWidget,
+    @TkRoot,
     TclError,
     TclInterp,
     TclObj,
@@ -79,6 +80,7 @@ export
 if VERSION < v"0.6.0"
     # macro for raw strings (will be part of Julia 0.6, see PR #19900 at
     # https://github.com/JuliaLang/julia/pull/19900).
+    export @raw_str
     macro raw_str(s); s; end
 end
 
