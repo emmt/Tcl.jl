@@ -339,6 +339,10 @@ __getresult(interp::TclInterp) =
     ccall((:Tcl_GetStringResult, libtcl), Cstring, (TclInterpPtr,), interp.ptr)
 
 """
+    tcleval([interp,], arg0, args...; kwds...)
+
+or
+
     Tcl.evaluate([interp,], arg0, args...; kwds...)
 
 evaluates Tcl script or command with interpreter `interp` (or in the global
@@ -373,6 +377,8 @@ function evaluate(interp::TclInterp, arg0)
     code == TCL_OK || tclerror(interp)
     return getresult(interp)
 end
+
+const tcleval = evaluate
 
 #__eval(interp::TclInterp, script::String) =
 #    ccall((:Tcl_Eval, libtcl), Cint, (TclInterpPtr, Cstring),

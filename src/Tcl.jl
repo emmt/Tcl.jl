@@ -7,12 +7,31 @@ else
 end
 
 export
-    TclInterp,
+    @raw_str,
     TclError,
+    TclInterp,
     TclObj,
     TclObjList,
-    TkWidget,
+    TkButton,
+    TkCanvas,
+    TkCheckbutton,
+    TkEntry,
+    TkFrame,
+    TkLabel,
+    TkLabelframe,
+    TkListbox,
+    TkMenu,
+    TkMenubutton,
+    TkMessage,
+    TkPanedwindow,
+    TkRadiobutton,
     TkRoot,
+    TkScale,
+    TkScrollbar,
+    TkSpinbox,
+    TkText,
+    TkToplevel,
+    TkWidget,
     TtkButton,
     TtkCheckbutton,
     TtkCombobox,
@@ -31,24 +50,6 @@ export
     TtkSizegrip,
     TtkSpinbox,
     TtkTreeview,
-    TkButton,
-    TkCanvas,
-    TkCheckbutton,
-    TkEntry,
-    TkFrame,
-    TkLabel,
-    TkLabelframe,
-    TkListbox,
-    TkMenu,
-    TkMenubutton,
-    TkMessage,
-    TkPanedwindow,
-    TkRadiobutton,
-    TkScale,
-    TkScrollbar,
-    TkSpinbox,
-    TkText,
-    TkToplevel,
     TCL_OK,
     TCL_ERROR,
     TCL_RETURN,
@@ -71,7 +72,14 @@ export
     TCL_EVAL_INVOKE,
     TCL_CANCEL_UNWIND,
     TCL_EVAL_NOERR,
-    tclerror
+    tclerror,
+    tcleval
+
+if VERSION < v"0.6.0"
+    # macro for raw strings (will be part of Julia 0.6, see PR #19900 at
+    # https://github.com/JuliaLang/julia/pull/19900).
+    macro raw_str(s); s; end
+end
 
 include("types.jl")
 include("base.jl")

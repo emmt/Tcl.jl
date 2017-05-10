@@ -3,8 +3,16 @@
 abstract TkWidget
 abstract TkRoot <: TkWidget
 
-Base.show{T<:TkWidget}(io::IO, w::T) =
+# We want to have the widget type and path both printed in the REPL but want
+# only the widget path with the `string` method or for string interpolation.
+# Note that: "$w" calls `string(w)` while "anything $w" calls `show(io, w)`.
+
+Base.show{T<:TkWidget}(io::IO, ::MIME"text/plain", w::T) =
     print(io, "$T(\"$(widgetpath(w))\")")
+
+Base.show{T<:TkWidget}(io::IO, w::T) = print(io, widgetpath(w))
+
+Base.string{T<:TkWidget}(w::T) = widgetpath(w)
 
 const __knownwidgets = (
     (:TtkButton, false, "::ttk::button", "btn"),
@@ -141,7 +149,6 @@ interpreter(w::TkWidget) = w.interp
 widgetpath(w::TkWidget) = w.path
 parent(w::TkWidget) = w.parent
 parent(::TkRoot) = nothing
-Base.string(w::TkWidget) = widgetpath(w)
 @inline TclObj(w::TkWidget) =
     TclObj{TkWidget}(ccall((:Tcl_NewStringObj, libtcl), TclObjPtr,
                            (Ptr{UInt8}, Cint),
