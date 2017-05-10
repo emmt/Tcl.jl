@@ -38,7 +38,7 @@ end
 getpixels(name::Name, args...) = getpixels(getinterp(), name, args...)
 
 getpixels(interp::TclInterp, name::Symbol, args...) =
-    getpixels(interp, tclrepr(name), args...)
+    getpixels(interp, string(name), args...)
 
 function getpixels(interp::TclInterp, name::AbstractString,
                    colormode::Symbol = :gray)
@@ -182,7 +182,7 @@ end
 setpixels(name::Name, args...) = setpixels(getinterp(), name, args...)
 
 setpixels(interp::TclInterp, name::Symbol, args...) =
-    setpixels(interp, tclrepr(name), args...)
+    setpixels(interp, string(name), args...)
 
 function setpixels(interp::TclInterp, name::AbstractString,
                    src::AbstractArray{UInt8,2})

@@ -73,11 +73,8 @@ end
 
 @inline TclObj{T}(obj::TclObj{T}) = obj
 
-function TclObj(f::Function)
-    name = autoname("jl_callback")
-    callback = createcommand(__currentinterpreter, name, f)
-    return TclObj{Command}(__newobj(name))
-end
+@inline TclObj(f::Function) =
+    TclObj{Command}(__newobj(createcommand(__currentinterpreter, f)))
 
 TclObj(tup::Tuple) = list(tup...)
 
@@ -733,11 +730,13 @@ const __evalcommand_ptr = cfunction(__evalcommand, Cint,
                                     (Ptr{Void}, Ptr{Void}, Cint, Ptr{Cstring}))
 
 """
-       Tcl.createcommand([interp,] name, f) -> name
+       Tcl.createcommand([interp,] [name,] f) -> name
 
 creates a command named `name` in Tcl interpreter `interp` (or in the initial
-Tcl interpreter if this argument is omitted).  The string version of `name` is
-returned.  The Tcl command will call the Julia function `f` as follows:
+Tcl interpreter if this argument is omitted).  If `name` is missing
+`autoname("jl_callback")` is used to automatically define a name.  The command
+name is returned as a string.  The Tcl command will call the Julia function `f`
+as follows:
 
     f(name, arg1, arg2, ...)
 
@@ -754,11 +753,17 @@ interpreter result and `TCL_OK` is returned to Tcl.  A result which is
 
 See also: `Tcl.deletecommand`
 """
+createcommand(f::Function) =
+    createcommand(getinterp(), f)
+
 createcommand(name::Name, f::Function) =
     createcommand(getinterp(), name, f)
 
+createcommand(interp::TclInterp, f::Function) =
+    createcommand(interp, autoname("jl_callback"), f)
+
 createcommand(interp::TclInterp, name::Symbol, f::Function) =
-    createcommand(interp, tclrepr(name), f)
+    createcommand(interp, string(name), f)
 
 function createcommand(interp::TclInterp, name::String, f::Function)
     # Before creating the command, make sure object is not garbage collected
@@ -786,7 +791,7 @@ See also: `Tcl.createcommand`
 deletecommand(name::Name) = deletecommand(getinterp(), name)
 
 deletecommand(interp::TclInterp, name::Symbol) =
-    deletecommand(interp, tclrepr(name))
+    deletecommand(interp, string(name))
 
 function deletecommand(interp::TclInterp, name::String)
     code = ccall((:Tcl_DeleteCommand, libtcl), Cint,
