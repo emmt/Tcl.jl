@@ -242,7 +242,8 @@ in use.  If Tk has been properly installed, then:
 
     interp("package require Tk")
 
-should load Tk extension and create the "." toplevel Tk window.
+should load Tk extension and create the "." toplevel Tk window.  But see
+`tkstart` method to load Tk.
 
 """
 function TclInterp(permanent::Bool=false)
@@ -485,7 +486,7 @@ Calling `Tcl.resume` is mandatory when Tk extension is loaded.  Thus:
 
 is the recommended way to load Tk package.  Alternatively:
 
-    Tcl.requiretk(interp)
+    Tcl.tkstart(interp)
 
 can be called to do that.
 
@@ -523,11 +524,6 @@ doevents(::Timer) = doevents()
 function doevents(flags::Integer = TCL_DONT_WAIT|TCL_ALL_EVENTS)
     while ccall((:Tcl_DoOneEvent, libtcl), Cint, (Cint,), flags) != 0
     end
-end
-
-function requiretk(interp::TclInterp = getinterp())
-    evaluate(interp, "package require Tk")
-    resume()
 end
 
 #------------------------------------------------------------------------------

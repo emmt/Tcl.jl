@@ -111,10 +111,7 @@ function __createwidget(interp::TclInterp, cmd::String, path::AbstractString;
     @inbounds for i in 2:length(path)
         path[i] == '.' && tclerror("illegal root window name \"$(path)\"")
     end
-    if parse(Int, interp("info exists tk_version")) == 0
-        interp("package require Tk")
-        resume()
-    end
+    tkstart(interp)
     if parse(Int, interp("winfo", "exists", path)) != 0
         if length(kwds) > 0
             interp(path, "configure"; kwds...)
@@ -155,6 +152,27 @@ evaluate(w::TkWidget, args...; kwds...) =
     evaluate(getinterp(w), getpath(w), args...; kwds...)
 
 """
+If Tk package is not yet loaded in interpreter `interp` (or in the initial
+interpreter if this argument is missing), then:
+
+    tkstart([interp]) -> interp
+
+will load Tk package and start the event loop.  The returned value is the
+interpreter into which Tk has been started.  Note that this method also takes
+care of withdrawing the root window "." to avoid its destruction as this would
+terminate the Tcl application.
+
+"""
+function tkstart(interp::TclInterp = getinterp()) :: TclInterp
+    if parse(Int, interp("info","exists","tk_version")) == 0
+        interp("package","require","Tk")
+        interp("wm","withdraw",".")
+        resume()
+    end
+    return interp
+end
+
+"""
     Tcl.configure(w)
 
 yields all the options of Tk widget `w`, while:
@@ -192,8 +210,14 @@ Base.setindex!(w::TkWidget, value, key::Name) =
     Tcl.pack(args...; kwds...)
     Tcl.place(args...; kwds...)
 
-communicate with one of the Tk geometry manager.  One of the arguments must
-be an instance of `TkWidget`.
+communicate with one of the Tk geometry manager.  One of the arguments must be
+an instance of `TkWidget`.  For instance (assuming `top` is some frame or
+toplevel widget):
+
+    using Tcl
+    Tcl.pack(TkButton(top, "b1"; text="Send message",
+                      command = (args...) -> println("message sent!")),
+             side = "bottom")
 
 """
 function grid end

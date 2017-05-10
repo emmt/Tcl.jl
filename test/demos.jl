@@ -12,18 +12,15 @@ const pack = Tcl.pack
 const place = Tcl.place
 const list = Tcl.list
 #const tkgetpixels = Tcl.getpixels
-
-function tkstart(interp::TclInterp = Tcl.getinterp())
-    interp("package","require","Tk")
-    interp("wm","withdraw",".")
-    resume()
-    return interp
-end
+const getparent = Tcl.getparent
+const getpath = Tcl.getpath
+const getinterp = Tcl.getinterp
+const createcommand = Tcl.createcommand
 
 function addseedismiss(parent, child)
     #import Tcl: list
     ## See Code / Dismiss buttons
-    interp = Tcl.getinterp(parent)
+    interp = getinterp(parent)
     w = TtkFrame(parent, child)
     sep = TtkSeparator(w, "sep")
 
@@ -35,7 +32,7 @@ function addseedismiss(parent, child)
                         command=list("destroy",
                                      interp("winfo","toplevel",w)))
 
-    #Tcl.createcommand(interp, "kkprout", (args...) -> println("Ouch!"))
+    # createcommand(interp, "jlcallback", (args...) -> println("Ouch!"))
     code = TtkButton(w, "code", text="See Code",
                      #image="::img::view",
                      compound = "left",
@@ -133,7 +130,7 @@ end
 
 function runtests2()
     if false
-        interp = Tcl.getinterp()
+        interp = getinterp()
         interp("package require Tk");
         resume()
         name = interp("image create photo -file /home/eric/work/code/CImg/CImg-1.5.5/examples/img/lena.pgm")

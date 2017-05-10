@@ -73,7 +73,8 @@ export
     TCL_CANCEL_UNWIND,
     TCL_EVAL_NOERR,
     tclerror,
-    tcleval
+    tcleval,
+    tkstart
 
 if VERSION < v"0.6.0"
     # macro for raw strings (will be part of Julia 0.6, see PR #19900 at
