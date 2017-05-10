@@ -8,7 +8,6 @@ end
 
 export
     @TkWidget,
-    @TkRoot,
     TclError,
     TclInterp,
     TclObj,

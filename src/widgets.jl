@@ -18,14 +18,30 @@ Base.string{T<:TkWidget}(w::T) = getpath(w)
     @TkWidget cls cmd pfx
 
 create widget class `cls` based on Tk command `cmd` and using prefix `pfx` for
-automatically defined widget names.
+automatically defined widget names.  If `pfx` starts with a dot, a toplevel
+widget class is assumed.
 
 """
-macro TkWidget(_cls, _cmd, _pfx)
+macro TkWidget(_cls, cmd, pfx)
+
+    isa(pfx, String) || error("prefix must be a string literal")
     cls = esc(_cls)
-    cmd = esc(_cmd)
-    pfx = esc(_pfx)
-    quote
+
+    pfx[1] == '.' ? quote
+
+        immutable $cls <: TkRoot
+            interp::TclInterp
+            path::String
+            $cls(interp::TclInterp, name::Name=autoname($pfx); kwds...) =
+                new(interp, __createwidget(interp, $cmd, name; kwds...))
+        end
+
+        $cls(name::Name = autoname($pfx); kwds...) =
+            $cls(getinterp(), name; kwds...)
+
+        (w::$cls)(args...; kwds...) = evaluate(w, args...; kwds...)
+
+    end : quote
 
         immutable $cls <: TkWidget
             parent::TkWidget
@@ -41,36 +57,8 @@ macro TkWidget(_cls, _cmd, _pfx)
     end
 end
 
-"""
-    @TkRoot cls cmd pfx
-
-create a toplevel widget class `cls` based on Tk command `cmd` and using prefix
-`pfx` for automatically defined widget names (`pxf` must start with a dot).
-
-"""
-macro TkRoot(_cls, _cmd, _pfx)
-    cls = esc(_cls)
-    cmd = esc(_cmd)
-    pfx = esc(_pfx)
-    quote
-
-        immutable $cls <: TkRoot
-            interp::TclInterp
-            path::String
-            $cls(interp::TclInterp, name::Name=autoname($pfx); kwds...) =
-                new(interp, __createwidget(interp, $cmd, name; kwds...))
-        end
-
-        $cls(name::Name = autoname($pfx); kwds...) =
-            $cls(getinterp(), name; kwds...)
-
-        (w::$cls)(args...; kwds...) = evaluate(w, args...; kwds...)
-
-    end
-end
-
-@TkRoot   TkToplevel      "::toplevel"          ".top"
-@TkRoot   TkMenu          "::menu"              ".mnu"
+@TkWidget TkToplevel      "::toplevel"          ".top"
+@TkWidget TkMenu          "::menu"              ".mnu"
 
 @TkWidget TtkButton       "::ttk::button"       "btn"
 @TkWidget TtkCheckbutton  "::ttk::checkbutton"  "cbt"
