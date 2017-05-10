@@ -75,7 +75,6 @@ export
 
 include("types.jl")
 include("base.jl")
-include("callbacks.jl")
 include("widgets.jl")
 include("dialogs.jl")
 include("images.jl")

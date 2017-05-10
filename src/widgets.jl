@@ -1,13 +1,5 @@
 # Implement Tk (and TTk) widgets
 
-__counter = 0
-
-function autoname(prefix::AbstractString="w")
-    global __counter
-    __counter += 1
-    return prefix*string(__counter)
-end
-
 abstract TkWidget
 abstract TkRoot <: TkWidget
 
