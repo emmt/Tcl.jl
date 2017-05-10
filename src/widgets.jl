@@ -19,13 +19,14 @@ Base.string{T<:TkWidget}(w::T) = getpath(w)
 
 create widget class `cls` based on Tk command `cmd` and using prefix `pfx` for
 automatically defined widget names.  If `pfx` starts with a dot, a toplevel
-widget class is assumed.
+widget class is assumed.  For now, `cmd` and `pfx` must be string literals.
 
 """
 macro TkWidget(_cls, cmd, pfx)
 
-    isa(pfx, String) || error("prefix must be a string literal")
     cls = esc(_cls)
+    isa(cmd, String) || error("command must be a string literal")
+    isa(pfx, String) || error("prefix must be a string literal")
 
     pfx[1] == '.' ? quote
 
