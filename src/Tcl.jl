@@ -87,5 +87,6 @@ include("base.jl")
 include("widgets.jl")
 include("dialogs.jl")
 include("images.jl")
+include("shortnames.jl")
 
 end # module
