@@ -71,7 +71,7 @@ end
 function labelframedemo()
     interp = tkstart()
     wname = ".labelframe"
-    interp("catch {destroy $wname}") # FIXME: write some wrapper for that
+    interp("catch {destroy $wname}")
     w = TkToplevel(wname)
     interp("wm","title",w,"Labelframe Demonstration")
     interp("wm","iconname",w,"labelframe")

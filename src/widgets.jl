@@ -132,18 +132,15 @@ __createwidget(interp::TclInterp, cmd::String, path::Symbol; kwds...) =
 @doc """
     TkToplevel([interp], ".")
 
-yields the toplevel Tk window for interpreter `interp` (or for the global
-interpreter if this argument is omitted).  This also takes care of loading
-Tk extension in the interpreter and starting the event loop.
+yields the toplevel Tk window for interpreter `interp` (or for the initial
+interpreter if this argument is omitted).  This also takes care of loading Tk
+extension in the interpreter and starting the event loop.
 
 To create a new toplevel window:
 
     TkToplevel([interp,] path; kwds...)
 
 """ TkToplevel
-
-# tk_optionMenu tk_dialog tk_messageBox tk_getOpenFile tk_getSaveFile tk_chooseColor tk_chooseDirectory
-
 
 getinterp(w::TkWidget) = w.interp
 getpath(w::TkWidget) = w.path

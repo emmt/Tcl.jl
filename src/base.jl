@@ -210,7 +210,12 @@ lappendoption!(lst::TclObj{List}, key::AbstractString, value) =
 # Management of Tcl interpreters.
 
 """
-A new Tcl interpreter is created by the command:
+When Tcl package is imported, an initial interpreter is created which can be
+retrieved by:
+
+    interp = Tcl.getinterp()
+
+A new Tcl interpreter can also be created by the command:
 
     interp = TclInterp()
 
@@ -287,7 +292,7 @@ __deleteinterp(interp::TclInterp) =
 """
     Tcl.setresult([interp,] args...) -> nothing
 
-set result stored in Tcl interpreter `interp` or in the global interpreter if
+set result stored in Tcl interpreter `interp` or in the initial interpreter if
 this argument is omitted.
 
 """
@@ -326,7 +331,7 @@ __setresult(interp::TclInterp, str::AbstractString, free::Ptr{Void}) =
 """
     Tcl.getresult([interp]) -> str
 
-yields the current result stored in Tcl interpreter `interp` or in the global
+yields the current result stored in Tcl interpreter `interp` or in the initial
 interpreter if this argument is omitted.
 
 """
@@ -347,7 +352,7 @@ or
 
     Tcl.evaluate([interp,], arg0, args...; kwds...)
 
-evaluates Tcl script or command with interpreter `interp` (or in the global
+evaluates Tcl script or command with interpreter `interp` (or in the initial
 interpreter if this argument is omitted).  The result is returned as a string.
 
 If only `arg0` is present, it may be a `TclListObj` which is evaluated as a
@@ -415,7 +420,7 @@ end
 end
 
 #------------------------------------------------------------------------------
-# Global Tcl interpreter.
+# Initial Tcl interpreter.
 
 # Many things do not work properly (e.g. freeing a Tcl object yield a
 # segmentation fault) if no interpreter has been created, so we always create
@@ -429,8 +434,8 @@ __currentinterpreter = __initialinterpreter
 """
     Tcl.getinterp()
 
-yields the initial Tcl interpreter which is used by default by many
-methods.  An argument can be provided:
+yields the initial Tcl interpreter which is used by default by many methods.
+An argument can be provided:
 
     Tcl.getinterp(w)
 
@@ -533,11 +538,11 @@ const VARFLAGS = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG
 """
     Tcl.getvar([interp,] var, flags=Tcl.VARFLAGS)
 
-yields the value of variable `var` in Tcl interpreter `interp` or in the global
-interpreter if this argument is omitted.  For efficiency reasons, if the
-variable name `var` is a string or a symbol, it must not have embedded nulls.
-It is always possible to wrap the variable name into a `TclObj` to support
-variable names with embedded nulls.
+yields the value of variable `var` in Tcl interpreter `interp` or in the
+initial interpreter if this argument is omitted.  For efficiency reasons, if
+the variable name `var` is a string or a symbol, it must not have embedded
+nulls.  It is always possible to wrap the variable name into a `TclObj` to
+support variable names with embedded nulls.
 
 """
 getvar(args...) = getvar(getinterp(), args...)
@@ -573,7 +578,7 @@ __string(ptr::TclObjPtr) =
 """
     Tcl.setvar([interp,] var, value, flags=Tcl.VARFLAGS)
 
-set variable `var` to be `value` in Tcl interpreter `interp` or in the global
+set variable `var` to be `value` in Tcl interpreter `interp` or in the initial
 interpreter if this argument is omitted.  The result is the string version of
 `value`.  For efficiency reasons, if the variable name `var` is a string or a
 symbol, it must not have embedded nulls.  It is always possible to wrap the
@@ -621,8 +626,8 @@ end
 """
     Tcl.unsetvar([interp,] var, flags=Tcl.VARFLAGS)
 
-deletes variable `var` in Tcl interpreter `interp` or in the global interpreter
-if this argument is omitted.
+deletes variable `var` in Tcl interpreter `interp` or in the initial
+interpreter if this argument is omitted.
 
 """
 unsetvar(args...) = unsetvar(getinterp(), args...)
@@ -642,7 +647,7 @@ __unsetvar(interp::TclInterp, var::String, flags::Cint=VARFLAGS) =
     Tcl.exists([interp,] var, flags=Tcl.VARFLAGS)
 
 checks whether variable `var` is defined in Tcl interpreter `interp` or in the
-global interpreter if this argument is omitted.
+initial interpreter if this argument is omitted.
 
 """
 exists(var::Name, args...) = exists(getinterp(), var, args...)
@@ -734,7 +739,7 @@ const __evalcommand_ptr = cfunction(__evalcommand, Cint,
 """
        Tcl.createcommand([interp,] name, f) -> name
 
-creates a command named `name` in Tcl interpreter `interp` (or in the global
+creates a command named `name` in Tcl interpreter `interp` (or in the initial
 Tcl interpreter if this argument is omitted).  The string version of `name` is
 returned.  The Tcl command will call the Julia function `f` as follows:
 
@@ -777,7 +782,7 @@ end
 """
     Tcl.deletecommand([interp,] name)
 
-deletes a command named `name` in Tcl interpreter `interp` (or in the global
+deletes a command named `name` in Tcl interpreter `interp` (or in the initial
 Tcl interpreter if this argument is omitted).
 
 See also: `Tcl.createcommand`
