@@ -91,6 +91,12 @@ type TclObj{T}
     end
 end
 
+immutable List    end # Used in the signature of a Tcl list object.
+immutable Command end # Used in the signature of a Tcl command object.
+
+typealias TclObjList    TclObj{List}
+typealias TclObjCommand TclObj{Command}
+
 Base.string(obj::TclObj) =
     unsafe_string(ccall((:Tcl_GetString, libtcl), Cstring,
                         (TclObjPtr,), obj.ptr))
@@ -105,12 +111,6 @@ Base.show{T<:TclObj{String}}(io::IO, ::MIME"text/plain", obj::T) =
 # that for other kind of objects).
 Base.show{T<:Real}(io::IO, obj::TclObj{T}) =
     print(io, string(obj))
-
-immutable List    end # Used in the signature of a Tcl list object.
-immutable Command end # Used in the signature of a Tcl command object.
-
-typealias TclObjList TclObj{List}
-typealias TclObjCommand TclObj{Command}
 
 Base.show{T<:TclObj{List}}(io::IO, lst::T) =
     print(io, llength(lst), "-element(s) $T(\"$(string(lst))\")")

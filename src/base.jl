@@ -75,7 +75,7 @@ end
 
 function TclObj(f::Function)
     name = autoname("jl_callback")
-    callback = createcommand(__callbackinterp, name, f)
+    callback = createcommand(__currentinterpreter, name, f)
     return TclObj{Command}(__newobj(name))
 end
 
@@ -148,11 +148,13 @@ function list(args...; kwds...) :: TclObj{List}
 end
 
 function list(interp::TclInterp, args...; kwds...) :: TclObj{List}
-    # Set interpreter before building the list.
-    global __callbackinterp
-    __callbackinterp = interp
-    lst = list(args...; kwds...)
-    __callbackinterp = __interp
+    local lst
+    global __currentinterpreter = interp
+    try
+        lst = list(args...; kwds...)
+    finally
+        __currentinterpreter = __initialinterpreter
+    end
     return lst
 end
 
@@ -300,7 +302,7 @@ setresult(interp::TclInterp, ::Union{Void,TclObj{Void}}) =
     __setresult(interp, EMPTY, TCL_STATIC)
 
 setresult(args...) =
-    setresult(defaultinterpreter(), args...)
+    setresult(getinterp(), args...)
 
 setresult(interp::TclInterp, args...) =
     setresult(interp, list(args...))
@@ -328,7 +330,7 @@ yields the current result stored in Tcl interpreter `interp` or in the global
 interpreter if this argument is omitted.
 
 """
-getresult() = getresult(defaultinterpreter())
+getresult() = getresult(getinterp())
 
 getresult(interp::TclInterp) = unsafe_string(__getresult(interp))
 
@@ -359,7 +361,7 @@ this list (note the hyphen before the keyword name).  All keywords appear at
 the end of the list in unspecific order.
 
 """
-evaluate(args...; kwds...) = evaluate(defaultinterpreter(), args...; kwds...)
+evaluate(args...; kwds...) = evaluate(getinterp(), args...; kwds...)
 
 evaluate(interp::TclInterp, arg0, args...; kwds...) =
     evaluate(interp, list(interp, arg0, args...; kwds...))
@@ -370,10 +372,13 @@ function evaluate(interp::TclInterp, obj::TclObj)
 end
 
 function evaluate(interp::TclInterp, arg0)
-    global __callbackinterp
-    __callbackinterp = interp
-    code = __eval(interp, TclObj(arg0))
-    __callbackinterp = __interp
+    local code
+    global __currentinterpreter = interp
+    try
+        code = __eval(interp, TclObj(arg0))
+    finally
+        __currentinterpreter = __initialinterpreter
+    end
     code == TCL_OK || tclerror(interp)
     return getresult(interp)
 end
@@ -413,21 +418,27 @@ end
 # Global Tcl interpreter.
 
 # Many things do not work properly (e.g. freeing a Tcl object yield a
-# segmentation fault) if no interpreter has been created, so we always create a
-# global Tcl interpreter.
+# segmentation fault) if no interpreter has been created, so we always create
+# an initial Tcl interpreter.
 
-const __interp = TclInterp(true)
+const __initialinterpreter = TclInterp(true)
 
 # Interpreter for callbacks and objects which need a Tcl interpreter.
-__callbackinterp = __interp
+__currentinterpreter = __initialinterpreter
 
 """
-    Tcl.defaultinterpreter()
+    Tcl.getinterp()
 
-yields the current default Tcl interpreter.
+yields the initial Tcl interpreter which is used by default by many
+methods.  An argument can be provided:
+
+    Tcl.getinterp(w)
+
+yields the Tcl interpreter for widget `w`.
 
 """
-defaultinterpreter() = __interp
+getinterp() = __initialinterpreter
+
 
 #------------------------------------------------------------------------------
 # Exceptions
@@ -509,7 +520,7 @@ function doevents(flags::Integer = TCL_DONT_WAIT|TCL_ALL_EVENTS)
     end
 end
 
-function requiretk(interp::TclInterp = defaultinterpreter())
+function requiretk(interp::TclInterp = getinterp())
     evaluate(interp, "package require Tk")
     resume()
 end
@@ -529,7 +540,7 @@ It is always possible to wrap the variable name into a `TclObj` to support
 variable names with embedded nulls.
 
 """
-getvar(args...) = getvar(defaultinterpreter(), args...)
+getvar(args...) = getvar(getinterp(), args...)
 
 getvar(interp::TclInterp, var::Symbol, args...) =
     getvar(interp, string(var), args...)
@@ -569,7 +580,7 @@ symbol, it must not have embedded nulls.  It is always possible to wrap the
 variable name into a `TclObj` to support variable names with embedded nulls.
 
 """
-setvar(args...) = setvar(defaultinterpreter(), args...)
+setvar(args...) = setvar(getinterp(), args...)
 
 setvar(interp::TclInterp, var::Symbol, args...) =
     setvar(interp, string(var), args...)
@@ -614,7 +625,7 @@ deletes variable `var` in Tcl interpreter `interp` or in the global interpreter
 if this argument is omitted.
 
 """
-unsetvar(args...) = unsetvar(defaultinterpreter(), args...)
+unsetvar(args...) = unsetvar(getinterp(), args...)
 
 unsetvar(interp::TclInterp, var::Symbol, args...) =
     unsetvar(interp, TclObj(var), args...)
@@ -634,7 +645,7 @@ checks whether variable `var` is defined in Tcl interpreter `interp` or in the
 global interpreter if this argument is omitted.
 
 """
-exists(var::Name, args...) = exists(defaultinterpreter(), var, args...)
+exists(var::Name, args...) = exists(getinterp(), var, args...)
 
 exists(interp::TclInterp, var::Symbol, args...) =
     exists(interp, string(var), args...)
@@ -743,7 +754,7 @@ interpreter result and `TCL_OK` is returned to Tcl.  A result which is
 See also: `Tcl.deletecommand`
 """
 createcommand(name::Name, f::Function) =
-    createcommand(defaultinterpreter(), name, f)
+    createcommand(getinterp(), name, f)
 
 createcommand(interp::TclInterp, name::Symbol, f::Function) =
     createcommand(interp, tclrepr(name), f)
@@ -771,7 +782,7 @@ Tcl interpreter if this argument is omitted).
 
 See also: `Tcl.createcommand`
 """
-deletecommand(name::Name) = deletecommand(defaultinterpreter(), name)
+deletecommand(name::Name) = deletecommand(getinterp(), name)
 
 deletecommand(interp::TclInterp, name::Symbol) =
     deletecommand(interp, tclrepr(name))

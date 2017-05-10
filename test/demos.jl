@@ -13,7 +13,7 @@ const place = Tcl.place
 const list = Tcl.list
 #const tkgetpixels = Tcl.getpixels
 
-function tkstart(interp::TclInterp = Tcl.defaultinterpreter())
+function tkstart(interp::TclInterp = Tcl.getinterp())
     interp("package","require","Tk")
     interp("wm","withdraw",".")
     resume()
@@ -23,7 +23,7 @@ end
 function addseedismiss(parent, child)
     #import Tcl: list
     ## See Code / Dismiss buttons
-    interp = Tcl.interpreter(parent)
+    interp = Tcl.getinterp(parent)
     w = TtkFrame(parent, child)
     sep = TtkSeparator(w, "sep")
 
@@ -133,7 +133,7 @@ end
 
 function runtests2()
     if false
-        interp = Tcl.defaultinterpreter()
+        interp = Tcl.getinterp()
         interp("package require Tk");
         resume()
         name = interp("image create photo -file /home/eric/work/code/CImg/CImg-1.5.5/examples/img/lena.pgm")

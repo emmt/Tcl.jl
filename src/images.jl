@@ -35,7 +35,7 @@ function findphoto(interp::TclInterp, name::AbstractString)
     return imgptr
 end
 
-getpixels(name::Name, args...) = getpixels(defaultinterpreter(), name, args...)
+getpixels(name::Name, args...) = getpixels(getinterp(), name, args...)
 
 getpixels(interp::TclInterp, name::Symbol, args...) =
     getpixels(interp, tclrepr(name), args...)
@@ -179,7 +179,7 @@ function _setpixels(interp::TclInterp, name::AbstractString,
     return nothing
 end
 
-setpixels(name::Name, args...) = setpixels(defaultinterpreter(), name, args...)
+setpixels(name::Name, args...) = setpixels(getinterp(), name, args...)
 
 setpixels(interp::TclInterp, name::Symbol, args...) =
     setpixels(interp, tclrepr(name), args...)

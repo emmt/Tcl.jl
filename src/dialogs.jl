@@ -13,7 +13,7 @@ Example:
             buttons="ok")
     end
 """
-function messagebox(interp::TclInterp = defaultinterpreter();
+function messagebox(interp::TclInterp = getinterp();
                     default::String = NOTHING,
                     detail::String = NOTHING,
                     icon::String = NOTHING,
@@ -37,7 +37,7 @@ function messagebox(interp::TclInterp = defaultinterpreter();
     interp(cmd)
 end
 
-function choosedirectory(interp::TclInterp = defaultinterpreter();
+function choosedirectory(interp::TclInterp = getinterp();
                          initialdir::String = NOTHING,
                          title::String = NOTHING,
                          parent::String = NOTHING,
@@ -115,7 +115,7 @@ end
   modified.
 
 """
-function getopenfile(interp::TclInterp = defaultinterpreter();
+function getopenfile(interp::TclInterp = getinterp();
                      defaultextension::String = NOTHING,
                      filetypes::String = NOTHING,
                      initialdir::String = NOTHING,
@@ -144,7 +144,7 @@ function getopenfile(interp::TclInterp = defaultinterpreter();
     interp(cmd)
 end
 
-function getsavefile(interp::TclInterp = defaultinterpreter();
+function getsavefile(interp::TclInterp = getinterp();
                      confirmoverwrite::Bool = true,
                      defaultextension::String = NOTHING,
                      filetypes::String = NOTHING,

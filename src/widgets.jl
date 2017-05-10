@@ -8,11 +8,11 @@ abstract TkRoot <: TkWidget
 # Note that: "$w" calls `string(w)` while "anything $w" calls `show(io, w)`.
 
 Base.show{T<:TkWidget}(io::IO, ::MIME"text/plain", w::T) =
-    print(io, "$T(\"$(widgetpath(w))\")")
+    print(io, "$T(\"$(getpath(w))\")")
 
-Base.show{T<:TkWidget}(io::IO, w::T) = print(io, widgetpath(w))
+Base.show{T<:TkWidget}(io::IO, w::T) = print(io, getpath(w))
 
-Base.string{T<:TkWidget}(w::T) = widgetpath(w)
+Base.string{T<:TkWidget}(w::T) = getpath(w)
 
 const __knownwidgets = (
     (:TtkButton, false, "::ttk::button", "btn"),
@@ -64,7 +64,7 @@ for (cls, top, cmd, pfx) in __knownwidgets
             end
 
             $cls(name::Name = autoname($pfx); kwds...) =
-                $cls(defaultinterpreter(), name; kwds...)
+                $cls(getinterp(), name; kwds...)
 
         else
 
@@ -73,7 +73,7 @@ for (cls, top, cmd, pfx) in __knownwidgets
                 interp::TclInterp
                 path::String
                 $cls(parent::TkWidget, child::Name=autoname($pfx); kwds...) =
-                    new(parent, interpreter(parent),
+                    new(parent, getinterp(parent),
                         __createwidget(parent, $cmd, child; kwds...))
             end
 
@@ -89,8 +89,8 @@ function __createwidget(parent::TkWidget, cmd::String, child::AbstractString;
     for c in child
         c == '.' && tclerror("illegal window name \"$(child)\"")
     end
-    path = (widgetpath(parent) == "." ? "." : widgetpath(parent)*".")*child
-    interp = interpreter(parent)
+    path = (getpath(parent) == "." ? "." : getpath(parent)*".")*child
+    interp = getinterp(parent)
     if parse(Int, interp("winfo", "exists", path)) != 0
         if length(kwds) > 0
             interp(path, "configure"; kwds...)
@@ -145,17 +145,17 @@ To create a new toplevel window:
 # tk_optionMenu tk_dialog tk_messageBox tk_getOpenFile tk_getSaveFile tk_chooseColor tk_chooseDirectory
 
 
-interpreter(w::TkWidget) = w.interp
-widgetpath(w::TkWidget) = w.path
-parent(w::TkWidget) = w.parent
-parent(::TkRoot) = nothing
+getinterp(w::TkWidget) = w.interp
+getpath(w::TkWidget) = w.path
+getparent(w::TkWidget) = w.parent
+getparent(::TkRoot) = nothing
 @inline TclObj(w::TkWidget) =
     TclObj{TkWidget}(ccall((:Tcl_NewStringObj, libtcl), TclObjPtr,
                            (Ptr{UInt8}, Cint),
-                           widgetpath(w), sizeof(widgetpath(w))))
+                           getpath(w), sizeof(getpath(w))))
 
 evaluate(w::TkWidget, args...; kwds...) =
-    evaluate(interpreter(w), list(widgetpath(w), args...; kwds...))
+    evaluate(getinterp(w), getpath(w), args...; kwds...)
 
 """
     Tcl.configure(w)
@@ -208,7 +208,7 @@ for cmd in (:grid, :pack, :place)
         function $cmd(args...; kwds...)
             for arg in args
                 if isa(arg, TkWidget)
-                    interp = interpreter(arg)
+                    interp = getinterp(arg)
                     return interp($(string(cmd)), args...; kwds...)
                 end
             end
