@@ -73,9 +73,9 @@ end
 
 @inline TclObj{T}(obj::TclObj{T}) = obj
 
-function TclObj(interp::TclInterp, f::Function)
+function TclObj(f::Function)
     name = autoname("jl_callback")
-    callback = createcommand(interp, name, f)
+    callback = createcommand(__callbackinterp, name, f)
     return TclObj{Command}(__newobj(name))
 end
 
@@ -132,7 +132,7 @@ end
 # List of objects.
 
 """
-    list(args...; kwds...)
+    list([interp,] args...; kwds...)
 
 yields a list of Tcl objects consisting of the one object per argument
 `args...` (in the same order as they appear) and then followed by two objects
@@ -145,6 +145,15 @@ function list(args...; kwds...) :: TclObj{List}
                 (Cint, Ptr{TclObjPtr}), 0, C_NULL)
     ptr != C_NULL || tclerror("failed to allocate new list object")
     return lappend!(TclObj{List}(ptr), args...; kwds...)
+end
+
+function list(interp::TclInterp, args...; kwds...) :: TclObj{List}
+    # Set interpreter before building the list.
+    global __callbackinterp
+    __callbackinterp = interp
+    lst = list(args...; kwds...)
+    __callbackinterp = __interp
+    return lst
 end
 
 Base.length(lst::TclObj{List}) = llength(lst)
@@ -349,7 +358,7 @@ the end of the list in unspecific order.
 evaluate(args...; kwds...) = evaluate(defaultinterpreter(), args...; kwds...)
 
 evaluate(interp::TclInterp, arg0, args...; kwds...) =
-    evaluate(interp, list(arg0, args...; kwds...))
+    evaluate(interp, list(interp, arg0, args...; kwds...))
 
 function evaluate(interp::TclInterp, obj::TclObj)
     __eval(interp, obj) == TCL_OK || tclerror(interp)
@@ -357,7 +366,11 @@ function evaluate(interp::TclInterp, obj::TclObj)
 end
 
 function evaluate(interp::TclInterp, arg0)
-    __eval(interp, TclObj(arg0)) == TCL_OK || tclerror(interp)
+    global __callbackinterp
+    __callbackinterp = interp
+    code = __eval(interp, TclObj(arg0))
+    __callbackinterp = __interp
+    code == TCL_OK || tclerror(interp)
     return getresult(interp)
 end
 
@@ -398,6 +411,9 @@ end
 # global Tcl interpreter.
 
 const __interp = TclInterp(true)
+
+# Interpreter for callbacks and objects which need a Tcl interpreter.
+__callbackinterp = __interp
 
 """
     Tcl.defaultinterpreter()

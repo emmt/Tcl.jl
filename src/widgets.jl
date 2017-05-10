@@ -188,7 +188,8 @@ Base.setindex!(w::TkWidget, value, key::Name) =
     Tcl.pack(args...; kwds...)
     Tcl.place(args...; kwds...)
 
-communicate with one of the Tk geometry manager.
+communicate with one of the Tk geometry manager.  One of the arguments must
+be an instance of `TkWidget`.
 
 """
 function grid end
