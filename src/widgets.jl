@@ -256,3 +256,38 @@ for cmd in (:grid, :pack, :place)
         end
     end
 end
+
+# Base.bind is overloaded because it already exists for sockets, but there
+# should be no conflicts.
+"""
+    bind(w, ...)
+
+binds events to widget `w` or yields bindings for widget `w`.  With a single
+argument
+
+    bind(w)
+
+yields binded sequences for widtget `w`; while
+
+    bind(w, seq)
+
+yields the specific bindings for the sequence of events `seq` and
+
+    bind(w, seq, script)
+
+arranges to invoke `script` whenever any event of the sequence `seq` occurs for
+widget `w`.  For instance:
+
+    bind(w, "<ButtonPress>", "+puts click")
+
+To deal with class bindings, the Tcl interpreter may be provided (otherwise the
+initial interpreter will be used):
+
+    bind([interp,] classname, args...)
+
+where `classname` is the name of the widget class (a string aor a symbol).
+
+"""
+Base.bind(arg0::TkWidget, args...) = bind(getinterp(arg0), arg0, args...)
+Base.bind(arg0::Name, args...) = bind(getinterp(), "bind", arg0, args...)
+Base.bind(interp::TclInterp, args...) = interp("bind", args...)
