@@ -161,6 +161,12 @@ getparent(::TkRoot) = nothing
                            (Ptr{UInt8}, Cint),
                            getpath(w), sizeof(getpath(w))))
 
+getpath(root::TkWidget, args::AbstractString...) =
+    getpath(getpath(root), args...)
+
+getpath(arg0::AbstractString, args::AbstractString...) =
+   join(((arg0 == "." ? "" : arg0), args...), '.')
+
 evaluate(w::TkWidget, args...; kwds...) =
     evaluate(getinterp(w), getpath(w), args...; kwds...)
 
