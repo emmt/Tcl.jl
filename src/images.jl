@@ -312,13 +312,20 @@ function __getphotosize(imgptr::Ptr{Void})
 end
 
 function __setphotosize(interp::TclInterp, imgptr::Ptr{Void},
-                       width::Cint, height::Cint)
+                        width::Cint, height::Cint)
     code = ccall((:Tk_PhotoSetSize, libtk), Cint,
                  (TclInterpPtr, Ptr{Void}, Cint, Cint),
                  interp.ptr, imgptr, width, height)
-    if code != TCL_OK
-        tclerror(tclresult(interp))
-    end
+    code == TCL_OK || tclerror(tclresult(interp))
+    return nothing
+end
+
+function __expandphotosize(interp::TclInterp, imgptr::Ptr{Void},
+                           width::Cint, height::Cint)
+    code = ccall((:Tk_PhotoExpand, libtk), Cint,
+                 (TclInterpPtr, Ptr{Void}, Cint, Cint),
+                 interp.ptr, imgptr, width, height)
+    code == TCL_OK || tclerror(tclresult(interp))
     return nothing
 end
 
@@ -331,23 +338,16 @@ function __setpixels(interp::TclInterp, name::AbstractString,
     width, height = __getphotosize(imgptr)
     println("image size: $width x $height")
 
-    # Set the image pixels.
+    # Resize the image if it is too small.
     if width < x + block.width || height < y + block.height
-        # FIXME: not clear (from Tcl/Tk doc.) why the following should be done:
+        # Not clear (from Tcl/Tk doc.) why the following should be done and I
+        # had to dive into the source code TkImgPhoto.c to figure out how to
+        # actually resize the image (just calling Tk_PhotoSetSize with the
+        # correct size yields segmentation fault).
         width = max(width, x + block.width)
         height = max(height, y + block.height)
-        code = ccall((:Tk_PhotoSetSize, libtk), Cint,
-                     (TclInterpPtr, Ptr{Void}, Cint, Cint),
-                     interp.ptr, imgptr, 0, 0)
-        if code == TCL_OK
-            code = ccall((:Tk_PhotoExpand, libtk), Cint,
-                         (TclInterpPtr, Ptr{Void}, Cint, Cint),
-                         interp.ptr, imgptr, width, height)
-        end
-        if code != TCL_OK
-            tclerror(tclresult(interp))
-        end
-        #__setphotosize(interp, imgptr, 0, 0)
+        __setphotosize(interp, imgptr, zero(Cint), zero(Cint))
+        __expandphotosize(interp, imgptr, width, height)
     end
 
     width, height = __getphotosize(imgptr)
@@ -359,16 +359,18 @@ function __setpixels(interp::TclInterp, name::AbstractString,
     code = ccall((:Tk_PhotoPutBlock, libtk), Cint,
                  (Ptr{Void}, Ptr{Void}, Ptr{TkPhotoImageBlock},
                   Cint, Cint, Cint, Cint, Cint),
-                 interp.ptr, imgptr, &block, x, y, width, height, composite)
-    if code != TCL_OK
-        tclerror(tclresult(interp))
-    end
+                 interp.ptr, imgptr, &block, x, y,
+                 block.width, block.height, composite)
+    code == TCL_OK || tclerror(tclresult(interp))
 
-    # Notify that image has changed.
-    ccall((:Tk_ImageChanged, libtk), Void,
-          (Ptr{Void}, Cint, Cint, Cint, Cint, Cint, Cint),
-          imgptr, x, y, x + block.width, y + block.height,
-          width, height)
+    if false
+        # Notify that image has changed (FIXME: not needed as it is done by
+        # Tk_PhotoPutBlock).
+        ccall((:Tk_ImageChanged, libtk), Void,
+              (Ptr{Void}, Cint, Cint, Cint, Cint, Cint, Cint),
+              imgptr, x, y, block.width, block.height,
+              width, height)
+    end
 
     return nothing
 end
