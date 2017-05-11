@@ -129,7 +129,7 @@ type TkImage{T} <: TkObject
 end
 
 # We want to have the object type and path both printed in the REPL but want
-# only the widget path with the `string` method or for string interpolation.
+# only the object path with the `string` method or for string interpolation.
 # Note that: "$w" calls `string(w)` while "anything $w" calls `show(io, w)`.
 
 Base.show{T<:TkObject}(io::IO, ::MIME"text/plain", w::T) =
@@ -138,3 +138,70 @@ Base.show{T<:TkObject}(io::IO, ::MIME"text/plain", w::T) =
 Base.show(io::IO, w::TkObject) = print(io, string(w))
 
 Base.string(w::TkObject) = getpath(w)
+
+#------------------------------------------------------------------------------
+# Colors
+
+abstract TkColor
+
+immutable TkGray{T} <: TkColor
+    gray::T
+end
+
+immutable TkRGB{T} <: TkColor
+    r::T; g::T; b::T
+end
+
+immutable TkBGR{T} <: TkColor
+    b::T; g::T; r::T
+end
+
+immutable TkRGBA{T} <: TkColor
+    r::T; g::T; b::T; a::T
+end
+
+immutable TkBGRA{T} <: TkColor
+    b::T; g::T; r::T; a::T
+end
+
+immutable TkARGB{T} <: TkColor
+    a::T; r::T; g::T; b::T
+end
+
+immutable TkABGR{T} <: TkColor
+    a::T; b::T; g::T; r::T
+end
+
+
+ gray{T}(c::TkGray{T}) :: T = c.gray
+  red{T}(c::Union{TkRGB{T},TkBGR{T},TkRGBA{T},TkBGRA{T},TkARGB{T},TkABGR{T}}) :: T = c.r
+green{T}(c::Union{TkRGB{T},TkBGR{T},TkRGBA{T},TkBGRA{T},TkARGB{T},TkABGR{T}}) :: T = c.g
+ blue{T}(c::Union{TkRGB{T},TkBGR{T},TkRGBA{T},TkBGRA{T},TkARGB{T},TkABGR{T}}) :: T = c.b
+alpha{T}(c::Union{TkRGBA{T},TkBGRA{T},TkARGB{T},TkABGR{T}}) :: T = c.a
+
+Base.show{T<:TkGray}(io::IO, ::MIME"text/plain", c::T) =
+    print(io, "$T(gray: $(string(gray(c))))")
+
+Base.show{T<:Union{TkRGB,TkBGR}}(io::IO, ::MIME"text/plain", c::T) =
+    print(io, "$T(red: $(string(red(c))), $(string(green(c))), $(string(blue(c))))")
+
+Base.show{T<:Union{TkRGBA,TkABGR}}(io::IO, ::MIME"text/plain", c::T) =
+    print(io, "$T(red: $(string(red(c))), $(string(green(c))), $(string(blue(c))), $(string(alpha(c))))")
+
+Base.show(io::IO, c::TkColor) = print(io, string(c))
+
+Base.string(c::Union{TkRGB{UInt8},TkBGR{UInt8}}) =
+    @sprintf("#%02x%02x%02x", red(c), green(c), blue(c))
+
+Base.string(c::Union{TkRGB{UInt16},TkBGR{UInt16}}) =
+    @sprintf("#%04x%04x%04x", red(c), green(c), blue(c))
+
+function Base.string(c::TkGray{UInt8})
+    s = @sprintf("%02x", gray(c))
+    string('#', s, s, s)
+end
+
+function Base.string(c::TkGray{UInt16})
+    s = @sprintf("%04x", gray(c))
+    string('#', s, s, s)
+end

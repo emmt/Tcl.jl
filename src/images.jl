@@ -1,3 +1,5 @@
+import ColorTypes, FixedPointNumbers
+
 TkImage(obj::TkObject, kind::Name, args...; kwds...) =
     TkImage(getinterp(obj), kind, args; kwds...)
 
@@ -70,6 +72,98 @@ function Base.size(img::TkImage, i::Integer)
 end
 
 #------------------------------------------------------------------------------
+# Apply a "color" map to an array of gray levels.
+
+colorize{T<:Real,N,C}(arr::Array{T,N}, lut::AbstractVector{C}; kwds...) =
+    colorize!(Array{C}(size(arr)), arr, lut; kwds...)
+
+function colorize!{T<:Real,N,C}(dst::Array{C,N}, arr::Array{T,N},
+                                lut::AbstractVector{C};
+                                cmin::Union{Real,Void} = nothing,
+                                cmax::Union{Real,Void} = nothing)
+    # Get the clipping values (not needed if number of color levels smaller
+    # than 2).
+    local _cmin::T, _cmax::T
+    if length(lut) < 2
+        @assert length(arr) ≥ 1
+        _cmin = _cmax = arr[1]
+    elseif isa(cmin, Void)
+        if isa(cmax, Void)
+            _cmin, _cmax = extrema(arr)
+        else
+            _cmin, _cmax = minimum(arr), cmax
+        end
+    else
+        if isa(cmax, Void)
+            _cmin, _cmax = cmin, maximum(arr)
+        else
+            _cmin, _cmax = cmin, cmax
+        end
+    end
+    colorize!(dst, arr, _cmin, _cmax, lut)
+end
+
+function threshold!{T<:Real,N,C}(dst::AbstractArray{C,N},
+                                 src::AbstractArray{T,N},
+                                 lvl::T, lo::C, mid::C, hi::C)
+    @assert size(dst) == size(src)
+    @inbounds for i in eachindex(dst, src)
+        val = src[i]
+        dst[i] = (val < lvl ? lo :
+                  val > lvl ? hi :
+                  mid)
+    end
+    return dst
+end
+
+function colorize!{T<:Real,N,C}(dst::Array{C,N},
+                                arr::Array{T,N},
+                                cmin::T, cmax::T,
+                                lut::AbstractVector{C}) :: Array{C,N}
+    @assert size(dst) == size(arr)
+    n = length(lut)
+    @assert length(arr) ≥ 1
+    @assert 1 ≤ n
+
+    if n < 2
+        # Just fill the result with the same look-up table entry.
+        fill!(dst, lut[1])
+    elseif cmin == cmax
+        # Perform a thresholding.
+        threshold!(dst, src, cmin, lut[1], lut[div(n,2)+1], lut[n])
+    else
+        # Use at least Float32 for the computations.
+        R = promote_type(Float32, T)
+        const kmin = 1
+        const kmax = n
+        const scl = R(kmax - kmin)/(R(cmax) - R(cmin))
+        const off = R(cmin*kmax - cmax*kmin)/R(kmax - kmin)
+        # FIXME: adjust cmin and cmax to speedup
+        # adj = (cmax - cmin)/(2*(kmax - kmin))
+        # cmin += zadj
+        # cmax -= zadj
+        if scl > zero(R)
+            @inbounds for i in eachindex(dst, src)
+                val = src[i]
+                k = (val ≤ cmin ? kmin :
+                     val ≥ cmax ? kmax :
+                     round(Int, (R(val) - off)*scl)) :: Int
+                dst[i] = lut[k]
+            end
+        else
+            @inbounds for i in eachindex(dst, src)
+                val = src[i]
+                k = (val ≥ cmin ? kmin :
+                     val ≤ cmax ? kmax :
+                     round(Int, (R(val) - off)*scl)) :: Int
+                dst[i] = lut[k]
+            end
+        end
+    end
+    return dst
+end
+
+#------------------------------------------------------------------------------
 # Implement reading/writing of Tk "photo" images.
 
 type TkPhotoImageBlock
@@ -91,8 +185,8 @@ type TkPhotoImageBlock
     # Address differences between the red, green, blue and alpha components of
     # the pixel and the pixel as a whole.
     red::Cint
-    blue::Cint
     green::Cint
+    blue::Cint
     alpha::Cint
 
     TkPhotoImageBlock() = new(C_NULL,0,0,0,0,0,0,0,0)
@@ -149,7 +243,9 @@ function getpixels(interp::TclInterp, name::AbstractString,
         #
         dst = Array{UInt8}(width, height)
         for y in 1:height, x in 1:width
-            dst[x,y] = ((77*src[r,x,y] + 151*src[g,x,y]+ 28*src[b,x,y] + 128)>>8)
+            # FIXME: computaions should be done with UInt16?
+            dst[x,y] = ((77*src[r,x,y] + 151*src[g,x,y] +
+                         28*src[b,x,y] + 128) >> 8)
         end
     elseif colormode == :red
         dst = Array{UInt8}(width, height)
@@ -218,7 +314,7 @@ end
 function __setphotosize(interp::TclInterp, imgptr::Ptr{Void},
                        width::Cint, height::Cint)
     code = ccall((:Tk_PhotoSetSize, libtk), Cint,
-                 (Ptr{Void}, Ptr{Void}, Cint, Cint),
+                 (TclInterpPtr, Ptr{Void}, Cint, Cint),
                  interp.ptr, imgptr, width, height)
     if code != TCL_OK
         tclerror(tclresult(interp))
@@ -233,13 +329,30 @@ function __setpixels(interp::TclInterp, name::AbstractString,
     # Get photo image.
     imgptr = findphoto(interp, name)
     width, height = __getphotosize(imgptr)
+    println("image size: $width x $height")
 
     # Set the image pixels.
     if width < x + block.width || height < y + block.height
+        # FIXME: not clear (from Tcl/Tk doc.) why the following should be done:
         width = max(width, x + block.width)
         height = max(height, y + block.height)
-        __setphotosize(interp, imgptr, width, height)
+        code = ccall((:Tk_PhotoSetSize, libtk), Cint,
+                     (TclInterpPtr, Ptr{Void}, Cint, Cint),
+                     interp.ptr, imgptr, 0, 0)
+        if code == TCL_OK
+            code = ccall((:Tk_PhotoExpand, libtk), Cint,
+                         (TclInterpPtr, Ptr{Void}, Cint, Cint),
+                         interp.ptr, imgptr, width, height)
+        end
+        if code != TCL_OK
+            tclerror(tclresult(interp))
+        end
+        #__setphotosize(interp, imgptr, 0, 0)
     end
+
+    width, height = __getphotosize(imgptr)
+    println("image size: $width x $height")
+
 
     # Assume (TCL_MAJOR_VERSION == 8) && (TCL_MINOR_VERSION >= 5), for older
     # versions, the interpreter argument is missing in Tk_PhotoPutBlock.
@@ -269,23 +382,7 @@ setpixels(interp::TclInterp, name::Symbol, args...) =
     setpixels(interp, string(name), args...)
 
 function setpixels(interp::TclInterp, name::AbstractString,
-                   src::AbstractArray{UInt8,2})
-    block = TkPhotoImageBlock()
-    block.ptr       = pointer(src)
-    block.pixelsize = 1
-    block.width     = size(src, 1)
-    block.height    = size(src, 2)
-    block.pitch     = block.pixelsize*block.width
-    block.red       = 0
-    block.green     = 0
-    block.blue      = 0
-    block.alpha     = 0
-    __setpixels(interp, name, block)
-end
-
-function setpixels(interp::TclInterp, name::AbstractString,
-                   src::AbstractArray{UInt8,3})
-
+                   src::DenseArray{UInt8,3})
     block = TkPhotoImageBlock()
     block.ptr       = pointer(src)
     block.pixelsize = size(src, 1)
@@ -307,3 +404,36 @@ function setpixels(interp::TclInterp, name::AbstractString,
     end
     __setpixels(interp, name, block)
 end
+
+typealias Normed8 FixedPointNumbers.Normed{UInt8,8}
+typealias Gray8 Union{UInt8,TkGray{UInt8},ColorTypes.Gray{Normed8}}
+typealias RGB24 Union{TkRGB{UInt8},ColorTypes.RGB{Normed8}}
+typealias BGR24 Union{TkBGR{UInt8},ColorTypes.BGR{Normed8}}
+typealias RGBA32 Union{TkRGBA{UInt8},ColorTypes.RGBA{Normed8}}
+typealias BGRA32 Union{TkBGRA{UInt8},ColorTypes.BGRA{Normed8}}
+typealias ARGB32 Union{TkARGB{UInt8},ColorTypes.ARGB{Normed8}}
+typealias ABGR32 Union{TkABGR{UInt8},ColorTypes.ABGR{Normed8}}
+
+for (T, r, g, b, a) in ((:Gray8,  0, 0, 0, 0),
+                        (:RGB24,  0, 1, 2, 0),
+                        (:BGR24,  2, 1, 0, 0),
+                        (:RGBA32, 0, 1, 2, 3),
+                        (:BGRA32, 2, 1, 0, 3),
+                        (:ARGB32, 1, 2, 3, 0),
+                        (:ABGR32, 3, 2, 1, 0))
+    @eval function setpixels{T<:$T}(interp::TclInterp, name::AbstractString,
+                                    A::DenseArray{T,2})
+        block = TkPhotoImageBlock()
+        block.ptr       = pointer(A)
+        block.pixelsize = sizeof(T)
+        block.width     = size(A, 1)
+        block.height    = size(A, 2)
+        block.pitch     = block.pixelsize*block.width
+        block.red       = $r
+        block.green     = $g
+        block.blue      = $b
+        block.alpha     = $a
+        __setpixels(interp, name, block)
+    end
+end
+
