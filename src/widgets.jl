@@ -181,8 +181,12 @@ terminate the Tcl application.
 """
 function tkstart(interp::TclInterp = getinterp()) :: TclInterp
     if parse(Int, interp("info","exists","tk_version")) == 0
-        interp("package","require","Tk")
-        interp("wm","withdraw",".")
+        code = tcltry(interp, "package", "require", "Tk")
+        if code == TCL_OK
+            tcltry(interp, "package", "require", "Ttk")
+            code = tcltry(interp, "wm", "withdraw", ".")
+        end
+        code == TCL_OK || tclerror(interp)
         resume()
     end
     return interp
