@@ -134,7 +134,8 @@ end
 yields a list of Tcl objects consisting of the one object per argument
 `args...` (in the same order as they appear) and then followed by two objects
 per keyword, say `key=val`, in the form `-key`, `val` (note the hyphen in front
-of the keyword name).
+of the keyword name).  To allow for option names that are Julia keywords, a
+leading underscore is stripped, if any, in `key`.
 
 """
 function list(args...; kwds...) :: TclObj{List}
@@ -174,7 +175,12 @@ end
 appends to the list `lst` of Tcl objects one object per argument `args...` (in
 the same order as they appear) and then followed by two objects per keyword,
 say `key=val`, in the form `-key`, `val` (note the hyphen in front of the
-keyword name).
+keyword name).  To allow for option names that are Julia keywords, a leading
+underscore is stripped, if any, in `key`; for instance:
+
+     lappend!(lst, _in="something")
+
+appends `-in` and `something` in the list `lst`.
 
 """
 function lappend!(lst::TclObj{List}, obj::TclObj)
@@ -197,11 +203,11 @@ function lappend!(lst::TclObj{List}, args...; kwds...)
     return lst
 end
 
-lappendoption!(lst::TclObj{List}, key::Symbol, value) =
-    lappend!(lst, TclObj("-"*string(key)), value)
+lappendoption!(lst::TclObj{List}, key::Name, value) =
+    lappendoption!(lst, string(key), value)
 
 lappendoption!(lst::TclObj{List}, key::AbstractString, value) =
-    lappend!(lst, TclObj("-"*key), value)
+    lappend!(lst, TclObj("-"*(key[1] == '_' ? key[2:end] : key)), value)
 
 #------------------------------------------------------------------------------
 # Management of Tcl interpreters.
