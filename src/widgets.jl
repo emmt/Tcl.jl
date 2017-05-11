@@ -1,19 +1,5 @@
 # Implement Tk (and TTk) widgets
 
-abstract TkWidget
-abstract TkRoot <: TkWidget
-
-# We want to have the widget type and path both printed in the REPL but want
-# only the widget path with the `string` method or for string interpolation.
-# Note that: "$w" calls `string(w)` while "anything $w" calls `show(io, w)`.
-
-Base.show{T<:TkWidget}(io::IO, ::MIME"text/plain", w::T) =
-    print(io, "$T(\"$(getpath(w))\")")
-
-Base.show{T<:TkWidget}(io::IO, w::T) = print(io, getpath(w))
-
-Base.string{T<:TkWidget}(w::T) = getpath(w)
-
 """
     @TkWidget cls cmd pfx
 
@@ -30,7 +16,7 @@ macro TkWidget(_cls, cmd, pfx)
 
     pfx[1] == '.' ? quote
 
-        immutable $cls <: TkRoot
+        immutable $cls <: TkRootWidget
             interp::TclInterp
             path::String
             $cls(interp::TclInterp, name::Name=autoname($pfx); kwds...) =
@@ -155,7 +141,7 @@ To create a new toplevel window:
 getinterp(w::TkWidget) = w.interp
 getpath(w::TkWidget) = w.path
 getparent(w::TkWidget) = w.parent
-getparent(::TkRoot) = nothing
+getparent(::TkRootWidget) = nothing
 @inline TclObj(w::TkWidget) = TclObj{TkWidget}(__newobj(getpath(w)))
 
 getpath(root::TkWidget, args::AbstractString...) =

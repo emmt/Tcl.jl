@@ -114,3 +114,27 @@ Base.show{T<:Real}(io::IO, obj::TclObj{T}) =
 
 Base.show{T<:TclObj{List}}(io::IO, lst::T) =
     print(io, llength(lst), "-element(s) $T(\"$(string(lst))\")")
+
+#------------------------------------------------------------------------------
+# Tk widgets and other Tk objects.
+
+abstract TkObject
+abstract TkWidget     <: TkObject
+abstract TkRootWidget <: TkWidget
+
+# An image is parameterized by the image type (capitalized).
+type TkImage{T} <: TkObject
+    interp::TclInterp
+    path::String
+end
+
+# We want to have the object type and path both printed in the REPL but want
+# only the widget path with the `string` method or for string interpolation.
+# Note that: "$w" calls `string(w)` while "anything $w" calls `show(io, w)`.
+
+Base.show{T<:TkObject}(io::IO, ::MIME"text/plain", w::T) =
+    print(io, "$T(\"$(string(w))\")")
+
+Base.show(io::IO, w::TkObject) = print(io, string(w))
+
+Base.string(w::TkObject) = getpath(w)

@@ -1,3 +1,75 @@
+TkImage(obj::TkObject, kind::Name, args...; kwds...) =
+    TkImage(getinterp(obj), kind, args; kwds...)
+
+TkImage(interp::TclInterp, kind::Name; kwds...) =
+    __wrapimage(interp, kind,
+                tcleval(interp, "image", "create", kind; kwds...))
+
+function TkImage(interp::TclInterp, kind::AbstractString,
+                 name::AbstractString; kwds...)
+    if tcltry(interp, "image", "type", name) == TCL_OK
+        # Image already exists.
+        if kind != getresult(interp)
+            tclerror("image exists with a different type")
+        end
+        if length(kwds) > 0
+            tcleval(interp, name, "configure"; kwds...)
+        end
+    else
+        name = tcleval(interp, "image", "create", kind, name; kwds...)
+    end
+    return __wrapimage(interp, kind, name)
+end
+
+function __wrapimage(interp::TclInterp, kind::AbstractString,
+                     name::AbstractString)
+    T = Symbol(string(lowercase(kind[1]), lowercase(kind[2:end])))
+    return TkImage{T}(interp, name)
+end
+
+(img::TkImage)(args...; kdws...) =
+    evaluate(img.interp, img, args...; kwds...)
+
+@inline getinterp(img::TkImage) = img.interp
+
+@inline getpath(img::TkImage) = img.path
+
+@inline TclObj{T<:TkImage}(img::T) = TclObj{T}(__newobj(getpath(img)))
+
+delete(img::TkImage) =
+    evaluate(getinterp(img), "delete", getpath(img))
+
+getwidth(img::TkImage) =
+    Parse(Int, evaluate(getinterp(img), "width", getpath(img)))
+
+getheight(img::TkImage) =
+    Parse(Int, evaluate(getinterp(img), "height", getpath(img)))
+
+exists(img::TkImage) =
+    tcltry(getinterp(img), "image", "inuse", getpath(img)) == TCL_OK
+
+Base.resize!(img::TkImage{:Photo}, args...) =
+    setphotosize(getinterp(img), getpath(img), args...)
+
+Base.size(img::TkImage{:Photo}) =
+    getphotosize(getinterp(img), getpath(img))
+
+function Base.size(img::TkImage{:Photo}, i::Integer)
+    i ≥ 1 || throws(BoundsError("out of bounds dimension index"))
+    return (i ≤ 2 ? size(img)[i] : 1)
+end
+
+Base.size(img::TkImage) =
+    getwidth(img), getheight(img)
+
+function Base.size(img::TkImage, i::Integer)
+    i ≥ 1 || throws(BoundsError("out of bounds dimension index"))
+    return (i == 1 ? getwidth(img) :
+            i == 2 ? getheight(img) :
+            1)
+end
+
+#------------------------------------------------------------------------------
 # Implement reading/writing of Tk "photo" images.
 
 type TkPhotoImageBlock
@@ -26,6 +98,8 @@ type TkPhotoImageBlock
     TkPhotoImageBlock() = new(C_NULL,0,0,0,0,0,0,0,0)
 end
 
+findphoto(img::TkImage) = findphoto(getinterp(img), getpath(img))
+
 function findphoto(interp::TclInterp, name::AbstractString)
     imgptr = ccall((:Tk_FindPhoto, libtk), Ptr{Void},
                    (Ptr{Void}, Ptr{UInt8}), interp.ptr, name)
@@ -35,7 +109,11 @@ function findphoto(interp::TclInterp, name::AbstractString)
     return imgptr
 end
 
-getpixels(name::Name, args...) = getpixels(getinterp(), name, args...)
+getpixels(img::TkImage, args...) =
+    getpixels(getinterp(img), getpath(img), args...)
+
+getpixels(name::Name, args...) =
+    getpixels(getinterp(), name, args...)
 
 getpixels(interp::TclInterp, name::Symbol, args...) =
     getpixels(interp, string(name), args...)
@@ -114,17 +192,20 @@ function getpixels(interp::TclInterp, name::AbstractString,
     return dst
 end
 
+getphotosize(img::TkImage) =
+    getphotosize(getinterp(img), getpath(img))
+
 function getphotosize(interp::TclInterp, name::AbstractString)
-    w, h = _getphotosize(findphoto(interp, name))
+    w, h = __getphotosize(findphoto(interp, name))
     return (Int(w), Int(h))
 end
 
 function setphotosize(interp::TclInterp, name::AbstractString, width::Integer,
                       height::Integer)
-    _setphotosize(interp, findphoto(interp, name), Cint(width), Cint(height))
+    __setphotosize(interp, findphoto(interp, name), Cint(width), Cint(height))
 end
 
-function _getphotosize(imgptr::Ptr{Void})
+function __getphotosize(imgptr::Ptr{Void})
     width, height = Ref{Cint}(0), Ref{Cint}(0)
     if imgptr != C_NULL
         ccall((:Tk_PhotoGetSize, libtk), Void,
@@ -134,7 +215,7 @@ function _getphotosize(imgptr::Ptr{Void})
     return (width[], height[])
 end
 
-function _setphotosize(interp::TclInterp, imgptr::Ptr{Void},
+function __setphotosize(interp::TclInterp, imgptr::Ptr{Void},
                        width::Cint, height::Cint)
     code = ccall((:Tk_PhotoSetSize, libtk), Cint,
                  (Ptr{Void}, Ptr{Void}, Cint, Cint),
@@ -145,19 +226,19 @@ function _setphotosize(interp::TclInterp, imgptr::Ptr{Void},
     return nothing
 end
 
-function _setpixels(interp::TclInterp, name::AbstractString,
-                    block::TkPhotoImageBlock,
-                    x::Cint = Cint(0), y::Cint = Cint(0),
-                    composite::Cint = TK_PHOTO_COMPOSITE_SET)
+function __setpixels(interp::TclInterp, name::AbstractString,
+                     block::TkPhotoImageBlock,
+                     x::Cint = Cint(0), y::Cint = Cint(0),
+                     composite::Cint = TK_PHOTO_COMPOSITE_SET)
     # Get photo image.
     imgptr = findphoto(interp, name)
-    width, height = _getphotosize(imgptr)
+    width, height = __getphotosize(imgptr)
 
     # Set the image pixels.
     if width < x + block.width || height < y + block.height
         width = max(width, x + block.width)
         height = max(height, y + block.height)
-        _setphotosize(interp, imgptr, width, height)
+        __setphotosize(interp, imgptr, width, height)
     end
 
     # Assume (TCL_MAJOR_VERSION == 8) && (TCL_MINOR_VERSION >= 5), for older
@@ -179,6 +260,9 @@ function _setpixels(interp::TclInterp, name::AbstractString,
     return nothing
 end
 
+setpixels(img::TkImage{:Photo}, args...) =
+    setpixels(getinterp(img), getpath(img), args...)
+
 setpixels(name::Name, args...) = setpixels(getinterp(), name, args...)
 
 setpixels(interp::TclInterp, name::Symbol, args...) =
@@ -196,7 +280,7 @@ function setpixels(interp::TclInterp, name::AbstractString,
     block.green     = 0
     block.blue      = 0
     block.alpha     = 0
-    _setpixels(interp, name, block)
+    __setpixels(interp, name, block)
 end
 
 function setpixels(interp::TclInterp, name::AbstractString,
@@ -221,5 +305,5 @@ function setpixels(interp::TclInterp, name::AbstractString,
     else
         error("invalid first dimension")
     end
-    _setpixels(interp, name, block)
+    __setpixels(interp, name, block)
 end
