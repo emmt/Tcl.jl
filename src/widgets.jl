@@ -156,10 +156,7 @@ getinterp(w::TkWidget) = w.interp
 getpath(w::TkWidget) = w.path
 getparent(w::TkWidget) = w.parent
 getparent(::TkRoot) = nothing
-@inline TclObj(w::TkWidget) =
-    TclObj{TkWidget}(ccall((:Tcl_NewStringObj, libtcl), TclObjPtr,
-                           (Ptr{UInt8}, Cint),
-                           getpath(w), sizeof(getpath(w))))
+@inline TclObj(w::TkWidget) = TclObj{TkWidget}(__newobj(getpath(w)))
 
 getpath(root::TkWidget, args::AbstractString...) =
     getpath(getpath(root), args...)
@@ -285,7 +282,7 @@ initial interpreter will be used):
 
     bind([interp,] classname, args...)
 
-where `classname` is the name of the widget class (a string aor a symbol).
+where `classname` is the name of the widget class (a string or a symbol).
 
 """
 Base.bind(arg0::TkWidget, args...) = bind(getinterp(arg0), arg0, args...)
