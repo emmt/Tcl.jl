@@ -369,18 +369,37 @@ a list of Tcl objects which is evaluated as a single command.  Any Keyword, say
 this list (note the hyphen before the keyword name).  All keywords appear at
 the end of the list in unspecific order.
 
+Use `tcltry` if you want to avoid throwing errors and `Tcl.getresult` to
+retrieve the result.
+
 """
 evaluate(args...; kwds...) = evaluate(getinterp(), args...; kwds...)
 
-evaluate(interp::TclInterp, arg0, args...; kwds...) =
-    evaluate(interp, list(interp, arg0, args...; kwds...))
-
-function evaluate(interp::TclInterp, obj::TclObj)
-    __eval(interp, obj) == TCL_OK || tclerror(interp)
+function evaluate(interp::TclInterp, args...; kwds...)
+    tcltry(interp, args...; kwds...) == TCL_OK || tclerror(interp)
     return getresult(interp)
 end
 
-function evaluate(interp::TclInterp, arg0)
+const tcleval = evaluate
+
+"""
+    tcltry([interp,], arg0, args...; kwds...) -> code
+
+evaluates Tcl script or command with interpreter `interp` (or in the initial
+interpreter if this argument is omitted) and return a code like `TCL_OK` or
+`TCL_ERROR` indicating whether the script was successful.  The result of the
+script can be retrieved with `Tcl.getresult`.  See `tcleval` for a description
+of the interpretation of arguments `args...` and keywords `kwds...`.
+
+"""
+tcltry(args...; kwds...) = tcltry(getinterp(), args...; kwds...)
+
+tcltry(interp::TclInterp, arg0, args...; kwds...) =
+    tcltry(interp, list(interp, arg0, args...; kwds...))
+
+tcltry(interp::TclInterp, obj::TclObj) = __eval(interp, obj)
+
+function tcltry(interp::TclInterp, arg0)
     local code
     global __currentinterpreter = interp
     try
@@ -388,11 +407,8 @@ function evaluate(interp::TclInterp, arg0)
     finally
         __currentinterpreter = __initialinterpreter
     end
-    code == TCL_OK || tclerror(interp)
-    return getresult(interp)
+    return code
 end
-
-const tcleval = evaluate
 
 #__eval(interp::TclInterp, script::String) =
 #    ccall((:Tcl_Eval, libtcl), Cint, (TclInterpPtr, Cstring),
