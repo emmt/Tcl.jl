@@ -10,6 +10,6 @@
  (makefile-gmake-mode . ((indent-tabs-mode . t)))
  (sh-mode . ((sh-basic-offset . 4)))
  (tcl-mode . ((tcl-default-application . "wish")
-	      (tcl-indent-level . 2)))
+	      (tcl-indent-level . 4)))
  (yorick-mode . ((c-basic-offset . 2)))
  )
