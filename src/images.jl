@@ -57,7 +57,7 @@ Base.size(img::TkImage{:Photo}) =
     getphotosize(getinterp(img), getpath(img))
 
 function Base.size(img::TkImage{:Photo}, i::Integer)
-    i ≥ 1 || throws(BoundsError("out of bounds dimension index"))
+    i ≥ 1 || throw(BoundsError("out of bounds dimension index"))
     return (i ≤ 2 ? size(img)[i] : 1)
 end
 
@@ -65,7 +65,7 @@ Base.size(img::TkImage) =
     getwidth(img), getheight(img)
 
 function Base.size(img::TkImage, i::Integer)
-    i ≥ 1 || throws(BoundsError("out of bounds dimension index"))
+    i ≥ 1 || throw(BoundsError("out of bounds dimension index"))
     return (i == 1 ? getwidth(img) :
             i == 2 ? getheight(img) :
             1)
