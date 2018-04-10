@@ -1,4 +1,4 @@
-# Automatically name objects.
+# Automatically named objects.
 
 const __counter = Dict{String,Int}()
 
@@ -51,7 +51,7 @@ end
     TclObj{Cdouble}(ccall((:Tcl_NewDoubleObj, libtcl), TclObjPtr,
                           (Cdouble,), value))
 
-@inline TclObj{T<:Integer}(value::T) =
+@inline TclObj(value::T) where {T<:Integer} =
     TclObj(convert((sizeof(T) ≤ sizeof(Cint) ? Cint : Clong), value))
 
 @inline TclObj(value::Union{Irrational,Rational,AbstractFloat}) =
@@ -71,7 +71,7 @@ end
 
 @inline TclObj(::Void) = TclObj{Void}(__newobj(NOTHING, 0))
 
-@inline TclObj{T}(obj::TclObj{T}) = obj
+@inline TclObj(obj::TclObj) = obj
 
 @inline TclObj(f::Function) =
     TclObj{Command}(__newobj(createcommand(__currentinterpreter, f)))
@@ -80,8 +80,8 @@ TclObj(tup::Tuple) = list(tup...)
 
 TclObj(vec::AbstractVector) = list(vec...)
 
-TclObj{T}(::T) =
-    tclerror("making a Tcl object for type $(T) is not supported")
+TclObj(::T) where T =
+    tclerror("making a Tcl object for type $T is not supported")
 
 # FIXME: for a byte array object, some means to prevent garbage collection of
 # the array are needed.

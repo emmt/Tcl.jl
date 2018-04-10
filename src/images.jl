@@ -36,7 +36,7 @@ end
 
 @inline getpath(img::TkImage) = img.path
 
-@inline TclObj{T<:TkImage}(img::T) = TclObj{T}(__newobj(getpath(img)))
+@inline TclObj(img::T) where {T<:TkImage} = TclObj{T}(__newobj(getpath(img)))
 
 delete(img::TkImage) =
     evaluate(getinterp(img), "delete", getpath(img))
@@ -74,13 +74,13 @@ end
 #------------------------------------------------------------------------------
 # Apply a "color" map to an array of gray levels.
 
-colorize{T<:Real,N,C}(arr::Array{T,N}, lut::AbstractVector{C}; kwds...) =
+colorize(arr::Array{T,N}, lut::AbstractVector{C}; kwds...) where {T<:Real,N,C} =
     colorize!(Array{C}(size(arr)), arr, lut; kwds...)
 
-function colorize!{T<:Real,N,C}(dst::Array{C,N}, arr::Array{T,N},
-                                lut::AbstractVector{C};
-                                cmin::Union{Real,Void} = nothing,
-                                cmax::Union{Real,Void} = nothing)
+function colorize!(dst::Array{C,N}, arr::Array{T,N},
+                   lut::AbstractVector{C};
+                   cmin::Union{Real,Void} = nothing,
+                   cmax::Union{Real,Void} = nothing) where {T<:Real,N,C}
     # Get the clipping values (not needed if number of color levels smaller
     # than 2).
     local _cmin::T, _cmax::T
@@ -103,9 +103,9 @@ function colorize!{T<:Real,N,C}(dst::Array{C,N}, arr::Array{T,N},
     colorize!(dst, arr, _cmin, _cmax, lut)
 end
 
-function threshold!{T<:Real,N,C}(dst::AbstractArray{C,N},
-                                 src::AbstractArray{T,N},
-                                 lvl::T, lo::C, mid::C, hi::C)
+function threshold!(dst::AbstractArray{C,N},
+                    src::AbstractArray{T,N},
+                    lvl::T, lo::C, mid::C, hi::C) where {T<:Real,N,C}
     @assert size(dst) == size(src)
     @inbounds for i in eachindex(dst, src)
         val = src[i]
@@ -116,10 +116,10 @@ function threshold!{T<:Real,N,C}(dst::AbstractArray{C,N},
     return dst
 end
 
-function colorize!{T<:Real,N,C}(dst::Array{C,N},
-                                arr::Array{T,N},
-                                cmin::T, cmax::T,
-                                lut::AbstractVector{C}) :: Array{C,N}
+function colorize!(dst::Array{C,N},
+                   arr::Array{T,N},
+                   cmin::T, cmax::T,
+                   lut::AbstractVector{C})  :: Array{C,N} where {T<:Real,N,C}
     @assert size(dst) == size(arr)
     n = length(lut)
     @assert length(arr) ≥ 1
@@ -260,12 +260,12 @@ function getpixels(interp::TclInterp, name::AbstractString,
     elseif colormode == :blue
         dst = Array{UInt8}(width, height)
         for y in 1:height, x in 1:width
-                dst[x,y] = src[b,x,y]
+            dst[x,y] = src[b,x,y]
         end
     elseif colormode == :alpha
         dst = Array{UInt8}(width, height)
         for y in 1:height, x in 1:width
-                dst[x,y] = src[a,x,y]
+            dst[x,y] = src[a,x,y]
         end
     elseif colormode == :rgb
         dst = Array{UInt8}(3, width, height)
@@ -407,14 +407,14 @@ function setpixels(interp::TclInterp, name::AbstractString,
     __setpixels(interp, name, block)
 end
 
-typealias Normed8 FixedPointNumbers.Normed{UInt8,8}
-typealias Gray8 Union{UInt8,TkGray{UInt8},ColorTypes.Gray{Normed8}}
-typealias RGB24 Union{TkRGB{UInt8},ColorTypes.RGB{Normed8}}
-typealias BGR24 Union{TkBGR{UInt8},ColorTypes.BGR{Normed8}}
-typealias RGBA32 Union{TkRGBA{UInt8},ColorTypes.RGBA{Normed8}}
-typealias BGRA32 Union{TkBGRA{UInt8},ColorTypes.BGRA{Normed8}}
-typealias ARGB32 Union{TkARGB{UInt8},ColorTypes.ARGB{Normed8}}
-typealias ABGR32 Union{TkABGR{UInt8},ColorTypes.ABGR{Normed8}}
+const Normed8 = FixedPointNumbers.Normed{UInt8,8}
+const Gray8   = Union{UInt8,TkGray{UInt8},ColorTypes.Gray{Normed8}}
+const RGB24   = Union{TkRGB{UInt8},ColorTypes.RGB{Normed8}}
+const BGR24   = Union{TkBGR{UInt8},ColorTypes.BGR{Normed8}}
+const RGBA32  = Union{TkRGBA{UInt8},ColorTypes.RGBA{Normed8}}
+const BGRA32  = Union{TkBGRA{UInt8},ColorTypes.BGRA{Normed8}}
+const ARGB32  = Union{TkARGB{UInt8},ColorTypes.ARGB{Normed8}}
+const ABGR32  = Union{TkABGR{UInt8},ColorTypes.ABGR{Normed8}}
 
 for (T, r, g, b, a) in ((:Gray8,  0, 0, 0, 0),
                         (:RGB24,  0, 1, 2, 0),
@@ -423,8 +423,8 @@ for (T, r, g, b, a) in ((:Gray8,  0, 0, 0, 0),
                         (:BGRA32, 2, 1, 0, 3),
                         (:ARGB32, 1, 2, 3, 0),
                         (:ABGR32, 3, 2, 1, 0))
-    @eval function setpixels{T<:$T}(interp::TclInterp, name::AbstractString,
-                                    A::DenseArray{T,2})
+    @eval function setpixels(interp::TclInterp, name::AbstractString,
+                             A::DenseArray{T,2}) where {T<:$T}
         block = TkPhotoImageBlock()
         block.ptr       = pointer(A)
         block.pixelsize = sizeof(T)
@@ -438,4 +438,3 @@ for (T, r, g, b, a) in ((:Gray8,  0, 0, 0, 0),
         __setpixels(interp, name, block)
     end
 end
-

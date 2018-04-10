@@ -47,16 +47,16 @@ const TCL_CANCEL_UNWIND = convert(Cint, 0x100000)
 const TCL_EVAL_NOERR    = convert(Cint, 0x200000)
 
 # Argument types.
-typealias Name      Union{AbstractString,Symbol}
-typealias Value     Union{Name,Real}
-typealias AnyFloat  Union{AbstractFloat,Irrational,Rational}
+const Name     = Union{AbstractString,Symbol}
+const Value    = Union{Name,Real}
+const AnyFloat = Union{AbstractFloat,Irrational,Rational}
 
 # The following type aliases are introduced to make the code more readable.
-typealias TclInterpPtr  Ptr{Void}
-typealias TclObjPtr     Ptr{Void}
-typealias TclObjTypePtr Ptr{Void}
+const TclInterpPtr  = Ptr{Void}
+const TclObjPtr     = Ptr{Void}
+const TclObjTypePtr = Ptr{Void}
 
-immutable TclError <: Exception
+struct TclError <: Exception
     msg::String
 end
 
@@ -65,7 +65,7 @@ Base.showerror(io::IO, ex::TclError) = print(io, "Tcl/Tk error: ", ex.msg)
 # Structure to store a pointer to a Tcl interpreter. (Even though the address
 # should not be modified, it is mutable because immutable objects cannot be
 # finalized.)
-type TclInterp
+mutable struct TclInterp
     ptr::TclInterpPtr
     TclInterp(ptr::TclInterpPtr) = new(ptr)
 end
@@ -80,50 +80,50 @@ Base.haskey(interp::TclInterp, key) = exists(interp, key)
 # Structure to store a pointer to a Tcl object. (Even though the address
 # should not be modified, it is mutable because immutable objects cannot be
 # finalized.)
-type TclObj{T}
+mutable struct TclObj{T}
     ptr::TclObjPtr
-    function TclObj(ptr::TclObjPtr)
+    function TclObj{T}(ptr::TclObjPtr) where {T}
         @assert ptr != C_NULL # Refuse to build a NULL object!
-        obj = new(ptr)
+        obj = new{T}(ptr)
         __incrrefcount(obj)
         finalizer(obj, __decrrefcount)
         return obj
     end
 end
 
-immutable List    end # Used in the signature of a Tcl list object.
-immutable Command end # Used in the signature of a Tcl command object.
+struct List    end # Used in the signature of a Tcl list object.
+struct Command end # Used in the signature of a Tcl command object.
 
-typealias TclObjList    TclObj{List}
-typealias TclObjCommand TclObj{Command}
+const TclObjList    = TclObj{List}
+const TclObjCommand = TclObj{Command}
 
 Base.string(obj::TclObj) =
     unsafe_string(ccall((:Tcl_GetString, libtcl), Cstring,
                         (TclObjPtr,), obj.ptr))
 
-Base.show{T<:TclObj}(io::IO, ::MIME"text/plain", obj::T) =
+Base.show(io::IO, ::MIME"text/plain", obj::T) where {T<:TclObj} =
     print(io, "$T($(string(obj)))")
 
-Base.show{T<:TclObj{String}}(io::IO, ::MIME"text/plain", obj::T) =
+Base.show(io::IO, ::MIME"text/plain", obj::T) where {T<:TclObj{String}} =
     print(io, "$T(\"$(string(obj))\")")
 
 # Provide short version for string interpolation in scripts (FIXME: also do
 # that for other kind of objects).
-Base.show{T<:Real}(io::IO, obj::TclObj{T}) =
+Base.show(io::IO, obj::TclObj{<:Real}) =
     print(io, string(obj))
 
-Base.show{T<:TclObj{List}}(io::IO, lst::T) =
+Base.show(io::IO, lst::T) where {T<:TclObj{List}} =
     print(io, llength(lst), "-element(s) $T(\"$(string(lst))\")")
 
 #------------------------------------------------------------------------------
 # Tk widgets and other Tk objects.
 
-abstract TkObject
-abstract TkWidget     <: TkObject
-abstract TkRootWidget <: TkWidget
+abstract type TkObject end
+abstract type TkWidget     <: TkObject end
+abstract type TkRootWidget <: TkWidget end
 
 # An image is parameterized by the image type (capitalized).
-type TkImage{T} <: TkObject
+mutable struct TkImage{T} <: TkObject
     interp::TclInterp
     path::String
 end
@@ -142,50 +142,52 @@ Base.string(w::TkObject) = getpath(w)
 #------------------------------------------------------------------------------
 # Colors
 
-abstract TkColor
+abstract type TkColor end
 
-immutable TkGray{T} <: TkColor
+struct TkGray{T} <: TkColor
     gray::T
 end
 
-immutable TkRGB{T} <: TkColor
+struct TkRGB{T} <: TkColor
     r::T; g::T; b::T
 end
 
-immutable TkBGR{T} <: TkColor
+struct TkBGR{T} <: TkColor
     b::T; g::T; r::T
 end
 
-immutable TkRGBA{T} <: TkColor
+struct TkRGBA{T} <: TkColor
     r::T; g::T; b::T; a::T
 end
 
-immutable TkBGRA{T} <: TkColor
+struct TkBGRA{T} <: TkColor
     b::T; g::T; r::T; a::T
 end
 
-immutable TkARGB{T} <: TkColor
+struct TkARGB{T} <: TkColor
     a::T; r::T; g::T; b::T
 end
 
-immutable TkABGR{T} <: TkColor
+struct TkABGR{T} <: TkColor
     a::T; b::T; g::T; r::T
 end
 
+const TkColorsWithAlpha{T} = Union{TkRGBA{T},TkBGRA{T},TkARGB{T},TkABGR{T}}
+const TkColors{T} = Union{TkRGB{T},TkBGR{T},TkColorsWithAlpha{T}}
 
- gray{T}(c::TkGray{T}) :: T = c.gray
-  red{T}(c::Union{TkRGB{T},TkBGR{T},TkRGBA{T},TkBGRA{T},TkARGB{T},TkABGR{T}}) :: T = c.r
-green{T}(c::Union{TkRGB{T},TkBGR{T},TkRGBA{T},TkBGRA{T},TkARGB{T},TkABGR{T}}) :: T = c.g
- blue{T}(c::Union{TkRGB{T},TkBGR{T},TkRGBA{T},TkBGRA{T},TkARGB{T},TkABGR{T}}) :: T = c.b
-alpha{T}(c::Union{TkRGBA{T},TkBGRA{T},TkARGB{T},TkABGR{T}}) :: T = c.a
+gray(c::TkGray{T}) where T = c.gray
+red(c::TkColors{T}) where T = c.r
+green(c::TkColors{T}) where T = c.g
+blue(c::TkColors{T}) where T = c.b
+alpha(c::TkColorsWithAlpha{T}) where T = c.a
 
-Base.show{T<:TkGray}(io::IO, ::MIME"text/plain", c::T) =
+Base.show(io::IO, ::MIME"text/plain", c::T) where {T<:TkGray} =
     print(io, "$T(gray: $(string(gray(c))))")
 
-Base.show{T<:Union{TkRGB,TkBGR}}(io::IO, ::MIME"text/plain", c::T) =
+Base.show(io::IO, ::MIME"text/plain", c::T) where {T<:Union{TkRGB,TkBGR}} =
     print(io, "$T(red: $(string(red(c))), $(string(green(c))), $(string(blue(c))))")
 
-Base.show{T<:Union{TkRGBA,TkABGR}}(io::IO, ::MIME"text/plain", c::T) =
+Base.show(io::IO, ::MIME"text/plain", c::T) where {T<:Union{TkRGBA,TkABGR}} =
     print(io, "$T(red: $(string(red(c))), $(string(green(c))), $(string(blue(c))), $(string(alpha(c))))")
 
 Base.show(io::IO, c::TkColor) = print(io, string(c))

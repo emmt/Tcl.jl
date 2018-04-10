@@ -16,7 +16,7 @@ macro TkWidget(_cls, cmd, pfx)
 
     pfx[1] == '.' ? quote
 
-        immutable $cls <: TkRootWidget
+        struct $cls <: TkRootWidget
             interp::TclInterp
             path::String
             $cls(interp::TclInterp, name::Name=autoname($pfx); kwds...) =
@@ -30,7 +30,7 @@ macro TkWidget(_cls, cmd, pfx)
 
     end : quote
 
-        immutable $cls <: TkWidget
+        struct $cls <: TkWidget
             parent::TkWidget
             interp::TclInterp
             path::String

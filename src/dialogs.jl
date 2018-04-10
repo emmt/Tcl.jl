@@ -21,7 +21,7 @@ function messagebox(interp::TclInterp = getinterp();
                     title::String = NOTHING,
                     parent::String = NOTHING,
                     buttons::String = NOTHING)
-    requiretk(interp)
+    tkstart(interp)
     cmd = list("tk_messageBox")
     for (opt, val) in (("-default", default),
                        ("-detail", detail),
@@ -42,7 +42,7 @@ function choosedirectory(interp::TclInterp = getinterp();
                          title::String = NOTHING,
                          parent::String = NOTHING,
                          mustexist::Bool = false)
-    requiretk(interp)
+    tkstart(interp)
     cmd = list("tk_chooseDirectory")
     for (opt, val) in (("-initialdir", initialdir),
                        ("-parent", parent),
@@ -125,7 +125,7 @@ function getopenfile(interp::TclInterp = getinterp();
                      parent::String = NOTHING, # FIXME:
                      title::String = NOTHING,
                      typevariable::String = NOTHING)
-    requiretk(interp)
+    tkstart(interp)
     cmd = list("tk_getOpenFile", "-multiple", multiple)
     for (opt, val) in (("-defaultextension", defaultextension),
                        ("-filetypes", filetypes),
@@ -154,7 +154,7 @@ function getsavefile(interp::TclInterp = getinterp();
                      parent::String = NOTHING, # FIXME:
                      title::String = NOTHING,
                      typevariable::String = NOTHING)
-    requiretk(interp)
+    tkstart(interp)
     cmd = list("tk_getSaveFile", "-confirmoverwrite", confirmoverwrite)
     for (opt, val) in (("-defaultextension", defaultextension),
                        ("-filetypes", filetypes),
