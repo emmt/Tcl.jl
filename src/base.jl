@@ -74,7 +74,7 @@ end
 @inline TclObj(obj::TclObj) = obj
 
 @inline TclObj(f::Function) =
-    TclObj{Command}(__newobj(createcommand(__currentinterpreter, f)))
+    TclObj{Command}(__newobj(createcommand(__currentinterpreter[], f)))
 
 TclObj(tup::Tuple) = list(tup...)
 
@@ -147,11 +147,11 @@ end
 
 function list(interp::TclInterp, args...; kwds...) :: TclObj{List}
     local lst
-    global __currentinterpreter = interp
+    __currentinterpreter[] = interp
     try
         lst = list(args...; kwds...)
     finally
-        __currentinterpreter = __initialinterpreter
+        __currentinterpreter[] = __initialinterpreter[]
     end
     return lst
 end
@@ -240,8 +240,8 @@ variable name can be specified as a string or as a symbol):
     interp[:x] = 33      # set the value of "x" and yields its value
                          # (as a string)
 
-The Tcl interpreter is initialized and will be deleted when object is no longer
-in use.  If Tk has been properly installed, then:
+The Tcl interpreter is initialized and will be deleted when no longer in use.
+If Tk has been properly installed, then:
 
     interp("package require Tk")
 
@@ -265,7 +265,6 @@ end
 function __finalize(interp::TclInterp)
     # According to Tcl doc. Tcl_Release should be finally called after
     # Tcl_DeleteInterp.
-    println("FIXME: finalize interpreter")
     __deleteinterp(interp)
     __release(interp.ptr)
 end
@@ -401,11 +400,11 @@ tcltry(interp::TclInterp, obj::TclObj) = __eval(interp, obj)
 
 function tcltry(interp::TclInterp, arg0)
     local code
-    global __currentinterpreter = interp
+    __currentinterpreter[] = interp
     try
         code = __eval(interp, TclObj(arg0))
     finally
-        __currentinterpreter = __initialinterpreter
+        __currentinterpreter[] = __initialinterpreter[]
     end
     return code
 end
@@ -445,11 +444,10 @@ end
 # Many things do not work properly (e.g. freeing a Tcl object yield a
 # segmentation fault) if no interpreter has been created, so we always create
 # an initial Tcl interpreter.
-
-const __initialinterpreter = TclInterp(true)
+const __initialinterpreter = Ref{TclInterp}()
 
 # Interpreter for callbacks and objects which need a Tcl interpreter.
-__currentinterpreter = __initialinterpreter
+const __currentinterpreter = Ref{TclInterp}()
 
 """
     Tcl.getinterp()
@@ -462,7 +460,7 @@ An argument can be provided:
 yields the Tcl interpreter for widget `w`.
 
 """
-getinterp() = __initialinterpreter
+getinterp() = __initialinterpreter[]
 
 
 #------------------------------------------------------------------------------
@@ -683,9 +681,9 @@ exists(interp::TclInterp, var::TclObj, args...) =
 #------------------------------------------------------------------------------
 # Implement callbacks.
 
-# Dictionary of objects shared with Tcl to to make sure they are not garbage
+# Dictionary of objects shared with Tcl to make sure they are not garbage
 # collected until Tcl deletes their reference.
-__references = Dict{Any,Int}()
+const __references = Dict{Any,Int}()
 
 function preserve(obj)
     __references[obj] = get(__references, obj, 0) + 1
@@ -706,8 +704,6 @@ function __releaseobject(ptr::Ptr{Void}) :: Void
     release(unsafe_pointer_to_objref(ptr))
 end
 
-const __releaseobject_ptr = cfunction(__releaseobject, Void, (Ptr{Void}, ))
-
 function __evalcommand(fptr::Ptr{Void}, iptr::Ptr{Void},
                        argc::Cint, argv::Ptr{Cstring}) :: Cint
     f = unsafe_pointer_to_objref(fptr)
@@ -723,7 +719,19 @@ function __evalcommand(fptr::Ptr{Void}, iptr::Ptr{Void},
     end
 end
 
-# If the function provides a return code, we do want to returne it to the
+# With precompilation, `__init__()` carries on initializations that must occur
+# at runtime like `cfunction` which returns a raw pointer.
+const __releaseobject_ref = Ref{Ptr{Void}}()
+const __evalcommand_ref = Ref{Ptr{Void}}()
+function __init__()
+    __initialinterpreter[] = TclInterp(true)
+    __currentinterpreter[] = __initialinterpreter[]
+    __releaseobject_ref[] = cfunction(__releaseobject, Void, (Ptr{Void},))
+    __evalcommand_ref[] = cfunction(__evalcommand, Cint,
+                                    (Ptr{Void}, Ptr{Void}, Cint, Ptr{Cstring}))
+end
+
+# If the function provides a return code, we do want to return it to the
 # interpreter, otherwise TCL_OK is assumed.
 __setcommandresult(interp::TclInterp, result::Tuple{Cint,Any}) =
     __setcommandresult(interp, result[1], result[2])
@@ -747,9 +755,6 @@ function __setcommandresult(interp::TclInterp, code::Cint,
     __setresult(interp, result, TCL_VOLATILE)
     return code
 end
-
-const __evalcommand_ptr = cfunction(__evalcommand, Cint,
-                                    (Ptr{Void}, Ptr{Void}, Cint, Ptr{Cstring}))
 
 """
        Tcl.createcommand([interp,] [name,] f) -> name
@@ -793,8 +798,8 @@ function createcommand(interp::TclInterp, name::String, f::Function)
     preserve(f)
     ptr = ccall((:Tcl_CreateCommand, libtcl), Ptr{Void},
                 (TclInterpPtr, Cstring, Ptr{Void}, Ptr{Void}, Ptr{Void}),
-                interp.ptr, name, __evalcommand_ptr, pointer_from_objref(f),
-                __releaseobject_ptr)
+                interp.ptr, name, __evalcommand_ref[], pointer_from_objref(f),
+                __releaseobject_ref[])
     if ptr == C_NULL
         release(f)
         tclerror(interp)
