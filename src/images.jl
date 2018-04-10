@@ -213,7 +213,7 @@ getpixels(interp::TclInterp, name::Symbol, args...) =
     getpixels(interp, string(name), args...)
 
 function getpixels(interp::TclInterp, name::AbstractString,
-                   colormode::Symbol = :gray)
+                   colormode::Type{T} = Val{:gray}) where {T <: Val}
     # Get photo image data.
     imgptr = findphoto(interp, name)
     block = TkPhotoImageBlock()
@@ -236,58 +236,88 @@ function getpixels(interp::TclInterp, name::AbstractString,
     b = 1 + Int(block.blue)
     a = 1 + Int(block.alpha)
 
-    if colormode == :gray
-        # Below is an approximation to:
-        #	GRAY = 0.30*RED + 0.59*GREEN + 0.11*BLUE
-        # rounded to nearest integer.
-        const cr = UInt16( 77)
-        const cg = UInt16(151)
-        const cb = UInt16( 28)
-        const c0 = UInt16(128)
-        dst = Array{UInt8}(width, height)
-        for y in 1:height, x in 1:width
+    return __getpixels(T, src, width, height, r, g, b, a)
+end
+
+function __getpixels(::Type{Val{:gray}}, src::Array{UInt8,3},
+                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
+    # Below is an approximation to:
+    #	GRAY = 0.30*RED + 0.59*GREEN + 0.11*BLUE
+    # rounded to nearest integer.
+    const cr = UInt16( 77)
+    const cg = UInt16(151)
+    const cb = UInt16( 28)
+    const c0 = UInt16(128)
+    dst = Array{UInt8}(width, height)
+    @inbounds for y in 1:height
+        @simd for x in 1:width
             dst[x,y] = ((cr*src[r,x,y] + cg*src[g,x,y] +
                          cb*src[b,x,y] + c0) >> 8)
         end
-    elseif colormode == :red
-        dst = Array{UInt8}(width, height)
-        for y in 1:height, x in 1:width
-            dst[x,y] = src[r,x,y]
+    end
+    return dst
+end
+
+function __getpixels(::Type{Val{:red}}, src::Array{UInt8,3},
+                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
+    return __getpixels(src, width, height, r)
+end
+
+function __getpixels(::Type{Val{:green}}, src::Array{UInt8,3},
+                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
+    return __getpixels(src, width, height, g)
+end
+
+function __getpixels(::Type{Val{:blue}}, src::Array{UInt8,3},
+                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
+    return __getpixels(src, width, height, b)
+end
+
+function __getpixels(::Type{Val{:alpha}}, src::Array{UInt8,3},
+                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
+    return __getpixels(src, width, height, a)
+end
+
+function __getpixels(src::Array{UInt8,3}, width::Int, height::Int, c::Int)
+    dst = Array{UInt8}(width, height)
+    @inbounds for y in 1:height
+        @simd for x in 1:width
+            dst[x,y] = src[c,x,y]
         end
-    elseif colormode == :green
-        dst = Array{UInt8}(width, height)
-        for y in 1:height, x in 1:width
-            dst[x,y] = src[g,x,y]
-        end
-    elseif colormode == :blue
-        dst = Array{UInt8}(width, height)
-        for y in 1:height, x in 1:width
-            dst[x,y] = src[b,x,y]
-        end
-    elseif colormode == :alpha
-        dst = Array{UInt8}(width, height)
-        for y in 1:height, x in 1:width
-            dst[x,y] = src[a,x,y]
-        end
-    elseif colormode == :rgb
-        dst = Array{UInt8}(3, width, height)
-        for y in 1:height, x in 1:width
+    end
+    return dst
+end
+
+function __getpixels(::Type{Val{:rgb}}, src::Array{UInt8,3},
+                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
+    dst = Array{UInt8}(3, width, height)
+    @inbounds for y in 1:height
+        @simd for x in 1:width
             dst[1,x,y] = src[r,x,y]
             dst[2,x,y] = src[g,x,y]
             dst[3,x,y] = src[b,x,y]
         end
-    elseif colormode == :rgba
-        dst = Array{UInt8}(4, width, height)
-        for y in 1:height, x in 1:width
+    end
+    return dst
+end
+
+function __getpixels(::Type{Val{:rgba}}, src::Array{UInt8,3},
+                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
+    dst = Array{UInt8}(4, width, height)
+    @inbounds for y in 1:height
+        @simd for x in 1:width
             dst[1,x,y] = src[r,x,y]
             dst[2,x,y] = src[g,x,y]
             dst[3,x,y] = src[b,x,y]
             dst[4,x,y] = src[a,x,y]
         end
-    else
-        error("invalid color mode")
     end
     return dst
+end
+
+function __getpixels(::Type, src::Array{UInt8,3},
+                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
+    error("invalid color mode")
 end
 
 getphotosize(img::TkImage) =
@@ -298,8 +328,8 @@ function getphotosize(interp::TclInterp, name::AbstractString)
     return (Int(w), Int(h))
 end
 
-function setphotosize(interp::TclInterp, name::AbstractString, width::Integer,
-                      height::Integer)
+function setphotosize(interp::TclInterp, name::AbstractString,
+                      width::Integer, height::Integer)
     __setphotosize(interp, findphoto(interp, name), Cint(width), Cint(height))
 end
 
