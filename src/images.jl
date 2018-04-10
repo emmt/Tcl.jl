@@ -240,12 +240,14 @@ function getpixels(interp::TclInterp, name::AbstractString,
         # Below is an approximation to:
         #	GRAY = 0.30*RED + 0.59*GREEN + 0.11*BLUE
         # rounded to nearest integer.
-        #
+        const cr = UInt16( 77)
+        const cg = UInt16(151)
+        const cb = UInt16( 28)
+        const c0 = UInt16(128)
         dst = Array{UInt8}(width, height)
         for y in 1:height, x in 1:width
-            # FIXME: computaions should be done with UInt16?
-            dst[x,y] = ((77*src[r,x,y] + 151*src[g,x,y] +
-                         28*src[b,x,y] + 128) >> 8)
+            dst[x,y] = ((cr*src[r,x,y] + cg*src[g,x,y] +
+                         cb*src[b,x,y] + c0) >> 8)
         end
     elseif colormode == :red
         dst = Array{UInt8}(width, height)
