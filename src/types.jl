@@ -46,11 +46,6 @@ const TCL_EVAL_INVOKE   = convert(Cint, 0x080000)
 const TCL_CANCEL_UNWIND = convert(Cint, 0x100000)
 const TCL_EVAL_NOERR    = convert(Cint, 0x200000)
 
-# Argument types.
-const Name     = Union{AbstractString,Symbol}
-const Value    = Union{Name,Real}
-const AnyFloat = Union{AbstractFloat,Irrational,Rational}
-
 # The following type aliases are introduced to make the code more readable.
 const TclInterpPtr  = Ptr{Void}
 const TclObjPtr     = Ptr{Void}
@@ -97,14 +92,12 @@ struct Command end # Used in the signature of a Tcl command object.
 const TclObjList    = TclObj{List}
 const TclObjCommand = TclObj{Command}
 
-Base.string(obj::TclObj) =
-    unsafe_string(ccall((:Tcl_GetString, libtcl), Cstring,
-                        (TclObjPtr,), obj.ptr))
+Base.string(obj::TclObj) = __string(obj.ptr)
 
 Base.show(io::IO, ::MIME"text/plain", obj::T) where {T<:TclObj} =
     print(io, "$T($(string(obj)))")
 
-Base.show(io::IO, ::MIME"text/plain", obj::T) where {T<:TclObj{String}} =
+Base.show(io::IO, ::MIME"text/plain", obj::T) where {T<:TclObj{<:String}} =
     print(io, "$T(\"$(string(obj))\")")
 
 # Provide short version for string interpolation in scripts (FIXME: also do
@@ -114,6 +107,11 @@ Base.show(io::IO, obj::TclObj{<:Real}) =
 
 Base.show(io::IO, lst::T) where {T<:TclObj{List}} =
     print(io, llength(lst), "-element(s) $T(\"$(string(lst))\")")
+
+# Argument types.
+const Name     = Union{AbstractString,Symbol,TclObj{<:String}}
+const Value    = Union{Name,Real}
+const AnyFloat = Union{AbstractFloat,Irrational,Rational}
 
 #------------------------------------------------------------------------------
 # Tk widgets and other Tk objects.

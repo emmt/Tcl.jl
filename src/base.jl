@@ -31,7 +31,7 @@ Tcl.  Tcl objects are used to efficiently build Tcl commands in the form of
     TclObj{Bool}(ccall((:Tcl_NewBooleanObj, libtcl), TclObjPtr,
                        (Cint,), (value ? one(Cint) : zero(Cint))))
 
-if Cint != Clong
+@static if Cint != Clong
     @inline TclObj(value::Cint) =
         TclObj{Cint}(ccall((:Tcl_NewIntObj, libtcl), TclObjPtr,
                            (Cint,), value))
@@ -41,10 +41,10 @@ end
     TclObj{Clong}(ccall((:Tcl_NewLongObj, libtcl), TclObjPtr,
                         (Clong,), value))
 
-if Clonglong != Clong
+@static if Clonglong != Clong
     @inline TclObj(value::Clonglong) =
         TclObj{Clonglong}(ccall((:Tcl_NewWideIntObj, libtcl), TclObjPtr,
-                     (Clonglong,), value))
+                                (Clonglong,), value))
 end
 
 @inline TclObj(value::Cdouble) =
@@ -340,7 +340,7 @@ interpreter if this argument is omitted.
 """
 getresult() = getresult(getinterp())
 
-getresult(interp::TclInterp) = unsafe_string(__getresult(interp))
+getresult(interp::TclInterp) = __string(__getresult(interp))
 
 # To simplify the use of the Tcl interface, we only support retrieving Tcl
 # result or variable value as a string (for now, doing otherwise would require
@@ -546,10 +546,10 @@ end
 #------------------------------------------------------------------------------
 # Dealing with Tcl variables.
 
-const VARFLAGS = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG
-
 """
-    Tcl.getvar([interp,] var, flags=Tcl.VARFLAGS)
+```julia
+Tcl.getvar([interp,] var, flags=TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
+```
 
 yields the value of variable `var` in Tcl interpreter `interp` or in the
 initial interpreter if this argument is omitted.  For efficiency reasons, if
@@ -557,39 +557,39 @@ the variable name `var` is a string or a symbol, it must not have embedded
 nulls.  It is always possible to wrap the variable name into a `TclObj` to
 support variable names with embedded nulls.
 
+FIXME: Returned value can be a Tcl object instead of being always converted
+       into a string.  This requires being able to wrap a TclObj structure
+       around a Tcl object and manage correctly the reference count.
+
 """
 getvar(args...) = getvar(getinterp(), args...)
 
-getvar(interp::TclInterp, var::Symbol, args...) =
-    getvar(interp, string(var), args...)
-
-function getvar(interp::TclInterp, var::AbstractString, args...)
-    ptr = __getvar(interp, var, args...)
-    ptr != C_NULL || tclerror(interp)
-    return unsafe_string(ptr)
-end
-
-function getvar(interp::TclInterp, var::TclObj, args...)
-    ptr = __getvar(interp, var, args...)
+function getvar(interp::TclInterp, var::Name,
+                flags::Integer = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
+    ptr = __getvar(interp, var, flags)
     ptr != C_NULL || tclerror(interp)
     return __string(ptr)
 end
 
-__getvar(interp::TclInterp, var::AbstractString, flags::Cint=VARFLAGS) =
+# ccall is able to convert an AbstractString and a Symbol into a Cstring.
+__getvar(interp::TclInterp, var::Union{AbstractString,Symbol}, flags::Integer) =
     ccall((:Tcl_GetVar, libtcl), Cstring, (TclInterpPtr, Cstring, Cint),
           interp.ptr, var, flags)
 
-__getvar(interp::TclInterp, var::TclObj, flags::Cint=VARFLAGS) =
+__getvar(interp::TclInterp, var::TclObj{<:String}, flags::Integer) =
     ccall((:Tcl_ObjGetVar, libtcl), TclObjPtr,
           (TclInterpPtr, TclObjPtr, TclObjPtr, Cint),
           interp.ptr, var.ptr, C_NULL, flags)
 
+__string(ptr::Cstring) = unsafe_string(ptr)
+
 __string(ptr::TclObjPtr) =
-    unsafe_string(ccall((:Tcl_GetString, libtcl), Cstring,
-                        (TclObjPtr,), ptr))
+    __string(ccall((:Tcl_GetString, libtcl), Cstring, (TclObjPtr,), ptr))
 
 """
-    Tcl.setvar([interp,] var, value, flags=Tcl.VARFLAGS)
+```julia
+Tcl.setvar([interp,] var, value, flags=TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
+```
 
 set variable `var` to be `value` in Tcl interpreter `interp` or in the initial
 interpreter if this argument is omitted.  The result is the string version of
@@ -600,44 +600,45 @@ variable name into a `TclObj` to support variable names with embedded nulls.
 """
 setvar(args...) = setvar(getinterp(), args...)
 
-setvar(interp::TclInterp, var::Symbol, args...) =
-    setvar(interp, string(var), args...)
-
-function setvar(interp::TclInterp, var::AbstractString, value::TclObj, args...)
-    ptr = __setvar(interp, var, value, args...)
+function setvar(interp::TclInterp, var::Name, value,
+                flags::Integer = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
+    ptr = __setvar(interp, var, value, flags)
     ptr != C_NULL || tclerror(interp)
     return __string(ptr)
 end
 
-function setvar(interp::TclInterp, var::TclObj, value::TclObj, args...)
-    ptr = __setvar(interp, var, value, args...)
-    ptr != C_NULL || tclerror(interp)
-    return __string(ptr)
+# FIXME: Tcl_ObjSetVar2Ex may be not found in library so we avoid using it,
+#        perhaps to the detriment of performances.
+#
+#function __setvar(interp::TclInterp, var::AbstractString, value::TclObj,
+#                  flags::Integer)
+#    ccall((:Tcl_ObjSetVar2Ex, libtcl), TclObjPtr,
+#          (TclInterpPtr, Cstring, Ptr{Void}, TclObjPtr, Cint),
+#          interp.ptr, var, C_NULL, value.ptr, flags)
+#end
+
+function __setvar(interp::TclInterp, var, value, flags::Integer)
+    __setvar(interp, TclObj(var), TclObj(value), flags)
 end
 
-function __setvar(interp::TclInterp, var::AbstractString, value::TclObj,
-                  flags::Cint=VARFLAGS)
-    ccall((:Tcl_ObjSetVar2Ex, libtcl), TclObjPtr,
-          (TclInterpPtr, Cstring, Ptr{Void}, TclObjPtr, Cint),
-          interp.ptr, var, C_NULL, value.ptr, flags)
-end
-
-function __setvar(interp::TclInterp, var::TclObj, value::TclObj,
-                  flags::Cint=VARFLAGS)
+function __setvar(interp::TclInterp, var::TclObj{<:String},
+                  value::TclObj, flags::Integer)
     ccall((:Tcl_ObjSetVar2, libtcl), TclObjPtr,
           (TclInterpPtr, TclObjPtr, TclObjPtr, TclObjPtr, Cint),
           interp.ptr, var.ptr, C_NULL, value.ptr, flags)
 end
 
-function __setvar(interp::TclInterp, var::AbstractString,
-                  value::AbstractString, flags::Cint=VARFLAGS)
+function __setvar(interp::TclInterp, var::Union{AbstractString,Symbol},
+                  value::Union{AbstractString,Symbol}, flags::Integer)
     ccall((:Tcl_SetVar, libtcl), Cstring,
           (TclInterpPtr, Cstring, Cstring, Cint),
           interp.ptr, var, value, flags)
 end
 
 """
-    Tcl.unsetvar([interp,] var, flags=Tcl.VARFLAGS)
+```julia
+Tcl.unsetvar([interp,] var, flags=TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
+```
 
 deletes variable `var` in Tcl interpreter `interp` or in the initial
 interpreter if this argument is omitted.
@@ -645,19 +646,27 @@ interpreter if this argument is omitted.
 """
 unsetvar(args...) = unsetvar(getinterp(), args...)
 
-unsetvar(interp::TclInterp, var::Symbol, args...) =
-    unsetvar(interp, TclObj(var), args...)
-
-unsetvar(interp::TclInterp, var::String, args...) =
+function unsetvar(interp::TclInterp, var::Name,
+                  flags::Integer = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
     __unsetvar(interp, var, args...) == TCL_OK || tclerror(interp)
+    return nothing
+end
 
-__unsetvar(interp::TclInterp, var::String, flags::Cint=VARFLAGS) =
+function __unsetvar(interp::TclInterp, var::TclObj{<:String}, flags::Integer)
+    ptr = ccall((:Tcl_GetString, libtcl), Cstring, (TclObjPtr,), var.ptr)
+    ptr != C_NULL || tclerror("failed to convert Tcl object to string")
+    return ccall((:Tcl_UnsetSetVar, libtcl), Cint,
+                 (TclInterpPtr, Cstring, Cint), interp.ptr, ptr, flags)
+end
+
+function __unsetvar(interp::TclInterp, var::Union{AbstractString,Symbol},
+                    flags::Integer)
     ccall((:Tcl_UnsetSetVar, libtcl), Cint, (TclInterpPtr, Cstring, Cint),
           interp.ptr, var, flags)
-
+end
 
 """
-    Tcl.exists([interp,] var, flags=Tcl.VARFLAGS)
+    Tcl.exists([interp,] var, flags=TCL_GLOBAL_ONLY)
 
 checks whether variable `var` is defined in Tcl interpreter `interp` or in the
 initial interpreter if this argument is omitted.
@@ -665,18 +674,10 @@ initial interpreter if this argument is omitted.
 """
 exists(var::Name, args...) = exists(getinterp(), var, args...)
 
-exists(interp::TclInterp, var::Symbol, args...) =
-    exists(interp, string(var), args...)
-
-exists(interp::TclInterp, var, args...) =
-    exists(interp, TclObj(var), args...)
-
-exists(interp::TclInterp, var::AbstractString, args...) =
-    __getvar(interp.ptr, var, args...) != C_NULL
-
-exists(interp::TclInterp, var::TclObj, args...) =
-    __getvar(interp.ptr, var, args...) != C_NULL
-
+function exists(interp::TclInterp, var::Name,
+                flags::Integer = TCL_GLOBAL_ONLY)
+    return (__getvar(interp.ptr, var, flags) != C_NULL)
+end
 
 #------------------------------------------------------------------------------
 # Implement callbacks.
