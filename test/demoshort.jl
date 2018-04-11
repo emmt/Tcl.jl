@@ -123,11 +123,11 @@ function runtests2()
     if false
         name = interp("image create photo -file /home/eric/work/code/CImg/CImg-1.5.5/examples/img/lena.pgm")
         interp("pack [button .b -image $name]")
-        d = Tcl.getpixels(interp, name, :red);
+        d = Tcl.getpixels(interp, name, Val{:red});
     else
         name = tcleval("image create photo -file /home/eric/work/code/CImg/CImg-1.5.5/examples/img/lena.pgm")
         tcleval("pack [button .b -image $name]")
-        d = Tcl.getpixels(name, :red);
+        d = Tcl.getpixels(name, Val{:red});
     end
     return d;
 end
