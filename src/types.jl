@@ -74,11 +74,12 @@ Base.haskey(interp::TclInterp, key) = exists(interp, key)
 
 # Structure to store a pointer to a Tcl object. (Even though the address
 # should not be modified, it is mutable because immutable objects cannot be
-# finalized.)
+# finalized.)  The constructor will refuse to build a managed Tcl object with
+# a NULL address.
 mutable struct TclObj{T}
     ptr::TclObjPtr
     function TclObj{T}(ptr::TclObjPtr) where {T}
-        @assert ptr != C_NULL # Refuse to build a NULL object!
+        ptr != C_NULL || __illegal_null_object_pointer()
         obj = new{T}(ptr)
         __incrrefcount(obj)
         finalizer(obj, __decrrefcount)
@@ -92,7 +93,9 @@ struct Command end # Used in the signature of a Tcl command object.
 const TclObjList    = TclObj{List}
 const TclObjCommand = TclObj{Command}
 
-Base.string(obj::TclObj) = __string(obj.ptr)
+# FIXME: A slight optimization is possible here because we know that
+#        the object pointer cannot be NULL.
+Base.string(obj::TclObj) = __ptr_to_string(obj.ptr)
 
 Base.show(io::IO, ::MIME"text/plain", obj::T) where {T<:TclObj} =
     print(io, "$T($(string(obj)))")
@@ -108,10 +111,13 @@ Base.show(io::IO, obj::TclObj{<:Real}) =
 Base.show(io::IO, lst::T) where {T<:TclObj{List}} =
     print(io, llength(lst), "-element(s) $T(\"$(string(lst))\")")
 
-# Argument types.
-const Name     = Union{AbstractString,Symbol,TclObj{<:String}}
-const Value    = Union{Name,Real}
-const AnyFloat = Union{AbstractFloat,Irrational,Rational}
+# Argument types.  `AnyString` is anything that can be automatically converted
+# into a `Cstring` by `ccall`. `Name` is anything that can be understood as the
+# name of a variable or of a command.
+const Name      = Union{AbstractString,Symbol,TclObj{<:String}}
+const Value     = Union{Name,Real}
+const AnyFloat  = Union{AbstractFloat,Irrational,Rational}
+const AnyString = Union{AbstractString,Symbol}
 
 #------------------------------------------------------------------------------
 # Tk widgets and other Tk objects.
