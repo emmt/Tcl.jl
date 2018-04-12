@@ -1069,7 +1069,7 @@ __unsetvar(interp::TclInterp, var::TclObj{<:String}, flags::Integer) =
     __unsetvar(interp, string(var), flags)
 
 __unsetvar(interp::TclInterp, var::AnyString, flags::Integer) =
-    ccall((:Tcl_UnsetSetVar, libtcl), Cint, (TclInterpPtr, Cstring, Cint),
+    ccall((:Tcl_UnsetVar, libtcl), Cint, (TclInterpPtr, Cstring, Cint),
           interp.ptr, var, flags)
 
 """
