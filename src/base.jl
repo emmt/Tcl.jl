@@ -116,12 +116,13 @@ __getobjtype(objptr::Ptr{Void}) = __peek(Ptr{Void}, objptr + __offset_of_type)
 __getobjtype(name::AnyString) =
     ccall((:Tcl_GetObjType, Tcl.libtcl), Ptr{Void}, (Cstring,), name)
 
+const __bool_type    = Ref{Ptr{Void}}(0)
 const __int_type     = Ref{Ptr{Void}}(0)
 const __wideint_type = Ref{Ptr{Void}}(0)
 const __double_type  = Ref{Ptr{Void}}(0)
 const __list_type    = Ref{Ptr{Void}}(0)
 const __string_type  = Ref{Ptr{Void}}(0)
-const KnownTypes = Union{Cint,Int64,Cdouble,String,List}
+const KnownTypes = Union{Bool,Cint,Int64,Cdouble,String,List}
 function __init_types(bynames::Bool = false)
     if bynames
         __int_type[]     = __getobjtype("int")
@@ -132,17 +133,20 @@ function __init_types(bynames::Bool = false)
         __double_type[]  = __getobjtype("double")
         __string_type[]  = C_NULL
         __list_type[]    = __getobjtype("list")
+        __bool_type[] = __int_type[]
     else
         int_obj = TclObj(Cint(0))
         wideint_obj = TclObj(Int64(0))
         double_obj = TclObj(Cdouble(0))
         string_obj = TclObj("")
         list_obj = list(int_obj, wideint_obj)
+        bool_obj = TclObj(true)
         __int_type[]     = __getobjtype(int_obj)
         __wideint_type[] = __getobjtype(wideint_obj)
         __double_type[]  = __getobjtype(double_obj)
         __string_type[]  = __getobjtype(string_obj)
         __list_type[]    = __getobjtype(list_obj)
+        __bool_type[]    = __getobjtype(bool_obj)
     end
 end
 
@@ -162,7 +166,7 @@ the internal representation of the object.
 
 """
 getvalue(obj::TclObj{String}) = __ptr_to_string(obj.ptr)
-getvalue(obj::TclObj{T}) where {T<:Union{Cint,Clong,Int64,Cdouble,List}} =
+getvalue(obj::TclObj{T}) where {T<:Union{Bool,Cint,Clong,Int64,Cdouble,List}} =
     __ptr_to_value(T, obj.ptr)
 
 """
@@ -242,13 +246,22 @@ for (T, f) in ((Cint, :Tcl_GetIntFromObj),
 
         function __ptr_to_value(::Type{$T}, objptr::Ptr{Void})
             ref = Ref{$T}()
-            status = ccall($tup, Cint, (TclInterpPtr, TclObjPtr, Ptr{$T}),
-                           C_NULL, objptr, ref)
-            status == TCL_OK || tclerror($msg)
+            code = ccall($tup, Cint, (TclInterpPtr, TclObjPtr, Ptr{$T}),
+                         C_NULL, objptr, ref)
+            code == TCL_OK || tclerror($msg)
             return ref[]
         end
 
     end
+end
+
+function __ptr_to_value(::Type{Bool}, objptr::Ptr{Void})
+    ref = Ref{Cint}() # a boolean is an int in C
+    code = ccall((:Tcl_GetBooleanFromObj, libtcl), Cint,
+                 (TclInterpPtr, TclObjPtr, Ptr{Cint}),
+                 C_NULL, objptr, ref)
+    code == TCL_OK || tclerror("Tcl_GetBooleanFromObj failed ($code)")
+    return (ref[] != zero(Cint))
 end
 
 function __ptr_to_value(::Type{List}, listptr::Ptr{Void})
@@ -360,6 +373,8 @@ function __objtype(objptr::Ptr{Void})
         elseif typeptr == __list_type[]
             return List
         elseif typeptr == __int_type[]
+            return Cint
+        elseif typeptr == __bool_type[]
             return Cint
         else
             return String
@@ -1046,7 +1061,7 @@ unsetvar(args...) = unsetvar(getinterp(), args...)
 
 function unsetvar(interp::TclInterp, var::Name,
                   flags::Integer = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
-    __unsetvar(interp, var, args...) == TCL_OK || tclerror(interp)
+    __unsetvar(interp, var, flags) == TCL_OK || tclerror(interp)
     return nothing
 end
 
