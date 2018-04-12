@@ -70,6 +70,7 @@ end
 
 Base.getindex(interp::TclInterp, key) = getvar(interp, key)
 Base.setindex!(interp::TclInterp, value, key) = setvar(interp, key, value)
+Base.setindex!(interp::TclInterp, ::Void, key) = unsetvar(interp, key)
 Base.haskey(interp::TclInterp, key) = exists(interp, key)
 
 # Structure to store a pointer to a Tcl object. (Even though the address

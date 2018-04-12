@@ -6,12 +6,30 @@ using Tcl
 using Base.Test
 
 @testset "Basic Interface" begin
+
     @testset "Variables" begin
-        for (name, value) in (("a", 42), ("1", 1), ("", "empty"))
+        i = Tcl.getinterp()
+        for (name, value) in (("a", 42), ("1", 1), ("", "empty"), ("π", π))
+            # Check methods.
             Tcl.setvar(name, value)
-            @test Tcl.getvar(name) == value
+            if typeof(value) <: Union{String,Integer}
+                @test Tcl.getvar(name) == value
+            elseif typeof(value) <: AbstractFloat
+                @test Tcl.getvar(name) ≈ value
+            end
             @test Tcl.exists(name)
             Tcl.unsetvar(name)
+            @test !Tcl.exists(name)
+
+            # Check indexable interface.
+            i[name] = value
+            if typeof(value) <: Union{String,Integer}
+                @test i[name] == value
+            elseif typeof(value) <: AbstractFloat
+                @test i[name] ≈ value
+            end
+            @test Tcl.exists(name)
+            i[name] = nothing
             @test !Tcl.exists(name)
         end
     end

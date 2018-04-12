@@ -14,8 +14,9 @@ This package provides an optimized Julia interface to
 * Reading/writting a Tcl variable is as easy as:
 
   ```julia
-  interp[var]         # read Tcl variable value
-  interp[var] = val   # set Tcl variable value
+  interp[var]             # read Tcl variable value
+  interp[var] = val       # set Tcl variable value
+  interp[var] = nothing   # unset Tcl variable
   ```
 
   where `interp` is a Tcl interpreter, `var` is the name of the Tcl variable
