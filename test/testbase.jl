@@ -33,8 +33,14 @@ using Base.Test
             end
         end
         @testset "Strings" begin
-            for v in ("", "hellow world!", "1", "true")
+            for v in ("", "hellow world!", "1", "true", " ", "\n", "\t", "\r",
+                      "\a", "caleçon espiègle")
                 x = tcleval(:set, var, v)
+                @test x == Tcl.getvar(var)
+                @test typeof(x) <: String
+            end
+            for v in ("\u0", "\u2200", "\u2200 x \u2203 y")
+                x = tcleval(:set, var, TclObj(v))
                 @test x == Tcl.getvar(var)
                 @test typeof(x) <: String
             end

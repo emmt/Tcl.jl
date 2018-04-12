@@ -197,11 +197,13 @@ function __ptr_to_string(objptr::TclObjPtr)
     if objptr == C_NULL
         __illegal_null_object_pointer()
     end
-    strptr = ccall((:Tcl_GetString, libtcl), Cstring, (TclObjPtr,), objptr)
+    lenref = Ref{Cint}()
+    strptr = ccall((:Tcl_GetStringFromObj, libtcl), Ptr{UInt8},
+                   (TclObjPtr, Ptr{Cint}), objptr, lenref)
     if strptr == C_NULL
         tclerror("failed to retrieve string representation of Tcl object")
     end
-    __ptr_to_string(strptr)
+    return unsafe_string(strptr, lenref[])
 end
 
 """
