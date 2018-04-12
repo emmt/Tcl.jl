@@ -268,8 +268,8 @@ function __ptr_to_value(::Type{List}, listptr::Ptr{Void})
         T = Ref{DataType}()
         for i in 1:objc
             v[i] = __ptr_to_value(__peek(objv, i))
-            T[] = (i > 1 ? __promote_elem_type(T[], typeof(v[i]))
-                   : typeof(v[i]))
+            T[] = (i == 1 ? typeof(v[i]) :
+                   __promote_elem_type(T[], typeof(v[i])))
         end
         if T[] != Any
             # A common type has been found, promote the vector to this common
@@ -286,35 +286,25 @@ end
 # yield `Any`.
 
 __promote_elem_type(::DataType, ::DataType) = Any
-__promote_elem_type(::Type{Any}, ::DataType) = Any
-__promote_elem_type(::DataType, ::Type{Any}) = Any
-__promote_elem_type(::Type{Any}, ::Type{Any}) = Any
+
+for T in (Integer, AbstractFloat)
+    @eval begin
+
+        function __promote_elem_type(::Type{T1},
+                                     ::Type{T2}) where {T1<:$T,T2<:$T}
+            return promote_type(T1, T2)
+        end
+
+        function __promote_elem_type(::Type{Vector{T1}},
+                                     ::Type{Vector{T2}}) where {T1<:$T,
+                                                                T2<:$T}
+            return Vector{promote_type(T1, T2)}
+        end
+
+    end
+end
+
 __promote_elem_type(::Type{String}, ::Type{String}) = String
-__promote_elem_type(::Type{String}, ::Type{<:Real}) = Any
-__promote_elem_type(::Type{<:Real}, ::Type{String}) = Any
-
-function __promote_elem_type(::Type{T1},
-                             ::Type{T2}) where {T1<:Integer,T2<:Integer}
-    return promote_type(T1, T2)
-end
-
-function __promote_elem_type(::Type{T1},
-                             ::Type{T2}) where {T1<:AbstractFloat,
-                                                T2<:AbstractFloat}
-    return promote_type(T1, T2)
-end
-
-function __promote_elem_type(::Type{Vector{T1}},
-                             ::Type{Vector{T2}}) where {T1<:Integer,
-                                                        T2<:Integer}
-    return Vector{__promote_elem_type(T1, T2)}
-end
-
-function __promote_elem_type(::Type{Vector{T1}},
-                             ::Type{Vector{T2}}) where {T1<:AbstractFloat,
-                                                        T2<:AbstractFloat}
-    return Vector{__promote_elem_type(T1, T2)}
-end
 
 __promote_elem_type(::Type{Vector{String}}, ::Type{Vector{String}}) =
     Vector{String}
@@ -339,7 +329,7 @@ This function should be considered as *private*.
 See also: [`getvalue`](@ref), [`__ptr_to_string`](@ref).
 
 """
-__ptr_to_object(strptr::Cstring) = __newobj(__ptr_to_string(strptr))
+__ptr_to_object(strptr::Cstring) = __newstringobj(__ptr_to_string(strptr))
 __ptr_to_object(objptr::Ptr{Void}) = __ptr_to_object(__objtype(objptr), objptr)
 __ptr_to_object(::Type{T}, objptr::Ptr{Void}) where {T<:KnownTypes} =
     TclObj{T}(objptr)
@@ -422,20 +412,20 @@ end
 # or `Tcl_NewUnicodeObj`.  After some testings (see my notes), the following
 # works correctly.  To build a Tcl object from a Julia string, use `Ptr{UInt8}`
 # instead of `Cstring` and provide the number of bytes with `sizeof(str)`.
-@inline __newobj(str::AbstractString, nbytes::Integer = sizeof(str)) =
+@inline __newstringobj(str::AbstractString, nbytes::Integer = sizeof(str)) =
     ccall((:Tcl_NewStringObj, libtcl), TclObjPtr,
            (Ptr{UInt8}, Cint), str, nbytes)
 
-@inline TclObj(str::AbstractString) = TclObj{String}(__newobj(str))
+@inline TclObj(str::AbstractString) = TclObj{String}(__newstringobj(str))
 
 @inline TclObj(value::Symbol) = TclObj(string(value))
 
-@inline TclObj(::Void) = TclObj{Void}(__newobj(NOTHING, 0))
+@inline TclObj(::Void) = TclObj{Void}(__newstringobj(NOTHING, 0))
 
 @inline TclObj(obj::TclObj) = obj
 
 @inline TclObj(f::Function) =
-    TclObj{Command}(__newobj(createcommand(__currentinterpreter[], f)))
+    TclObj{Command}(__newstringobj(createcommand(__currentinterpreter[], f)))
 
 TclObj(tup::Tuple) = list(tup...)
 
@@ -1155,7 +1145,7 @@ __setcommandresult(interp::TclInterp, code::Cint, obj::TclObj) =
     error("not yet implemented")
 
 __setcommandresult(interp::TclInterp, code::Cint, value::Any) =
-    __setcommandresult(interp, code, __newobj(value))
+    __setcommandresult(interp, code, __newstringobj(value))
 
 function __setcommandresult(interp::TclInterp, code::Cint, ::Void)
     __setresult(interp, EMPTY, TCL_STATIC)
