@@ -9,7 +9,7 @@ TkImage(interp::TclInterp, kind::Name; kwds...) =
 
 function TkImage(interp::TclInterp, kind::AbstractString,
                  name::AbstractString; kwds...)
-    if tcltry(interp, "image", "type", name) == TCL_OK
+    if tclcatch(interp, "image", "type", name) == TCL_OK
         # Image already exists.
         if kind != getresult(interp)
             tclerror("image exists with a different type")
@@ -48,7 +48,7 @@ getheight(img::TkImage) =
     Parse(Int, evaluate(getinterp(img), "height", getpath(img)))
 
 exists(img::TkImage) =
-    tcltry(getinterp(img), "image", "inuse", getpath(img)) == TCL_OK
+    tclcatch(getinterp(img), "image", "inuse", getpath(img)) == TCL_OK
 
 Base.resize!(img::TkImage{:Photo}, args...) =
     setphotosize(getinterp(img), getpath(img), args...)

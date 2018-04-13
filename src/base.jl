@@ -950,7 +950,7 @@ a list of Tcl objects which is evaluated as a single command.  Any keyword, say
 this list (note the hyphen before the keyword name).  All keywords appear at
 the end of the list in unspecific order.
 
-Use `tcltry` if you want to avoid throwing errors and `Tcl.getresult` to
+Use `tclcatch` if you want to avoid throwing errors and `Tcl.getresult` to
 retrieve the result.
 
 """
@@ -960,12 +960,12 @@ evaluate(::Type{T}, args...; kwds...) where {T} =
     evaluate(T, getinterp(), args...; kwds...)
 
 function evaluate(interp::TclInterp, args...; kwds...)
-    tcltry(interp, args...; kwds...) == TCL_OK || tclerror(interp)
+    tclcatch(interp, args...; kwds...) == TCL_OK || tclerror(interp)
     return getresult(interp)
 end
 
 function evaluate(::Type{T}, interp::TclInterp, args...; kwds...) where {T}
-    tcltry(interp, args...; kwds...) == TCL_OK || tclerror(interp)
+    tclcatch(interp, args...; kwds...) == TCL_OK || tclerror(interp)
     return getresult(T, interp)
 end
 
@@ -973,7 +973,7 @@ const tcleval = evaluate
 
 """
 ```julia
-tcltry([interp,], args...; kwds...) -> code
+tclcatch([interp,], args...; kwds...) -> code
 ```
 
 evaluates Tcl script or command with interpreter `interp` (or in the initial
@@ -983,24 +983,24 @@ script can be retrieved with `Tcl.getresult`.  See `tcleval` for a description
 of the interpretation of arguments `args...` and keywords `kwds...`.
 
 """
-tcltry(args...; kwds...) = tcltry(getinterp(), args...; kwds...)
+tclcatch(args...; kwds...) = tclcatch(getinterp(), args...; kwds...)
 
 # This version gets called when there are any keywords or when zero or more
 # than one argument.
-function tcltry(interp::TclInterp, args...; kwds...)
+function tclcatch(interp::TclInterp, args...; kwds...)
     if length(args) < 1
         tclerror("expecting at least one argument")
     end
     return __evallist(interp, __newlistobj(args...; kwds...))
 end
 
-tcltry(interp::TclInterp, script::TclObj{List}) =
+tclcatch(interp::TclInterp, script::TclObj{List}) =
     __evallist(interp, script.ptr)
 
-tcltry(interp::TclInterp, script) = __eval(interp, __objptr(script))
+tclcatch(interp::TclInterp, script) = __eval(interp, __objptr(script))
 
 # FIXME: I do not understand this
-#function tcltry(interp::TclInterp, script)
+#function tclcatch(interp::TclInterp, script)
 #    __currentinterpreter[] = interp
 #    try
 #        return __eval(interp, __objptr(script))

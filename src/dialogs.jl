@@ -34,7 +34,6 @@ function messagebox(interp::TclInterp = getinterp();
             lappend!(cmd, opt, val)
         end
     end
-    println(cmd)
     interp(cmd)
 end
 

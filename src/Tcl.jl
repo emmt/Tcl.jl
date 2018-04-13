@@ -80,7 +80,7 @@ export
     TCL_EVAL_NOERR,
     tclerror,
     tcleval,
-    tcltry,
+    tclcatch,
     tkstart
 
 if VERSION < v"0.6.0"

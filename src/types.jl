@@ -62,8 +62,8 @@ mutable struct TclInterp
     TclInterp(ptr::TclInterpPtr) = new(ptr)
 end
 
-# Manage to make any Tcl interpreter usable as a collection with respect to its
-# global variables.
+# Manage to make any Tcl interpreter usable as an indexable collection with
+# respect to its global variables.
 
 Base.getindex(interp::TclInterp, name) = getvar(interp, name)
 Base.getindex(interp::TclInterp, name1, name2) = getvar(interp, name1, name2)

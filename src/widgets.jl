@@ -167,10 +167,10 @@ terminate the Tcl application.
 """
 function tkstart(interp::TclInterp = getinterp()) :: TclInterp
     if interp("info","exists","tk_version") == 0
-        code = tcltry(interp, "package", "require", "Tk")
+        code = tclcatch(interp, "package", "require", "Tk")
         if code == TCL_OK
-            tcltry(interp, "package", "require", "Ttk")
-            code = tcltry(interp, "wm", "withdraw", ".")
+            tclcatch(interp, "package", "require", "Ttk")
+            code = tclcatch(interp, "wm", "withdraw", ".")
         end
         code == TCL_OK || tclerror(interp)
         resume()
@@ -254,7 +254,7 @@ argument
 
     bind(w)
 
-yields binded sequences for widtget `w`; while
+yields binded sequences for widget `w`; while
 
     bind(w, seq)
 
