@@ -1,8 +1,5 @@
 # Definitions of Tcl constants and types.
 
-# An empty string is an alias for `nothing`.
-const NOTHING = ""
-
 # Codes returned by Tcl fucntions.
 const TCL_OK       = convert(Cint, 0)
 const TCL_ERROR    = convert(Cint, 1)
@@ -81,8 +78,7 @@ mutable struct TclObj{T}
     ptr::TclObjPtr
     function TclObj{T}(ptr::TclObjPtr) where {T}
         ptr != C_NULL || __illegal_null_object_pointer()
-        obj = new{T}(ptr)
-        __incrrefcount(obj)
+        obj = new{T}(__incrrefcount(ptr))
         finalizer(obj, __decrrefcount)
         return obj
     end
@@ -112,13 +108,15 @@ Base.show(io::IO, obj::TclObj{<:Real}) =
 Base.show(io::IO, lst::T) where {T<:TclObj{List}} =
     print(io, llength(lst), "-element(s) $T(\"$(string(lst))\")")
 
-# Argument types.  `AnyString` is anything that can be automatically converted
+# An empty string is an alias for `nothing`.
+const __nothing = Ref{TclObj{Void}}()
+
+# Argument types.  `StringOrSymbol` can be automatically converted
 # into a `Cstring` by `ccall`. `Name` is anything that can be understood as the
 # name of a variable or of a command.
-const Name      = Union{AbstractString,Symbol,TclObj{<:String}}
-const Value     = Union{Name,Real}
-const AnyFloat  = Union{AbstractFloat,Irrational,Rational}
-const AnyString = Union{AbstractString,Symbol}
+const Name      = Union{AbstractString,Symbol,TclObj{String}}
+const StringOrSymbol = Union{AbstractString,Symbol}
+const Byte      = Union{UInt8,Int8}
 
 #------------------------------------------------------------------------------
 # Tk widgets and other Tk objects.

@@ -16,7 +16,7 @@ function autoname(pfx::AbstractString = "jl_auto")
 end
 
 #------------------------------------------------------------------------------
-# Mangement of Tcl objects.
+# Management of Tcl objects.
 
 # Fake Julia structure which reflects the layout of a Tcl_Obj and is intended
 # to compute the offset of the various fields of a Tcl object.
@@ -81,24 +81,29 @@ const __offset_of_value    = fieldoffset(__TclObj, 5)
     error("it is assumed that refCount comes first in Tcl_Obj structure")
 end
 
-@inline __getrefcount(obj::TclObj) = __peek(Cint, obj.ptr)
+@inline __getrefcount(obj::TclObj)  = __getrefcount(obj.ptr)
+@inline __incrrefcount(obj::TclObj) = __incrrefcount(obj.ptr)
+@inline __decrrefcount(obj::TclObj) = __decrrefcount(obj.ptr)
 
-@inline __isshared(obj::TclObj) = (__getrefcount(obj) > one(Cint))
+@inline __isshared(obj::Union{TclObj,TclObjPtr}) =
+    (__getrefcount(obj) > one(Cint))
 
-@inline function __incrrefcount(obj::TclObj)
-    ptr = Ptr{Cint}(obj.ptr)
+@inline __getrefcount(objptr::TclObjPtr) = __peek(Cint, objptr)
+
+@inline function __incrrefcount(objptr::TclObjPtr)
+    ptr = Ptr{Cint}(objptr)
     __poke!(ptr, __peek(ptr) + one(Cint))
-    return nothing
+    return objptr
 end
 
-@inline function __decrrefcount(obj::TclObj)
-    ptr = Ptr{Cint}(obj.ptr)
-    refcount = __peek(ptr)
-    __poke!(ptr, refcount - one(Cint))
-    if refcount ≤ 1
-        ccall((:TclFreeObj, libtcl), Void, (TclObjPtr,), obj.ptr)
+@inline function __decrrefcount(objptr::TclObjPtr)
+    ptr = Ptr{Cint}(objptr)
+    newrefcount = __peek(ptr) - one(Cint)
+    if newrefcount ≥ 1
+        __poke!(ptr, newrefcount)
+    else
+        ccall((:TclFreeObj, libtcl), Void, (TclObjPtr,), objptr)
     end
-    return nothing
 end
 
 """
@@ -113,7 +118,7 @@ object (must not be `C_NULL`).
 """
 __getobjtype(obj::TclObj) = __getobjtype(obj.ptr)
 __getobjtype(objptr::Ptr{Void}) = __peek(Ptr{Void}, objptr + __offset_of_type)
-__getobjtype(name::AnyString) =
+__getobjtype(name::StringOrSymbol) =
     ccall((:Tcl_GetObjType, Tcl.libtcl), Ptr{Void}, (Cstring,), name)
 
 const __bool_type    = Ref{Ptr{Void}}(0)
@@ -122,7 +127,7 @@ const __wideint_type = Ref{Ptr{Void}}(0)
 const __double_type  = Ref{Ptr{Void}}(0)
 const __list_type    = Ref{Ptr{Void}}(0)
 const __string_type  = Ref{Ptr{Void}}(0)
-const KnownTypes = Union{Bool,Cint,Int64,Cdouble,String,List}
+const KnownTypes = Union{Void,Bool,Cint,Int64,Cdouble,String,List}
 function __init_types(bynames::Bool = false)
     if bynames
         __int_type[]     = __getobjtype("int")
@@ -268,7 +273,7 @@ end
 
 function __ptr_to_value(::Type{List}, listptr::Ptr{Void})
     if listptr == C_NULL
-        return Array{Any}()
+        return Array{Any}(0)
     end
     objc_ref = Ref{Cint}()
     objv_ref = Ref{Ptr{Ptr{Void}}}()
@@ -344,8 +349,11 @@ This function should be considered as *private*.
 See also: [`getvalue`](@ref), [`__ptr_to_string`](@ref).
 
 """
-__ptr_to_object(strptr::Cstring) = __newstringobj(__ptr_to_string(strptr))
+__ptr_to_object(strptr::Cstring) = # FIXME: ?????
+    __ptr_to_object(String, __newobj(__ptr_to_string(strptr)))
+
 __ptr_to_object(objptr::Ptr{Void}) = __ptr_to_object(__objtype(objptr), objptr)
+
 __ptr_to_object(::Type{T}, objptr::Ptr{Void}) where {T<:KnownTypes} =
     TclObj{T}(objptr)
 
@@ -395,74 +403,289 @@ Tcl.  Tcl objects are used to efficiently build Tcl commands in the form of
 `TclObj{List}`.
 
 """
-@inline TclObj(value::Bool) =
-    TclObj{Bool}(ccall((:Tcl_NewBooleanObj, libtcl), TclObjPtr,
-                       (Cint,), (value ? one(Cint) : zero(Cint))))
+TclObj(obj::TclObj) = obj
 
-@static if Cint != Clong
-    @inline TclObj(value::Cint) =
-        TclObj{Cint}(ccall((:Tcl_NewIntObj, libtcl), TclObjPtr,
-                           (Cint,), value))
+
+"""
+```julia
+__newobj(value)
+```
+
+yields a pointer to a temporary Tcl object with given value.  This method may
+thrown an exception.
+
+""" __newobj
+
+
+# Booleans.
+#
+#     Tcl boolean is in fact stored as an `Cint` despite the fact that it is
+#     possible to create boolean objects, they are retrieved as `Cint` objects.
+
+TclObj(value::Bool) = TclObj{Bool}(__newobj(value))
+
+function __newobj(value::Bool)
+    objptr = ccall((:Tcl_NewBooleanObj, libtcl), TclObjPtr,
+                   (Cint,), (value ? one(Cint) : zero(Cint)))
+    if objptr == C_NULL
+        tclerror("failed to create a Tcl boolean object")
+    end
+    return objptr
 end
 
-@inline TclObj(value::Clong) =
-    TclObj{Clong}(ccall((:Tcl_NewLongObj, libtcl), TclObjPtr,
-                        (Clong,), value))
 
-@static if Clonglong != Clong
-    @inline TclObj(value::Clonglong) =
-        TclObj{Clonglong}(ccall((:Tcl_NewWideIntObj, libtcl), TclObjPtr,
-                                (Clonglong,), value))
+# Integers.
+#
+#     For each integer type, we choose the Tcl integer which is large enough to
+#     store a value of that type.  Small unsigned integers may be problematic,
+#     but not so much as the smallest Tcl integer type is `Cint` which is at
+#     least 32 bits.
+
+for Tj in (Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
+    (Tc, f) = (sizeof(Tj) ≤ sizeof(Cint) ? (Cint, :Tcl_NewIntObj) :
+               sizeof(Tj) ≤ sizeof(Clong) ? (Clong, :Tcl_NewLongObj) :
+               (Clonglong, :Tcl_NewWideIntObj))
+    tup = (f, libtcl)
+    @eval begin
+
+        TclObj(value::$Tj) = TclObj{$Tc}(__newobj(value))
+
+        function __newobj(value::$Tj)
+            objptr = ccall($tup, TclObjPtr, ($Tc,), value)
+            if objptr == C_NULL
+                tclerror("failed to create a Tcl integer object")
+            end
+            return objptr
+        end
+
+    end
+
 end
 
-@inline TclObj(value::Cdouble) =
-    TclObj{Cdouble}(ccall((:Tcl_NewDoubleObj, libtcl), TclObjPtr,
-                          (Cdouble,), value))
 
-@inline TclObj(value::T) where {T<:Integer} =
-    TclObj(convert((sizeof(T) ≤ sizeof(Cint) ? Cint : Clong), value))
+# Floats.
+#
+#     All floating point types, rationals and irrationals yield `Cdouble` Tcl
+#     objects.
 
-@inline TclObj(value::Union{Irrational,Rational,AbstractFloat}) =
-    TclObj(convert(Cdouble, value))
+TclObj(value::Union{Irrational,Rational,AbstractFloat}) =
+    TclObj{Cdouble}(__newobj(value))
 
-# There are two alternatives to create Tcl string objects: `Tcl_NewStringObj`
-# or `Tcl_NewUnicodeObj`.  After some testings (see my notes), the following
-# works correctly.  To build a Tcl object from a Julia string, use `Ptr{UInt8}`
-# instead of `Cstring` and provide the number of bytes with `sizeof(str)`.
-@inline __newstringobj(str::AbstractString, nbytes::Integer = sizeof(str)) =
-    ccall((:Tcl_NewStringObj, libtcl), TclObjPtr,
-           (Ptr{UInt8}, Cint), str, nbytes)
+__newobj(value::Union{Irrational,Rational,AbstractFloat}) =
+    __newobj(convert(Cdouble, value))
 
-@inline TclObj(str::AbstractString) = TclObj{String}(__newstringobj(str))
+function __newobj(value::Cdouble)
+    objptr = ccall((:Tcl_NewDoubleObj, libtcl), TclObjPtr,
+                   (Cdouble,), value)
+    if objptr == C_NULL
+        tclerror("failed to create a Tcl floating-point object")
+    end
+    return objptr
+end
 
-@inline TclObj(value::Symbol) = TclObj(string(value))
 
-@inline TclObj(::Void) = TclObj{Void}(__newstringobj(NOTHING, 0))
+# Strings.
+#
+#     There are two alternatives to create Tcl string objects:
+#     `Tcl_NewStringObj` or `Tcl_NewUnicodeObj`.  After some testings (see my
+#     notes), the following works correctly.  To build a Tcl object from a
+#     Julia string, use `Ptr{UInt8}` instead of `Cstring` and provide the
+#     number of bytes with `sizeof(str)`.
 
-@inline TclObj(obj::TclObj) = obj
+TclObj(value::StringOrSymbol) = TclObj{String}(__newobj(value))
 
-@inline TclObj(f::Function) =
-    TclObj{Command}(__newstringobj(createcommand(__currentinterpreter[], f)))
+__newobj(sym::Symbol) = __newobj(string(sym))
 
-TclObj(tup::Tuple) = list(tup...)
+function __newobj(str::AbstractString, nbytes::Integer = sizeof(str))
+    objptr = ccall((:Tcl_NewStringObj, libtcl), TclObjPtr,
+                   (Ptr{Cchar}, Cint), str, nbytes)
+    if objptr == C_NULL
+        tclerror("failed to create a Tcl string object")
+    end
+    return objptr
+end
 
-TclObj(vec::AbstractVector) = list(vec...)
 
-TclObj(::T) where T =
+# Void and nothing.
+#
+#     Nothing is loosely aliased to "" in Tcl.  Could also be an empty list.
+
+TclObj(::Void) = TclObj{Void}(__newobj(nothing))
+
+__newobj(::Void) = __newobj("", 0)
+
+
+# Functions.
+#
+#     Functions are used for callbacks.
+
+TclObj(f::Function) = TclObj{Command}(__newobj(f))
+
+__newobj(f::Function) =
+    __newobj(createcommand(__currentinterpreter[], f))
+
+
+# Lists.
+#
+#     Vectors and tuples yield lists.  No arguments, yield empty lists.
+#
+#     FIXME: There should be a way to automatically make lists from iterables
+#            and to convert multi-dimensional arrays into lists of lists.
+
+TclObj() = TclObj{List}(__newlistobj())
+TclObj(V::Union{Tuple,AbstractVector}) = TclObj{List}(__newlistobj(V))
+
+__newobj() = __newlistobj()
+
+__newobj(V::Union{Tuple,AbstractVector}) =
+    __newlistobj(V) # tuple and vectors are collections
+
+"""
+```julia
+__newlistobj(itr)
+```
+
+yields a pointer to a new Tcl list object whose items are taken from
+the iterable collection `itr`.
+
+```julia
+__newlistobj(args...; kwds...)
+```
+
+yields a pointer to a new Tcl list object whose leading items are taken from
+`args...` and to which are appended the `(key,val)` pairs from `kwds...` so as
+to mimic Tk options.
+
+Beware that the returned object is not managed and has a zero reference count.
+The caller is reponsible of taking care of that.
+
+"""
+function __newlistobj()
+    objptr = ccall((:Tcl_NewListObj, libtcl), TclObjPtr,
+                   (Cint, Ptr{TclObjPtr}), 0, C_NULL)
+    if objptr == C_NULL
+        tclerror("failed to create an empty Tcl list")
+    end
+    return objptr
+end
+
+function __newlistobj(itr) ::TclObjPtr
+    listptr = __newlistobj()
+    try
+        for val in itr
+            __lappend!(listptr, val)
+        end
+    catch ex
+        __decrrefcount(listptr)
+        rethrow(ex)
+    end
+    return listptr
+end
+
+function __newlistobj(args...; kwds...) ::TclObjPtr
+    listptr = __newlistobj()
+    try
+        for arg in args
+            __lappend!(listptr, arg)
+        end
+        for (key, val) in kwds
+            __lappendoption!(listptr, key, val)
+        end
+    catch ex
+        __decrrefcount(listptr)
+        rethrow(ex)
+    end
+    return listptr
+end
+
+__appendlistelement!(listptr::TclObjPtr, itemptr::TclObjPtr) =
+    ccall((:Tcl_ListObjAppendElement, libtcl),
+          Cint, (TclInterpPtr, TclObjPtr, TclObjPtr), C_NULL, listptr, itemptr)
+
+function __lappend!(listptr::TclObjPtr, item)
+    code = __appendlistelement!(listptr, __objptr(item))
+    if code != TCL_OK
+        tclerror("failed to append a new item to the Tcl list")
+    end
+    nothing
+end
+
+__lappendoption!(listptr::TclObjPtr, key::Symbol, val) =
+    __lappendoption!(listptr, string(key), val)
+
+function __lappendoption!(listptr::TclObjPtr, key::String, val)
+    option = "-"*(length(key) ≥ 1 && key[1] == '_' ? key[2:end] : key)
+    code = __appendlistelement!(listptr, __newobj(option))
+    if code == TCL_OK
+        code = __appendlistelement!(listptr, __objptr(val))
+    end
+    if code != TCL_OK
+        tclerror("failed to append a new option to the Tcl list")
+    end
+    nothing
+end
+
+
+# Unsupported objects.
+#
+#     These fallbacks are only meet for unsupported types.
+
+TclObj(::T) where T = __unsupported_object_type(T)
+
+__newobj(::T) where T = __unsupported_object_type(T)
+
+__unsupported_object_type(::Type{T}) where T =
     tclerror("making a Tcl object for type $T is not supported")
 
-# FIXME: for a byte array object, some means to prevent garbage collection of
-# the array are needed.
+
+# Arrays of bytes.
 #
-# TclObj(arr::Vector{UInt8}) =
-#    ccall((:Tcl_NewByteArrayObj, libtcl), TclObjPtr, (Ptr{UInt8}, Cint),
-#          arr, sizeof(arr))
+#     These come in 2 flavors: strings and byte array.
+
+__newbytearrayobj(arr::DenseArray{T}) where {T<:Byte} =
+    __newbytearrayobj(pointer(arr), size(arr))
+
+function __newbytearrayobj(ptr::Ptr{T}, nbytes::Integer) where {T<:Byte}
+    objptr = ccall((:Tcl_NewByteArrayObj, libtcl), TclObjPtr,
+          (Ptr{T}, Cint), ptr, nbytes)
+    if objptr == C_NULL
+        tclerror("failed to create a Tcl byte array object")
+    end
+    return objptr
+end
+
+function __newstringobj(ptr::Ptr{T}, nbytes::Integer) where {T<:Byte}
+    objptr = ccall((:Tcl_NewStringObj, libtcl), TclObjPtr,
+                   (Ptr{T}, Cint), ptr, nbytes)
+    if objptr == C_NULL
+        tclerror("failed to create a Tcl string object")
+    end
+    return objptr
+end
+
+
+"""
+```julia
+__objptr(arg)
+```
+
+yields a pointer to a Tcl object corresponding to argument `arg`.  This may
+create a new (temporary) object so caller should make sure the reference count
+of the result is correctly managed.  An exception may be thrown if the argument
+cannot be converted into a Tcl object.
+
+"""
+__objptr(obj::TclObj) = obj.ptr
+__objptr(value) = __newobj(value)
+
 
 #------------------------------------------------------------------------------
 # List of objects.
 
 """
-    list([interp,] args...; kwds...)
+```julia
+list(args...; kwds...)
+```
 
 yields a list of Tcl objects consisting of the one object per argument
 `args...` (in the same order as they appear) and then followed by two objects
@@ -471,23 +694,7 @@ of the keyword name).  To allow for option names that are Julia keywords, a
 leading underscore is stripped, if any, in `key`.
 
 """
-function list(args...; kwds...) :: TclObj{List}
-    ptr = ccall((:Tcl_NewListObj, libtcl), TclObjPtr,
-                (Cint, Ptr{TclObjPtr}), 0, C_NULL)
-    ptr != C_NULL || tclerror("failed to allocate new list object")
-    return lappend!(TclObj{List}(ptr), args...; kwds...)
-end
-
-function list(interp::TclInterp, args...; kwds...) :: TclObj{List}
-    local lst
-    __currentinterpreter[] = interp
-    try
-        lst = list(args...; kwds...)
-    finally
-        __currentinterpreter[] = __initialinterpreter[]
-    end
-    return lst
-end
+list(args...; kwds...) = TclObj{List}(__newlistobj(args...; kwds...))
 
 Base.length(lst::TclObj{List}) = llength(lst)
 Base.push!(lst::TclObj{List}, args...; kwds...) =
@@ -502,8 +709,11 @@ function llength(lst::TclObj{List}) :: Int
     return len[]
 end
 
+
 """
-    lappend!(lst, args...; kwds...)
+```julia
+lappend!(lst, args...; kwds...)
+```
 
 appends to the list `lst` of Tcl objects one object per argument `args...` (in
 the same order as they appear) and then followed by two objects per keyword,
@@ -511,36 +721,28 @@ say `key=val`, in the form `-key`, `val` (note the hyphen in front of the
 keyword name).  To allow for option names that are Julia keywords, a leading
 underscore is stripped, if any, in `key`; for instance:
 
-     lappend!(lst, _in="something")
+```julia
+lappend!(lst, _in="something")
+```
 
-appends `-in` and `something` in the list `lst`.
+appends `"-in"` and `something` to the list `lst`.
 
 """
-function lappend!(lst::TclObj{List}, obj::TclObj)
-    code = ccall((:Tcl_ListObjAppendElement, libtcl),
-             Cint, (TclInterpPtr, TclObjPtr, TclObjPtr),
-                 C_NULL, lst.ptr, obj.ptr)
-    code == TCL_OK || tclerror("failed to append new object to list")
-    return lst
-end
-
-lappend!(lst::TclObj{List}, value) = lappend!(lst, TclObj(value))
-
-function lappend!(lst::TclObj{List}, args...; kwds...)
+function lappend!(list::TclObj{List}, args...; kwds...)
+    listptr = list.ptr
     for arg in args
-        lappend!(lst, arg)
+        __lappend!(listptr, arg)
     end
     for (key, val) in kwds
-        lappendoption!(lst, key, val)
+        __lappendoption!(listptr, key, val)
     end
-    return lst
+    return list
 end
 
-lappendoption!(lst::TclObj{List}, key::Name, value) =
-    lappendoption!(lst, string(key), value)
-
-lappendoption!(lst::TclObj{List}, key::AbstractString, value) =
-    lappend!(lst, TclObj("-"*(key[1] == '_' ? key[2:end] : key)), value)
+function lappendoption!(list::TclObj{List}, key::Name, val)
+    __lappendoption!(list.ptr, __string(key), val)
+    return list
+end
 
 #------------------------------------------------------------------------------
 # Management of Tcl interpreters.
@@ -648,38 +850,42 @@ set result stored in Tcl interpreter `interp` or in the initial interpreter if
 this argument is omitted.
 
 """
-setresult(interp::TclInterp, obj::TclObj) =
-    __setresult(interp, obj)
-
-setresult(interp::TclInterp, result::AbstractString) =
-    __setresult(interp, result, TCL_VOLATILE)
-
-# In that specific case, we know that there are no embedded nulls.
-setresult(interp::TclInterp, ::Union{Void,TclObj{Void}}) =
-    __setresult(interp, EMPTY, TCL_STATIC)
-
-setresult(args...) =
-    setresult(getinterp(), args...)
-
-setresult(interp::TclInterp, args...) =
-    setresult(interp, list(args...))
-
-setresult(interp::TclInterp, value::Value) =
-    setresult(interp, TclObj(value))
+setresult() = setresult(getinterp())
+setresult(arg) = setresult(getinterp(), arg)
+setresult(args...) = setresult(getinterp(), args...)
+setresult(interp::TclInterp) = __setresult(interp, __objptr())
+setresult(interp::TclInterp, args...) = setresult(interp, __newlistobj(args...))
+setresult(interp::TclInterp, arg) = __setresult(interp, __objptr(arg))
 
 # To set Tcl interpreter result, we can call `Tcl_SetObjResult` for any object,
-# or `Tcl_SetResult` but only for string results with no embedded nulls (Julia
-# will complain about that when converting the argument to `Cstring` so calling
-# `Tcl_SetResult` is always safe but may throw an exception).
-
-__setresult(interp::TclInterp, obj::TclObj) =
+# or `Tcl_SetResult` but only for string results with no embedded nulls.  There
+# may be a slight advantage for calling `Tcl_SetResult` with non-volatile
+# strings as copies are avoided.  Julia strings are immutable but I am not sure
+# that they are non-volatile, so I prefer to not try using `Tcl_SetResult` and
+# rather use `Tcl_SetObjResult` for any object.
+__setresult(interp::TclInterp, objptr::TclObjPtr) =
     ccall((:Tcl_SetObjResult, libtcl), Void, (TclInterpPtr, TclObjPtr),
-          interp.ptr, obj.ptr)
+          interp.ptr, objptr)
 
-function __setresult(interp::TclInterp, str::AnyString,
-                     free::Ptr{Void})
-    ccall((:Tcl_SetResult, libtcl), Void, (TclInterpPtr, Cstring, Ptr{Void}),
-          interp.ptr, str, free)
+@static if false
+    # The code for strings (taking care of embedded nulls and using
+    # `Tcl_SetResult` if possible) is written below for reference but not
+    # compiled.
+    function __setresult(interp::TclInterp, str::AbstractString, volatile::Bool)
+        ptr = Base.unsafe_convert(Ptr{Cchar}, str)
+        nbytes = sizeof(str)
+        if Base.containsnul(ptr, nbytes)
+            # String has embedded NULLs, wrap it into a temporary object.
+            temp = __incrrefcount(__newstringobj(ptr, nbytes))
+            ccall((:Tcl_SetObjResult, libtcl), Void, (TclInterpPtr, TclObjPtr),
+                  interp.ptr, temp)
+            __decrrefcount(temp)
+        else
+            ccall((:Tcl_SetResult, libtcl), Void,
+                  (TclInterpPtr, Ptr{Cchar}, Ptr{Void}),
+                  interp.ptr, ptr, (volatile ? TCL_VOLATILE : TCL_STATIC))
+        end
+    end
 end
 
 """
@@ -697,21 +903,19 @@ string representation of the result or `TclObj` to get a managed Tcl object.  `
 getresult() = getresult(getinterp())
 
 getresult(::Type{String}, interp::TclInterp) =
-    __ptr_to_string(__getresult(Cstring, interp))
+    __ptr_to_string(__getobjresult(interp))
 
 getresult(::Type{TclObj}, interp::TclInterp) =
-    __ptr_to_object(__getresult(Ptr{Void}, interp))
+    __ptr_to_object(__getobjresult(interp))
 
 getresult(interp::TclInterp) =
-    __ptr_to_value(__getresult(Ptr{Void}, interp))
+    __ptr_to_value(__getobjresult(interp))
 
-# To simplify the use of the Tcl interface, we only support retrieving Tcl
-# result or variable value as a string (for now, doing otherwise would require
-# to guess object type at runtime).
-__getresult(::Type{Cstring}, interp::TclInterp) =
-    ccall((:Tcl_GetStringResult, libtcl), Cstring, (TclInterpPtr,), interp.ptr)
-
-__getresult(::Type{Ptr{Void}}, interp::TclInterp) =
+# Tcl_GetStringResult calls Tcl_GetObjResult, so we only interface to this
+# latter function.  Incrementing the reference count of the result is only
+# needed if we want to keep a long-term reference to it (__ptr_to_object takes
+# care of that).
+__getobjresult(interp::TclInterp) =
     ccall((:Tcl_GetObjResult, libtcl), Ptr{Void}, (TclInterpPtr,), interp.ptr)
 
 """
@@ -728,14 +932,14 @@ interpreter if this argument is omitted).  If optional argument `T` is omitted,
 the type of the returned value reflects that of the internal representation of
 the result of the script; otherwise, `T` can be `String` to get the string
 representation of the result of the script or `TclObj` to get a managed Tcl
-object storing the result of the script.
+object whose value is the result of the script.
 
 If only `arg0` is present, it may be a `TclListObj` which is evaluated as a
 single Tcl command; otherwise, `arg0` is evaluated as a Tcl script and may be
 anything, like a string or a symbol, that can be converted into a `TclObj`.
 
 If keywords or other arguments than `arg0` are present, they are used to build
-a list of Tcl objects which is evaluated as a single command.  Any Keyword, say
+a list of Tcl objects which is evaluated as a single command.  Any keyword, say
 `key=val`, is automatically converted in the pair of arguments `-key` `val` in
 this list (note the hyphen before the keyword name).  All keywords appear at
 the end of the list in unspecific order.
@@ -763,7 +967,7 @@ const tcleval = evaluate
 
 """
 ```julia
-tcltry([interp,], arg0, args...; kwds...) -> code
+tcltry([interp,], args...; kwds...) -> code
 ```
 
 evaluates Tcl script or command with interpreter `interp` (or in the initial
@@ -775,43 +979,51 @@ of the interpretation of arguments `args...` and keywords `kwds...`.
 """
 tcltry(args...; kwds...) = tcltry(getinterp(), args...; kwds...)
 
-tcltry(interp::TclInterp, arg0, args...; kwds...) =
-    tcltry(interp, list(interp, arg0, args...; kwds...))
-
-tcltry(interp::TclInterp, obj::TclObj) = __eval(interp, obj)
-
-function tcltry(interp::TclInterp, arg0)
-    local code
-    __currentinterpreter[] = interp
-    try
-        code = __eval(interp, TclObj(arg0))
-    finally
-        __currentinterpreter[] = __initialinterpreter[]
+# This version gets called when there are any keywords or when zero or more
+# than one argument.
+function tcltry(interp::TclInterp, args...; kwds...)
+    if length(args) < 1
+        tclerror("expecting at least one argument")
     end
-    return code
+    return __evallist(interp, __newlistobj(args...; kwds...))
 end
 
-#__eval(interp::TclInterp, script::String) =
-#    ccall((:Tcl_Eval, libtcl), Cint, (TclInterpPtr, Cstring),
-#          interp.ptr, script)
+tcltry(interp::TclInterp, script::TclObj{List}) =
+    __evallist(interp, script.ptr)
+
+tcltry(interp::TclInterp, script) = __eval(interp, __objptr(script))
+
+# FIXME: I do not understand this
+#function tcltry(interp::TclInterp, script)
+#    __currentinterpreter[] = interp
+#    try
+#        return __eval(interp, __objptr(script))
+#    finally
+#        __currentinterpreter[] = __initialinterpreter[]
+#    end
+#end
 
 # We use `Tcl_EvalObjEx` and not `Tcl_EvalEx` to evaluate a script
 # because the script may contain embedded nulls.
-@inline function __eval(interp::TclInterp, obj::TclObj,
-                        flags::Integer = TCL_EVAL_GLOBAL|TCL_EVAL_DIRECT)
-    code = ccall((:Tcl_EvalObjEx, libtcl), Cint,
+
+@inline function __eval(interp::TclInterp, objptr::TclObjPtr)
+    flags = TCL_EVAL_GLOBAL
+    if __getrefcount(objptr) < 1
+        # For a temporary object there is no needs to compile the script.
+        flags |= TCL_EVAL_DIRECT
+    end
+    return ccall((:Tcl_EvalObjEx, libtcl), Cint,
                  (TclInterpPtr, TclObjPtr, Cint),
-                 interp.ptr, obj.ptr, flags)
-    return code
+                 interp.ptr, objptr, flags)
 end
 
-@inline function __eval(interp::TclInterp, lst::TclObj{List},
-                        flags::Integer = TCL_EVAL_GLOBAL)
+function __evallist(interp::TclInterp, listptr::TclObjPtr)
+    flags = TCL_EVAL_GLOBAL
     objc = Ref{Cint}(0)
     objv = Ref{Ptr{TclObjPtr}}(C_NULL)
     code = ccall((:Tcl_ListObjGetElements, libtcl), Cint,
                  (TclInterpPtr, TclObjPtr, Ptr{Cint}, Ptr{Ptr{TclObjPtr}}),
-                 interp.ptr, lst.ptr, objc, objv)
+                 interp.ptr, listptr, objc, objv)
     if code == TCL_OK
         code = ccall((:Tcl_EvalObjv, libtcl), Cint,
                      (TclInterpPtr, Cint, Ptr{TclObjPtr}, Cint),
@@ -857,7 +1069,7 @@ the current result of the Tcl interpreter).
 
 """
 tclerror(msg::AbstractString) = throw(TclError(string(msg)))
-tclerror(interp::TclInterp) = tclerror(getresult(interp))
+tclerror(interp::TclInterp) = tclerror(getresult(String, interp))
 
 """
     geterrmsg(ex)
@@ -928,25 +1140,19 @@ end
 #------------------------------------------------------------------------------
 # Dealing with Tcl variables.
 
+const VARIABLE_FLAGS = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG
+
 """
 ```julia
-Tcl.getvar([T,][interp,] var, flags=TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
+Tcl.getvar([T,][interp,] name1 [,name2])
 ```
 
-yields the value of variable `var` in Tcl interpreter `interp` or in the
-initial interpreter if this argument is omitted.
+yields the value of the global variable `name1` or `name1(name2)` in Tcl
+interpreter `interp` or in the initial interpreter if this argument is omitted.
 
 If optional argument `T` is omitted, the type of the returned value reflects
 that of the Tcl variable; otherwise, `T` can be `String` to get the string
 representation of the value or `TclObj` to get a managed Tcl object.
-
-For efficiency reasons, if the variable name `var` is a string or a symbol, it
-must not have embedded nulls.  It is always possible to wrap the variable name
-into a `TclObj` to support variable names with embedded nulls.  For instance:
-
-```julia
-Tcl.getvar(TclObj(var))
-```
 
 See also: [`Tcl.exists`](@ref), [`Tcl.setvar`](@ref), [`Tcl.unsetvar`](@ref).
 
@@ -955,57 +1161,97 @@ getvar(args...) = getvar(getinterp(), args...)
 
 getvar(::Type{T}, args...) where {T} = getvar(T, getinterp(), args...)
 
-function getvar(interp::TclInterp, var::Name,
-                flags::Integer = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
-    ptr = __getvar(Ptr{Void}, interp, var, flags)
+function getvar(interp::TclInterp, name::Name)
+    ptr = __getvar(interp, name, C_NULL, VARIABLE_FLAGS)
     ptr != C_NULL || tclerror(interp)
     return __ptr_to_value(ptr)
 end
 
-function getvar(::Type{TclObj}, interp::TclInterp, var::Name,
-                flags::Integer = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
-    ptr = __getvar(Ptr{Void}, interp, var, flags)
+function getvar(::Type{TclObj}, interp::TclInterp, name::Name)
+    ptr = __getvar(interp, name, C_NULL, VARIABLE_FLAGS)
     ptr != C_NULL || tclerror(interp)
     return __ptr_to_object(ptr)
 end
 
-function getvar(::Type{String}, interp::TclInterp, var::Name,
-                flags::Integer = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
-    ptr = __getvar(Cstring, interp, var, flags)
+function getvar(::Type{String}, interp::TclInterp, name::Name)
+    ptr = __getvar(interp, name, C_NULL, VARIABLE_FLAGS)
     ptr != C_NULL || tclerror(interp)
     return __ptr_to_string(ptr)
 end
 
-function __getvar(::Type{T}, interp::TclInterp,
-                  var::AnyString, flags::Integer) where {T}
-    __getvar(T, interp, TclObj(var), flags)
+function getvar(interp::TclInterp, name1::Name, name2::Name)
+    ptr = __getvar(interp, name1, name2, VARIABLE_FLAGS)
+    ptr != C_NULL || tclerror(interp)
+    return __ptr_to_value(ptr)
 end
 
-function __getvar(::Type{Cstring}, interp::TclInterp,
-                  var::TclObj{<:String}, flags::Integer)
-    __getvar(Cstring, interp, string(var), flags)
+function getvar(::Type{TclObj}, interp::TclInterp, name1::Name, name2::Name)
+    ptr = __getvar(interp, name1, name2, VARIABLE_FLAGS)
+    ptr != C_NULL || tclerror(interp)
+    return __ptr_to_object(ptr)
 end
 
-function __getvar(::Type{Cstring}, interp::TclInterp,
-                  var::AnyString, flags::Integer)
-    ccall((:Tcl_GetVar, libtcl), Cstring, (Ptr{Void}, Cstring, Cint),
-          interp.ptr, var, flags)
+function getvar(::Type{String}, interp::TclInterp, name1::Name, name2::Name)
+    ptr = __getvar(interp, name1, name2, VARIABLE_FLAGS)
+    ptr != C_NULL || tclerror(interp)
+    return __ptr_to_string(ptr)
 end
 
-function __getvar(::Type{Ptr{Void}}, interp::TclInterp, var::TclObj{<:String},
-                  flags::Integer)
-    ccall((:Tcl_ObjGetVar2, libtcl), Ptr{Void},
-          (Ptr{Void}, Ptr{Void}, Ptr{Void}, Cint),
-          interp.ptr, var.ptr, C_NULL, flags)
+# Tcl_GetVar would yield an incorrect result if the variable value has embedded
+# nulls and symbol Tcl_ObjGetVar2Ex does not exist in the library (despite what
+# says the doc.).  Hence we always use Tcl_ObjGetVar2 which may require to
+# temporarily convert the variable name into a string object.  There is no loss
+# of performances as it turns out that Tcl_GetVar, Tcl_GetVar2 and
+# Tcl_ObjGetVar2Ex all call Tcl_ObjGetVar2.
+#
+# Since all arguments are passed as pointers to Tcl object, we have to take
+# care of correctly unreference temporary objects.  As far as possible we
+# try to avoid the ovehead of the `try ... catch ... finally` statements.
+
+function __getvar(interp::TclInterp, name1::Name,
+                  name2::TclObj{String}, flags::Integer)
+    return __getvar(interp, name1, name2.ptr, flags)
+end
+
+function __getvar(interp::TclInterp, name1::Name,
+                  name2::StringOrSymbol, flags::Integer)
+    name2ptr = __incrrefcount(__newobj(name2))
+    try
+        return __getvar(interp, name1, name2ptr, flags)
+    finally
+        __decrrefcount(name2ptr)
+    end
+end
+
+function __getvar(interp::TclInterp, name1::TclObj{String},
+                  name2ptr::Ptr{Void}, flags::Integer)
+    return __getvar(interp, name1.ptr, name2ptr, flags)
+end
+
+function __getvar(interp::TclInterp, name1::StringOrSymbol,
+                  name2ptr::Ptr{Void}, flags::Integer)
+
+    name1ptr = __incrrefcount(__newobj(name1))
+    result = __getvar(interp, name1ptr, name2ptr, flags)
+    __decrrefcount(name1ptr)
+    return result
+end
+
+function __getvar(interp::TclInterp, name1ptr::Ptr{Void},
+                  name2ptr::Ptr{Void}, flags::Integer)
+    return ccall((:Tcl_ObjGetVar2, libtcl), Ptr{Void},
+                 (Ptr{Void}, Ptr{Void}, Ptr{Void}, Cint),
+                 interp.ptr, name1ptr, name2ptr, flags)
 end
 
 """
 ```julia
-Tcl.setvar([interp,] var, value, flags=TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
+Tcl.setvar([interp,] name1, [name2,] value)
 ```
 
-set variable `var` to be `value` in Tcl interpreter `interp` or in the initial
-interpreter if this argument is omitted.  The result is `nothing`.
+set global variable `name1` or `name1(name2)` to be `value` in Tcl interpreter
+`interp` or in the initial interpreter if this argument is omitted.  The result
+is `nothing`.
 
 See [`Tcl.getvar`](@ref) for details about allowed variable names.
 
@@ -1014,87 +1260,214 @@ See also: [`Tcl.getvar`](@ref), [`Tcl.exists`](@ref), [`Tcl.unsetvar`](@ref).
 """
 setvar(args...) = setvar(getinterp(), args...)
 
-function setvar(interp::TclInterp, var::Name, value,
-                flags::Integer = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
-    ptr = __setvar(interp, var, value, flags)
+function setvar(interp::TclInterp, name::Name, value)
+    ptr = __setvar(interp, name, value, VARIABLE_FLAGS)
     ptr != C_NULL || tclerror(interp)
     return nothing
 end
 
-# FIXME: Tcl_ObjSetVar2Ex may be not found in library so we avoid using it,
-#        perhaps to the detriment of performances.
+function setvar(interp::TclInterp, name1::Name, name2::Name, value)
+    ptr = __setvar(interp, name1, name2, value, VARIABLE_FLAGS)
+    ptr != C_NULL || tclerror(interp)
+    return nothing
+end
+
+# Like Tcl_ObjGetVar2Ex, Tcl_ObjSetVar2Ex may be not found in library so we
+# avoid using it.  In fact, it turns out that Tcl_SetVar, Tcl_SetVar2 and
+# Tcl_ObjSetVar2Ex call Tcl_ObjGetVar2 to do their stuff, so we only use
+# Tcl_ObjGetVar2 with no loss of performances. as it turns out that Tcl_SetVar
+# calls Tcl_ObjGetVar2.
 #
-#function __setvar(interp::TclInterp, var::AbstractString, value::TclObj,
-#                  flags::Integer)
-#    ccall((:Tcl_ObjSetVar2Ex, libtcl), TclObjPtr,
-#          (TclInterpPtr, Cstring, Ptr{Void}, TclObjPtr, Cint),
-#          interp.ptr, var, C_NULL, value.ptr, flags)
-#end
+# Same remarks as for `__getvar` about correctly unreferencing temporary
+# objects.
 
-__setvar(interp::TclInterp, var, value, flags::Integer) =
-    __setvar(interp, TclObj(var), TclObj(value), flags)
-
-function __setvar(interp::TclInterp, var::TclObj{<:String},
-                  value::TclObj, flags::Integer)
-    ccall((:Tcl_ObjSetVar2, libtcl), TclObjPtr,
-          (TclInterpPtr, TclObjPtr, TclObjPtr, TclObjPtr, Cint),
-          interp.ptr, var.ptr, C_NULL, value.ptr, flags)
+function __setvar(interp::TclInterp, name::TclObj{String},
+                  value, flags::Integer)
+    return __setvar(interp, name.ptr, C_NULL, __objptr(value), flags)
 end
 
-function __setvar(interp::TclInterp, var::AnyString,
-                  value::AnyString, flags::Integer)
-    ccall((:Tcl_SetVar, libtcl), Cstring,
-          (TclInterpPtr, Cstring, Cstring, Cint),
-          interp.ptr, var, value, flags)
+function __setvar(interp::TclInterp, name::StringOrSymbol,
+                  value, flags::Integer)
+    nameptr = C_NULL
+    try
+        nameptr = __incrrefcount(__newobj(name))
+        return __setvar(interp, nameptr, C_NULL, __objptr(value), flags)
+    finally
+        if nameptr != C_NULL
+            __decrrefcount(nameptr)
+        end
+    end
 end
+
+function __setvar(interp::TclInterp, name1::TclObj{String},
+                  name2::TclObj{String}, value, flags::Integer)
+    return __setvar(interp, name1.ptr, name2.ptr, __objptr(value), flags)
+end
+
+function __setvar(interp::TclInterp, name1::TclObj{String},
+                  name2::StringOrSymbol, value, flags::Integer)
+    name2ptr = C_NULL
+    try
+        name2ptr = __incrrefcount(__newobj(name2))
+        return __setvar(interp, name1.ptr, name2ptr, __objptr(value), flags)
+    finally
+        if name2ptr != C_NULL
+            __decrrefcount(name2ptr)
+        end
+    end
+end
+
+function __setvar(interp::TclInterp, name1::StringOrSymbol,
+                  name2::TclObj{String}, value, flags::Integer)
+    name1ptr = C_NULL
+    try
+        name1ptr = __incrrefcount(__newobj(name1))
+        return __setvar(interp, name1ptr, name2.ptr, __objptr(value), flags)
+    finally
+        if name1ptr != C_NULL
+            __decrrefcount(name1ptr)
+        end
+    end
+end
+
+function __setvar(interp::TclInterp, name1::StringOrSymbol,
+                  name2::StringOrSymbol, value, flags::Integer)
+    name1ptr = C_NULL
+    name2ptr = C_NULL
+    try
+        name1ptr = __incrrefcount(__newobj(name1))
+        name2ptr = __incrrefcount(__newobj(name2))
+        return __setvar(interp, name1ptr, name2ptr, __objptr(value), flags)
+    finally
+        if name1ptr != C_NULL
+            __decrrefcount(name1ptr)
+        end
+        if name2ptr != C_NULL
+            __decrrefcount(name2ptr)
+        end
+    end
+end
+
+function __setvar(interp::TclInterp, name1ptr::Ptr{Void},
+                  name2ptr::Ptr{Void}, valueptr::Ptr{Void}, flags::Integer)
+    return ccall((:Tcl_ObjSetVar2, libtcl), TclObjPtr,
+                 (TclInterpPtr, TclObjPtr, TclObjPtr, TclObjPtr, Cint),
+                 interp.ptr, name1ptr, name2ptr, valueptr, flags)
+end
+
 
 """
 ```julia
-Tcl.unsetvar([interp,] var, flags=TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
+Tcl.unsetvar([interp,] name1 [,name2]; nocomplain=false)
 ```
 
-deletes variable `var` in Tcl interpreter `interp` or in the initial
-interpreter if this argument is omitted.
+deletes global variable `name1` or `name1(name2)` in Tcl interpreter `interp`
+or in the initial interpreter if this argument is omitted.
+
+Keyword `nocomplain` can be set true to ignore errors.
 
 See also: [`Tcl.getvar`](@ref), [`Tcl.exists`](@ref), [`Tcl.setvar`](@ref).
 
 """
-unsetvar(args...) = unsetvar(getinterp(), args...)
+unsetvar(args...; kwds...) = unsetvar(getinterp(), args...; kwds...)
 
-function unsetvar(interp::TclInterp, var::Name,
-                  flags::Integer = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
-    __unsetvar(interp, var, flags) == TCL_OK || tclerror(interp)
+function unsetvar(interp::TclInterp, name::Name; nocomplain::Bool=false)
+    flags = (nocomplain ? TCL_GLOBAL_ONLY : (TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG))
+    code = __unsetvar(interp, __string(name), flags)
+    if code != TCL_OK && ! nocomplain
+        tclerror(interp)
+    end
     return nothing
 end
 
-__unsetvar(interp::TclInterp, var::TclObj{<:String}, flags::Integer) =
-    __unsetvar(interp, string(var), flags)
+function unsetvar(interp::TclInterp, name1::Name, name2::Name;
+                  nocomplain::Bool=false)
+    flags = (nocomplain ? TCL_GLOBAL_ONLY : (TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG))
+    code = __unsetvar(interp, __string(name1), __string(name2), flags)
+    if code != TCL_OK && ! nocomplain
+        tclerror(interp)
+    end
+    return nothing
+end
 
-__unsetvar(interp::TclInterp, var::AnyString, flags::Integer) =
-    ccall((:Tcl_UnsetVar, libtcl), Cint, (TclInterpPtr, Cstring, Cint),
-          interp.ptr, var, flags)
+# `TclUnsetVarObj2` would be the function to call here but, unfortunately, only
+# `Tcl_UnsetVar` and `Tcl_UnsetVar2` are available which both require strings
+# for the variable name parts.
+
+function __unsetvar(interp::TclInterp, name::String, flags::Integer) :: Cint
+    if (ptr = __cstring(name)[1]) != C_NULL
+        code = ccall((:Tcl_UnsetVar, libtcl), Cint,
+                     (TclInterpPtr, Ptr{Cchar}, Cint),
+                     interp.ptr, ptr, flags)
+    else
+        code = __eval(interp, __newobj("unset {$name}"))
+    end
+    return code
+end
+
+function __unsetvar(interp::TclInterp, name1::String, name2::String,
+                    flags::Integer) :: Cint
+    if ((ptr1 = __cstring(name1)[1]) != C_NULL &&
+        (ptr2 = __cstring(name2)[1]) != C_NULL)
+        code = ccall((:Tcl_UnsetVar2, libtcl), Cint,
+                     (TclInterpPtr, Ptr{Cchar}, Ptr{Cchar}, Cint),
+                     interp.ptr, ptr1, ptr2, flags)
+    else
+        code = __eval(interp, __newobj("unset {$name1($name2)}"))
+    end
+    return code
+end
+
 
 """
 `julia
-Tcl.exists([interp,] var, flags=TCL_GLOBAL_ONLY)
+Tcl.exists([interp,] name1 [, name2])
 ```
 
-checks whether variable `var` is defined in Tcl interpreter `interp` or in the
-initial interpreter if this argument is omitted.
+checks whether variable `name1` or `name1(name2)` is defined in Tcl interpreter
+`interp` or in the initial interpreter if this argument is omitted.
 
 See also: [`Tcl.getvar`](@ref), [`Tcl.setvar`](@ref), [`Tcl.unsetvar`](@ref).
 
 """
-exists(var::Name, args...) = exists(getinterp(), var, args...)
+exists(args...) = exists(getinterp(), args...)
 
-exists(interp::TclInterp, var::Name, flags::Integer=TCL_GLOBAL_ONLY) =
-    __exists(interp, var, flags)
+function exists(interp::TclInterp, name::Name)
+    return (__getvar(interp, name, C_NULL, TCL_GLOBAL_ONLY) != C_NULL)
+end
 
-__exists(interp::TclInterp, var::AnyString, flags::Integer) =
-    (__getvar(Cstring, interp, var, flags) != C_NULL)
+function exists(interp::TclInterp, name1::Name, name2::Name)
+    return (__getvar(interp, name1, name2, TCL_GLOBAL_ONLY) != C_NULL)
+end
 
-__exists(interp::TclInterp, var::TclObj{<:String}, flags::Integer) =
-    (__getvar(Ptr{Void}, interp, var, flags) != C_NULL)
+"""
+```julia
+__string(str)
+```
+
+yields a `String` instance of `str`.
+
+"""
+__string(str::String) = str
+__string(str::Union{AbstractString,Symbol,TclObj{String}}) = string(str)
+
+"""
+```julia
+__cstring(str) -> ptr, siz
+```
+
+checks whether `str` is a valid C-string (i.e., has no embedded nulls)
+and yields its base address and size.  If `str` is not eligible as a C string,
+`(Ptr{Cchar}(0), 0)` is returned.
+
+"""
+function __cstring(str::String)
+    ptr, siz = Base.unsafe_convert(Ptr{Cchar}, str), sizeof(str)
+    if Base.containsnul(ptr, siz)
+        ptr, siz = Ptr{Cchar}(0), zero(siz)
+    end
+    return ptr, siz
+end
 
 #------------------------------------------------------------------------------
 # Implement callbacks.
@@ -1118,10 +1491,12 @@ function release(obj)
     nothing
 end
 
+const __releaseobject_ref = Ref{Ptr{Void}}() # will be set by __init__
 function __releaseobject(ptr::Ptr{Void}) :: Void
     release(unsafe_pointer_to_objref(ptr))
 end
 
+const __evalcommand_ref = Ref{Ptr{Void}}() # will be set by __init__
 function __evalcommand(fptr::Ptr{Void}, iptr::Ptr{Void},
                        argc::Cint, argv::Ptr{Cstring}) :: Cint
     f = unsafe_pointer_to_objref(fptr)
@@ -1139,8 +1514,6 @@ end
 
 # With precompilation, `__init__()` carries on initializations that must occur
 # at runtime like `cfunction` which returns a raw pointer.
-const __releaseobject_ref = Ref{Ptr{Void}}()
-const __evalcommand_ref = Ref{Ptr{Void}}()
 function __init__()
     __initialinterpreter[] = TclInterp(true)
     __currentinterpreter[] = __initialinterpreter[]
@@ -1148,6 +1521,7 @@ function __init__()
     __evalcommand_ref[] = cfunction(__evalcommand, Cint,
                                     (Ptr{Void}, Ptr{Void}, Cint, Ptr{Cstring}))
     __init_types()
+    __nothing[] = TclObj{Void}(__newobj(""))
 end
 
 # If the function provides a return code, we do want to return it to the
@@ -1155,23 +1529,11 @@ end
 __setcommandresult(interp::TclInterp, result::Tuple{Cint,Any}) =
     __setcommandresult(interp, result[1], result[2])
 
-__setcommandresult(interp::TclInterp, result::Any) =
+__setcommandresult(interp::TclInterp, result) =
     __setcommandresult(interp, TCL_OK, result)
 
-__setcommandresult(interp::TclInterp, code::Cint, obj::TclObj) =
-    error("not yet implemented")
-
-__setcommandresult(interp::TclInterp, code::Cint, value::Any) =
-    __setcommandresult(interp, code, __newstringobj(value))
-
-function __setcommandresult(interp::TclInterp, code::Cint, ::Void)
-    __setresult(interp, EMPTY, TCL_STATIC)
-    return code
-end
-
-function __setcommandresult(interp::TclInterp, code::Cint,
-                            result::AbstractString)
-    __setresult(interp, result, TCL_VOLATILE)
+function __setcommandresult(interp::TclInterp, code::Cint, result)
+    __setresult(interp, __objptr(result))
     return code
 end
 
@@ -1216,6 +1578,7 @@ createcommand(interp::TclInterp, f::Function) =
 createcommand(interp::TclInterp, name::Symbol, f::Function) =
     createcommand(interp, string(name), f)
 
+# FIXME: use object, not string name?
 function createcommand(interp::TclInterp, name::String, f::Function)
     # Before creating the command, make sure object is not garbage collected
     # until Tcl deletes its reference.
@@ -1242,10 +1605,10 @@ Tcl interpreter if this argument is omitted).
 See also: [`Tcl.createcommand`](@ref).
 
 """
-deletecommand(name::AnyString) =
+deletecommand(name::StringOrSymbol) =
     deletecommand(getinterp(), name)
 
-function deletecommand(interp::TclInterp, name::AnyString)
+function deletecommand(interp::TclInterp, name::StringOrSymbol)
     code = ccall((:Tcl_DeleteCommand, libtcl), Cint,
                  (TclInterpPtr, Cstring), interp.ptr, name)
     if code != TCL_OK
