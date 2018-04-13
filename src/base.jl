@@ -1424,8 +1424,8 @@ end
 Tcl.exists([interp,] name1 [, name2])
 ```
 
-checks whether variable `name1` or `name1(name2)` is defined in Tcl interpreter
-`interp` or in the initial interpreter if this argument is omitted.
+checks whether global variable `name1` or `name1(name2)` is defined in Tcl
+interpreter `interp` or in the initial interpreter if this argument is omitted.
 
 See also: [`Tcl.getvar`](@ref), [`Tcl.setvar`](@ref), [`Tcl.unsetvar`](@ref).
 

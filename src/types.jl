@@ -65,10 +65,20 @@ end
 # Manage to make any Tcl interpreter usable as a collection with respect to its
 # global variables.
 
-Base.getindex(interp::TclInterp, key) = getvar(interp, key)
-Base.setindex!(interp::TclInterp, value, key) = setvar(interp, key, value)
-Base.setindex!(interp::TclInterp, ::Void, key) = unsetvar(interp, key)
-Base.haskey(interp::TclInterp, key) = exists(interp, key)
+Base.getindex(interp::TclInterp, name) = getvar(interp, name)
+Base.getindex(interp::TclInterp, name1, name2) = getvar(interp, name1, name2)
+
+Base.setindex!(interp::TclInterp, value, name) = setvar(interp, name, value)
+Base.setindex!(interp::TclInterp, value, name1, name2) =
+    setvar(interp, name1, name2, value)
+
+Base.setindex!(interp::TclInterp, ::Void, name) =
+    unsetvar(interp, name; nocomplain=true)
+Base.setindex!(interp::TclInterp, ::Void, name1, name2) =
+    unsetvar(interp, name1, name2; nocomplain=true)
+
+Base.haskey(interp::TclInterp, name) = exists(interp, name)
+Base.haskey(interp::TclInterp, name1, name2) = exists(interp, name1, name2)
 
 # Structure to store a pointer to a Tcl object. (Even though the address
 # should not be modified, it is mutable because immutable objects cannot be

@@ -9,7 +9,8 @@ using Base.Test
 
     @testset "Variables" begin
         i = Tcl.getinterp()
-        for (name, value) in (("a", 42), ("1", 1), ("", "empty"), ("π", π))
+        for (name, value) in (("a", 42), ("1", 1), ("", "empty"),
+                              ("π", π), ("w\0rld is beautiful!", true))
             # Check methods.
             Tcl.setvar(name, value)
             if typeof(value) <: Union{String,Integer}
@@ -31,6 +32,34 @@ using Base.Test
             @test Tcl.exists(name)
             i[name] = nothing
             @test !Tcl.exists(name)
+        end
+
+        for (name1, name2, value) in (("a", "i", 42),
+                                      ("1", "2", 12),
+                                      ("", "", "really empty"),
+                                      ("π", "φ", π),
+                                      ("w\0rld is", "beautiful!", true))
+            # Check methods.
+            Tcl.setvar(name1, name2, value)
+            if typeof(value) <: Union{String,Integer}
+                @test Tcl.getvar(name1, name2) == value
+            elseif typeof(value) <: AbstractFloat
+                @test Tcl.getvar(name1, name2) ≈ value
+            end
+            @test Tcl.exists(name1, name2)
+            Tcl.unsetvar(name1, name2)
+            @test !Tcl.exists(name1, name2)
+
+            # Check indexable interface.
+            i[name1, name2] = value
+            if typeof(value) <: Union{String,Integer}
+                @test i[name1, name2] == value
+            elseif typeof(value) <: AbstractFloat
+                @test i[name1, name2] ≈ value
+            end
+            @test Tcl.exists(name1, name2)
+            i[name1, name2] = nothing
+            @test !Tcl.exists(name1, name2)
         end
     end
 
