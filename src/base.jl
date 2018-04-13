@@ -486,15 +486,21 @@ end
 
 # Strings.
 #
+#     Julia strings and symbols are assumed to be Tcl strings.  Julia
+#     characters are assumed to Tcl strings of length 1.
+#
 #     There are two alternatives to create Tcl string objects:
 #     `Tcl_NewStringObj` or `Tcl_NewUnicodeObj`.  After some testings (see my
 #     notes), the following works correctly.  To build a Tcl object from a
 #     Julia string, use `Ptr{UInt8}` instead of `Cstring` and provide the
 #     number of bytes with `sizeof(str)`.
 
+
 TclObj(value::StringOrSymbol) = TclObj{String}(__newobj(value))
+TclObj(c::Char) = TclObj{String}(__newobj(c))
 
 __newobj(sym::Symbol) = __newobj(string(sym))
+__newobj(c::Char) = __newobj(string(c))
 
 function __newobj(str::AbstractString, nbytes::Integer = sizeof(str))
     objptr = ccall((:Tcl_NewStringObj, libtcl), TclObjPtr,
@@ -527,18 +533,31 @@ __newobj(f::Function) =
 
 # Lists.
 #
-#     Vectors and tuples yield lists.  No arguments, yield empty lists.
+#     Iterables like vectors and tuples yield lists.  No arguments, yield empty
+#     lists.
 #
 #     FIXME: There should be a way to automatically make lists from iterables
 #            and to convert multi-dimensional arrays into lists of lists.
 
 TclObj() = TclObj{List}(__newlistobj())
-TclObj(V::Union{Tuple,AbstractVector}) = TclObj{List}(__newlistobj(V))
 
 __newobj() = __newlistobj()
 
-__newobj(V::Union{Tuple,AbstractVector}) =
-    __newlistobj(V) # tuple and vectors are collections
+TclObj(itr::Iterables) = TclObj{List}(__newobj(itr))
+
+function __newobj(itr::Iterables) ::TclObjPtr
+    listptr = __newlistobj()
+    try
+        for val in itr
+            __lappend!(listptr, val)
+        end
+    catch ex
+        __decrrefcount(listptr)
+        rethrow(ex)
+    end
+    return listptr
+end
+
 
 """
 ```julia
@@ -567,19 +586,6 @@ function __newlistobj()
         tclerror("failed to create an empty Tcl list")
     end
     return objptr
-end
-
-function __newlistobj(itr) ::TclObjPtr
-    listptr = __newlistobj()
-    try
-        for val in itr
-            __lappend!(listptr, val)
-        end
-    catch ex
-        __decrrefcount(listptr)
-        rethrow(ex)
-    end
-    return listptr
 end
 
 function __newlistobj(args...; kwds...) ::TclObjPtr
@@ -854,7 +860,7 @@ setresult() = setresult(getinterp())
 setresult(arg) = setresult(getinterp(), arg)
 setresult(args...) = setresult(getinterp(), args...)
 setresult(interp::TclInterp) = __setresult(interp, __objptr())
-setresult(interp::TclInterp, args...) = setresult(interp, __newlistobj(args...))
+setresult(interp::TclInterp, args...) = setresult(interp, __newlistobj(args))
 setresult(interp::TclInterp, arg) = __setresult(interp, __objptr(arg))
 
 # To set Tcl interpreter result, we can call `Tcl_SetObjResult` for any object,

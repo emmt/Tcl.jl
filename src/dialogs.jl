@@ -14,13 +14,13 @@ Example:
     end
 """
 function messagebox(interp::TclInterp = getinterp();
-                    default::String = NOTHING,
-                    detail::String = NOTHING,
-                    icon::String = NOTHING,
-                    message::String = NOTHING,
-                    title::String = NOTHING,
-                    parent::String = NOTHING,
-                    buttons::String = NOTHING)
+                    default::String = "",
+                    detail::String = "",
+                    icon::String = "",
+                    message::String = "",
+                    title::String = "",
+                    parent::String = "",
+                    buttons::String = "")
     tkstart(interp)
     cmd = list("tk_messageBox")
     for (opt, val) in (("-default", default),
@@ -34,13 +34,14 @@ function messagebox(interp::TclInterp = getinterp();
             lappend!(cmd, opt, val)
         end
     end
+    println(cmd)
     interp(cmd)
 end
 
 function choosedirectory(interp::TclInterp = getinterp();
-                         initialdir::String = NOTHING,
-                         title::String = NOTHING,
-                         parent::String = NOTHING,
+                         initialdir::String = "",
+                         title::String = "",
+                         parent::String = "",
                          mustexist::Bool = false)
     tkstart(interp)
     cmd = list("tk_chooseDirectory")
@@ -116,15 +117,15 @@ end
 
 """
 function getopenfile(interp::TclInterp = getinterp();
-                     defaultextension::String = NOTHING,
-                     filetypes::String = NOTHING,
-                     initialdir::String = NOTHING,
-                     initialfile::String = NOTHING,
-                     message::String = NOTHING,
+                     defaultextension::String = "",
+                     filetypes::String = "",
+                     initialdir::String = "",
+                     initialfile::String = "",
+                     message::String = "",
                      multiple::Bool = false,
-                     parent::String = NOTHING, # FIXME:
-                     title::String = NOTHING,
-                     typevariable::String = NOTHING)
+                     parent::String = "", # FIXME:
+                     title::String = "",
+                     typevariable::String = "")
     tkstart(interp)
     cmd = list("tk_getOpenFile", "-multiple", multiple)
     for (opt, val) in (("-defaultextension", defaultextension),
@@ -146,14 +147,14 @@ end
 
 function getsavefile(interp::TclInterp = getinterp();
                      confirmoverwrite::Bool = true,
-                     defaultextension::String = NOTHING,
-                     filetypes::String = NOTHING,
-                     initialdir::String = NOTHING,
-                     initialfile::String = NOTHING,
-                     message::String = NOTHING,
-                     parent::String = NOTHING, # FIXME:
-                     title::String = NOTHING,
-                     typevariable::String = NOTHING)
+                     defaultextension::String = "",
+                     filetypes::String = "",
+                     initialdir::String = "",
+                     initialfile::String = "",
+                     message::String = "",
+                     parent::String = "", # FIXME:
+                     title::String = "",
+                     typevariable::String = "")
     tkstart(interp)
     cmd = list("tk_getSaveFile", "-confirmoverwrite", confirmoverwrite)
     for (opt, val) in (("-defaultextension", defaultextension),

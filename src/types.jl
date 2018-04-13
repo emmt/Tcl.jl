@@ -128,6 +128,10 @@ const Name      = Union{AbstractString,Symbol,TclObj{String}}
 const StringOrSymbol = Union{AbstractString,Symbol}
 const Byte      = Union{UInt8,Int8}
 
+# Objects of type `Iterables` are considered as iterators, making an object out
+# of them yield a Tcl list.
+const Iterables = Union{AbstractVector,Tuple,Set,IntSet}
+
 #------------------------------------------------------------------------------
 # Tk widgets and other Tk objects.
 

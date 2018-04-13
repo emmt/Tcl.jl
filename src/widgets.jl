@@ -90,7 +90,7 @@ function __createwidget(parent::TkWidget, cmd::String, child::AbstractString;
     end
     path = (getpath(parent) == "." ? "." : getpath(parent)*".")*child
     interp = getinterp(parent)
-    if parse(Int, interp("winfo", "exists", path)) != 0
+    if interp("winfo", "exists", path) != 0
         if length(kwds) > 0
             interp(path, "configure"; kwds...)
         end
@@ -111,7 +111,7 @@ function __createwidget(interp::TclInterp, cmd::String, path::AbstractString;
         path[i] == '.' && tclerror("illegal root window name \"$(path)\"")
     end
     tkstart(interp)
-    if parse(Int, interp("winfo", "exists", path)) != 0
+    if interp("winfo", "exists", path) != 0
         if length(kwds) > 0
             interp(path, "configure"; kwds...)
         end
@@ -166,7 +166,7 @@ terminate the Tcl application.
 
 """
 function tkstart(interp::TclInterp = getinterp()) :: TclInterp
-    if parse(Int, interp("info","exists","tk_version")) == 0
+    if interp("info","exists","tk_version") == 0
         code = tcltry(interp, "package", "require", "Tk")
         if code == TCL_OK
             tcltry(interp, "package", "require", "Ttk")
