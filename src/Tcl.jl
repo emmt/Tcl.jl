@@ -2,10 +2,10 @@ __precompile__(true)
 
 module Tcl
 
-if isfile(joinpath(dirname(@__FILE__),"..","deps","libs.jl"))
-    include("../deps/libs.jl")
+if isfile(joinpath(dirname(@__FILE__),"..","deps","deps.jl"))
+    include("../deps/deps.jl")
 else
-    error("Tcl not properly installed.  Please create and edit file \"../deps/libs.jl\"")
+    error("Tcl not properly installed.  Please run `Pkg.build(\"Tcl\")` to create file \"",joinpath(dirname(@__FILE__),"..","deps","deps.jl"),"\"")
 end
 
 export
