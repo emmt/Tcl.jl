@@ -32,8 +32,16 @@ macro TkWidget(_cls, cmd, pfx)
         struct $cls <: TkRootWidget
             interp::TclInterp
             path::String
-            $cls(interp::TclInterp, name::Name=autoname($pfx); kwds...) =
-                new(interp, __createwidget(interp, $cmd, name; kwds...))
+            obj::TclObj{$cls}
+            function $cls(interp::TclInterp, name::Name=autoname($pfx);
+                          kwds...)
+                # It is sufficient to ensure that Tk is loaded for root widgets
+                # because other widgets must have a parent.
+                tkstart(interp)
+                path = __widgetpath(__string(name))
+                obj = __createwidget($cls, interp, $cmd, path; kwds...)
+                new(interp, path, obj)
+            end
         end
 
         $cls(name::Name = autoname($pfx); kwds...) =
@@ -47,9 +55,14 @@ macro TkWidget(_cls, cmd, pfx)
             parent::TkWidget
             interp::TclInterp
             path::String
-            $cls(parent::TkWidget, child::Name=autoname($pfx); kwds...) =
-                new(parent, getinterp(parent),
-                    __createwidget(parent, $cmd, child; kwds...))
+            obj::TclObj{$cls}
+            function $cls(parent::TkWidget, child::Name=autoname($pfx);
+                          kwds...)
+                interp = getinterp(parent)
+                path = __widgetpath(parent, __string(child))
+                obj = __createwidget($cls, interp, $cmd, path; kwds...)
+                new(parent, interp, path, obj)
+            end
         end
 
         (w::$cls)(args...; kwds...) = evaluate(w, args...; kwds...)
@@ -95,48 +108,47 @@ end
 @TkWidget TkSpinbox       "::spinbox"           "sbx"
 @TkWidget TkText          "::text"              "txt"
 
-# Private method called to create a child widget.
-function __createwidget(parent::TkWidget, cmd::String, child::AbstractString;
-                        kwds...)
-    for c in child
-        c == '.' && tclerror("illegal window name \"$(child)\"")
+# Private method called to check/build the path of a child widget.
+function __widgetpath(parent::TkWidget, child::String) :: String
+    if search(child, '.') != 0
+        tclerror("illegal window name \"$(child)\"")
     end
-    path = (getpath(parent) == "." ? "." : getpath(parent)*".")*child
-    interp = getinterp(parent)
-    if interp("winfo", "exists", path) != 0
-        if length(kwds) > 0
-            interp(path, "configure"; kwds...)
-        end
-    else
-        interp(list(cmd, path; kwds...))
+    parentpath = getpath(parent)
+    return (parentpath == "." ? "." : parentpath*".")*child
+end
+
+# Private method called to check the path of a root widget.
+function __widgetpath(path::String) :: String
+    if path[1] != '.'
+        tclerror("root window name must start with a dot")
+    end
+    if search(path, '.', 2) != 0
+        tclerror("illegal root window name \"$(path)\"")
     end
     return path
 end
 
-__createwidget(parent::TkWidget, cmd::String, child::Symbol; kwds...) =
-    __createwidget(parent, cmd, string(child); kwds...)
-
-# Private method called to create a root widget.
-function __createwidget(interp::TclInterp, cmd::String, path::AbstractString;
-                        kwds...)
-    path[1] == '.' || tclerror("root window name must start with a dot")
-    @inbounds for i in 2:length(path)
-        path[i] == '.' && tclerror("illegal root window name \"$(path)\"")
-    end
-    tkstart(interp)
+# Private method called to create a widget.
+function __createwidget(::Type{T}, interp::TclInterp,
+                        cmd::String, path::String;
+                        kwds...) where {T<:Union{TkWidget,TkRootWidget}}
+    local objptr :: TclObjPtr
     if interp("winfo", "exists", path) != 0
+        # If widget already exists, it will be simply re-used, so we just apply
+        # configuration options if any.
         if length(kwds) > 0
             interp(path, "configure"; kwds...)
         end
+        objptr = __newobj(path)
     else
-        interp(list(cmd, path; kwds...))
+        # Widget does not already exists, create it with configuration options.
+        if tclcatch(interp, cmd, path; kwds...) != TCL_OK
+            tclerror(interp)
+        end
+        objptr = __getobjresult(interp)
     end
-    return path
+    return TclObj{T}(objptr)
 end
-
-__createwidget(interp::TclInterp, cmd::String, path::Symbol; kwds...) =
-    __createwidget(interp, cmd, string(path); kwds...)
-
 
 """
     TkToplevel([interp], ".")
@@ -155,7 +167,8 @@ getinterp(w::TkWidget) = w.interp
 getpath(w::TkWidget) = w.path
 getparent(w::TkWidget) = w.parent
 getparent(::TkRootWidget) = nothing
-@inline TclObj(w::TkWidget) = TclObj{TkWidget}(__newobj(getpath(w)))
+TclObj(w::TkWidget) = w.obj
+__objptr(w::TkWidget) = w.obj.ptr
 
 getpath(root::TkWidget, args::AbstractString...) =
     getpath(getpath(root), args...)
@@ -164,7 +177,7 @@ getpath(arg0::AbstractString, args::AbstractString...) =
    join(((arg0 == "." ? "" : arg0), args...), '.')
 
 evaluate(w::TkWidget, args...; kwds...) =
-    evaluate(getinterp(w), getpath(w), args...; kwds...)
+    evaluate(getinterp(w), w.obj, args...; kwds...)
 
 """
 If Tk package is not yet loaded in interpreter `interp` (or in the initial
