@@ -268,6 +268,41 @@ per keyword, say `key=val`, in the form `-key`, `val` (note the hyphen in front
 of the keyword name).  To allow for option names that are Julia keywords, a
 leading underscore is stripped, if any, in `key`.
 
+Lists are iterable and indexable, as illustrated by the following examples:
+
+``julia
+lst = Tcl.list(π,1,"hello",2:6)
+lenght(lst) # -> the number of items in the list
+lst[1]      # -> 3.1415...
+lst[end]    # -> [2,3,4,5,6]
+lst[2:3]    # -> Any[1,"hello"]
+lst[0]      # -> nothing
+lst[end+1]  # -> nothing
+for itm in lst
+    println(itm)
+end
+sel = map(i -> isa(i, Number), lst) # -> [true,true,false,false]
+lst[sel] # -> Any[3.14159,1]
+```
+
+You may note that, (i) like Tcl lists, getting an out of bound list item just
+yields nothing; (ii) lists are retrieved as Julia arrays with, if possible,
+homogeneous element type (otherwise `Any`).
+
+You may sub-select list elements.  For instance to extract the numbers of a
+list:
+
+``julia
+lst = Tcl.list(π,1,"hello",2:6)
+sel = map(i -> isa(i, Number), lst) # -> [true,true,false,false]
+lst[sel] # -> Any[3.14159,1]
+```
+
+Use `push!` (or [`Tcl.lappend!`](@ref]) to append elements to a list.  Use
+[`Tcl.concat`](@ref) to concatenate lists.
+
+See also: [`Tcl.concat`](@ref), [`Tcl.getindex`](@ref).
+
 """
 list(args...; kwds...) = TclObj{List}(__newlistobj(args...; kwds...))
 
@@ -298,6 +333,8 @@ lappend!(lst, _in="something")
 
 appends `"-in"` and `something` to the list `lst`.
 
+See also: [`Tcl.list`](@ref).
+
 """
 function lappend!(list::TclObj{List}, args...; kwds...)
     listptr = list.ptr
@@ -313,6 +350,59 @@ end
 function lappendoption!(list::TclObj{List}, key::Name, val)
     __lappendoption!(list.ptr, __string(key), val)
     return list
+end
+
+"""
+```julia
+Tcl.concat(args...)
+```
+
+concatenates the specified arguments and yields a Tcl list.  Compared to
+`Tcl.list` which considers that each argument correspond to a single item,
+`Tcl.concat` flatten its arguments.
+
+See also: [`Tcl.list`](@ref).
+
+"""
+function concat(args...)
+    list = TclObj{List}(__newlistobj())
+    listptr = list.ptr
+    for arg in args
+        __concat(listptr, arg)
+    end
+    return list
+end
+
+# Strings are iterables but we want that making a list out of string(s) yields
+# a single element per string (not per character) so we have to short-circuit
+# __concat(listptr, itr).  Note that `Number` are perfectly usable as iterables
+# but we add them to the union below in order to use a faster method for them.
+
+function __concat(listptr::TclObjPtr,
+                  arg::Union{AbstractString,Char,Symbol,Number})
+    __lappend!(listptr, arg)
+end
+
+function __concat(listptr::TclObjPtr, obj::TclObj)
+    __lappend!(listptr, arg)
+end
+
+function __concat(listptr::TclObjPtr, list::TclObj{List})
+    # FIXME: make this faster.
+    #for obj in list
+    #    __lappend!(listptr, obj)
+    #end
+    for i in 1:length(list)
+        # Use `getitem(TclObj,...` to avoid conversion of items.
+        __lappend!(listptr, getitem(TclObj, list, i))
+    end
+end
+
+# Everything else is assumed to be an iterable.
+function __concat(listptr::TclObjPtr, itr) ::TclObjPtr
+    for val in itr
+        __lappend!(listptr, val)
+    end
 end
 
 """
