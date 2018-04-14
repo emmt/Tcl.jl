@@ -180,6 +180,9 @@ string representation of the result or `TclObj` to get a managed Tcl object.  `
 """
 getresult() = getresult(getinterp())
 
+getresult(::Type{T}) where {T<:Union{TclObj,String}} =
+    getresult(T, getinterp())
+
 getresult(::Type{String}, interp::TclInterp) =
     __objptr_to_string(__getobjresult(interp))
 
