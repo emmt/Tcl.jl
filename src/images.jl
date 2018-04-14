@@ -1,3 +1,9 @@
+#
+# images.jl -
+#
+# Manipulation of Tk images.
+#
+
 import ColorTypes, FixedPointNumbers
 
 TkImage(obj::TkObject, kind::Name, args...; kwds...) =
@@ -32,11 +38,11 @@ end
 (img::TkImage)(args...; kdws...) =
     evaluate(img.interp, img, args...; kwds...)
 
-@inline getinterp(img::TkImage) = img.interp
+getinterp(img::TkImage) = img.interp
 
-@inline getpath(img::TkImage) = img.path
+getpath(img::TkImage) = img.path
 
-@inline TclObj(img::T) where {T<:TkImage} = TclObj{T}(__newobj(getpath(img)))
+TclObj(img::T) where {T<:TkImage} = TclObj{T}(__newobj(getpath(img)))
 
 delete(img::TkImage) =
     evaluate(getinterp(img), "delete", getpath(img))
@@ -166,7 +172,7 @@ end
 #------------------------------------------------------------------------------
 # Implement reading/writing of Tk "photo" images.
 
-type TkPhotoImageBlock
+mutable struct TkPhotoImageBlock
     # Pointer to the first pixel.
     ptr::Ptr{UInt8}
 
@@ -196,7 +202,7 @@ findphoto(img::TkImage) = findphoto(getinterp(img), getpath(img))
 
 function findphoto(interp::TclInterp, name::AbstractString)
     imgptr = ccall((:Tk_FindPhoto, libtk), Ptr{Void},
-                   (Ptr{Void}, Ptr{UInt8}), interp.ptr, name)
+                   (TclInterpPtr, Ptr{UInt8}), interp.ptr, name)
     if imgptr == C_NULL
         tclerror("invalid image name")
     end
@@ -389,7 +395,7 @@ function __setpixels(interp::TclInterp, name::AbstractString,
     # Assume (TCL_MAJOR_VERSION == 8) && (TCL_MINOR_VERSION >= 5), for older
     # versions, the interpreter argument is missing in Tk_PhotoPutBlock.
     code = ccall((:Tk_PhotoPutBlock, libtk), Cint,
-                 (Ptr{Void}, Ptr{Void}, Ptr{TkPhotoImageBlock},
+                 (TclInterpPtr, Ptr{Void}, Ptr{TkPhotoImageBlock},
                   Cint, Cint, Cint, Cint, Cint),
                  interp.ptr, imgptr, &block, x, y,
                  block.width, block.height, composite)

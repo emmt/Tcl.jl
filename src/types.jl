@@ -1,4 +1,8 @@
+#
+# types.jl -
+#
 # Definitions of Tcl constants and types.
+#
 
 # Codes returned by Tcl fucntions.
 const TCL_OK       = convert(Cint, 0)
@@ -43,11 +47,6 @@ const TCL_EVAL_INVOKE   = convert(Cint, 0x080000)
 const TCL_CANCEL_UNWIND = convert(Cint, 0x100000)
 const TCL_EVAL_NOERR    = convert(Cint, 0x200000)
 
-# The following type aliases are introduced to make the code more readable.
-const TclInterpPtr  = Ptr{Void}
-const TclObjPtr     = Ptr{Void}
-const TclObjTypePtr = Ptr{Void}
-
 struct TclError <: Exception
     msg::String
 end
@@ -57,33 +56,17 @@ Base.showerror(io::IO, ex::TclError) = print(io, "Tcl/Tk error: ", ex.msg)
 # Structure to store a pointer to a Tcl interpreter. (Even though the address
 # should not be modified, it is mutable because immutable objects cannot be
 # finalized.)
+const TclInterpPtr = Ptr{Void}
 mutable struct TclInterp
     ptr::TclInterpPtr
     TclInterp(ptr::TclInterpPtr) = new(ptr)
 end
 
-# Manage to make any Tcl interpreter usable as an indexable collection with
-# respect to its global variables.
-
-Base.getindex(interp::TclInterp, name) = getvar(interp, name)
-Base.getindex(interp::TclInterp, name1, name2) = getvar(interp, name1, name2)
-
-Base.setindex!(interp::TclInterp, value, name) = setvar(interp, name, value)
-Base.setindex!(interp::TclInterp, value, name1, name2) =
-    setvar(interp, name1, name2, value)
-
-Base.setindex!(interp::TclInterp, ::Void, name) =
-    unsetvar(interp, name; nocomplain=true)
-Base.setindex!(interp::TclInterp, ::Void, name1, name2) =
-    unsetvar(interp, name1, name2; nocomplain=true)
-
-Base.haskey(interp::TclInterp, name) = exists(interp, name)
-Base.haskey(interp::TclInterp, name1, name2) = exists(interp, name1, name2)
-
 # Structure to store a pointer to a Tcl object. (Even though the address
 # should not be modified, it is mutable because immutable objects cannot be
 # finalized.)  The constructor will refuse to build a managed Tcl object with
 # a NULL address.
+const TclObjPtr = Ptr{Void}
 mutable struct TclObj{T}
     ptr::TclObjPtr
     function TclObj{T}(ptr::TclObjPtr) where {T}
@@ -100,33 +83,15 @@ struct Command end # Used in the signature of a Tcl command object.
 const TclObjList    = TclObj{List}
 const TclObjCommand = TclObj{Command}
 
-# FIXME: A slight optimization is possible here because we know that
-#        the object pointer cannot be NULL.
-Base.string(obj::TclObj) = __ptr_to_string(obj.ptr)
+# `Name` is anything that can be understood as the name of a variable or of a
+# command.
+const Name = Union{AbstractString,Symbol,TclObj{String}}
 
-Base.show(io::IO, ::MIME"text/plain", obj::T) where {T<:TclObj} =
-    print(io, "$T($(string(obj)))")
-
-Base.show(io::IO, ::MIME"text/plain", obj::T) where {T<:TclObj{<:String}} =
-    print(io, "$T(\"$(string(obj))\")")
-
-# Provide short version for string interpolation in scripts (FIXME: also do
-# that for other kind of objects).
-Base.show(io::IO, obj::TclObj{<:Real}) =
-    print(io, string(obj))
-
-Base.show(io::IO, lst::T) where {T<:TclObj{List}} =
-    print(io, llength(lst), "-element(s) $T(\"$(string(lst))\")")
-
-# An empty string is an alias for `nothing`.
-const __nothing = Ref{TclObj{Void}}()
-
-# Argument types.  `StringOrSymbol` can be automatically converted
-# into a `Cstring` by `ccall`. `Name` is anything that can be understood as the
-# name of a variable or of a command.
-const Name      = Union{AbstractString,Symbol,TclObj{String}}
+# `StringOrSymbol` can be automatically converted into a `Cstring` by `ccall`.
 const StringOrSymbol = Union{AbstractString,Symbol}
-const Byte      = Union{UInt8,Int8}
+
+# A `Byte` is any bits type that is exactly 8 bits.
+const Byte = Union{UInt8,Int8}
 
 # Objects of type `Iterables` are considered as iterators, making an object out
 # of them yield a Tcl list.

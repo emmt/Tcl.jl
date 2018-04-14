@@ -9,11 +9,38 @@ else
 end
 
 export
-    @TkWidget,
     TclError,
     TclInterp,
     TclObj,
     TclObjList,
+    TclObjCommand,
+    TCL_OK,
+    TCL_ERROR,
+    TCL_RETURN,
+    TCL_BREAK,
+    TCL_CONTINUE,
+    TCL_GLOBAL_ONLY,
+    TCL_NAMESPACE_ONLY,
+    TCL_APPEND_VALUE,
+    TCL_LIST_ELEMENT,
+    TCL_LEAVE_ERR_MSG,
+    TCL_DONT_WAIT,
+    TCL_WINDOW_EVENTS,
+    TCL_FILE_EVENTS,
+    TCL_TIMER_EVENTS,
+    TCL_IDLE_EVENTS,
+    TCL_ALL_EVENTS,
+    TCL_NO_EVAL,
+    TCL_EVAL_GLOBAL,
+    TCL_EVAL_DIRECT,
+    TCL_EVAL_INVOKE,
+    TCL_CANCEL_UNWIND,
+    TCL_EVAL_NOERR,
+    tclerror,
+    tcleval,
+    tclcatch,
+    tkstart,
+    @TkWidget,
     TkObject,
     TkImage,
     TkWidget,
@@ -55,33 +82,7 @@ export
     TtkSeparator,
     TtkSizegrip,
     TtkSpinbox,
-    TtkTreeview,
-    TCL_OK,
-    TCL_ERROR,
-    TCL_RETURN,
-    TCL_BREAK,
-    TCL_CONTINUE,
-    TCL_GLOBAL_ONLY,
-    TCL_NAMESPACE_ONLY,
-    TCL_APPEND_VALUE,
-    TCL_LIST_ELEMENT,
-    TCL_LEAVE_ERR_MSG,
-    TCL_DONT_WAIT,
-    TCL_WINDOW_EVENTS,
-    TCL_FILE_EVENTS,
-    TCL_TIMER_EVENTS,
-    TCL_IDLE_EVENTS,
-    TCL_ALL_EVENTS,
-    TCL_NO_EVAL,
-    TCL_EVAL_GLOBAL,
-    TCL_EVAL_DIRECT,
-    TCL_EVAL_INVOKE,
-    TCL_CANCEL_UNWIND,
-    TCL_EVAL_NOERR,
-    tclerror,
-    tcleval,
-    tclcatch,
-    tkstart
+    TtkTreeview
 
 if VERSION < v"0.6.0"
     # macro for raw strings (will be part of Julia 0.6, see PR #19900 at
@@ -91,7 +92,10 @@ if VERSION < v"0.6.0"
 end
 
 include("types.jl")
-include("base.jl")
+include("basics.jl")
+include("objects.jl")
+include("lists.jl")
+include("variables.jl")
 include("widgets.jl")
 include("dialogs.jl")
 include("images.jl")

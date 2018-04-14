@@ -1,4 +1,5 @@
-import Tcl
+ENV["LANG"] = "C"
+isdefined(:Tcl) || include("../src/Tcl.jl")
 
 module TclDialogTests
 

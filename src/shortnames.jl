@@ -8,7 +8,7 @@
 
 module ShortNames
 
-using Tcl
+using ...Tcl
 
 export
     cget,

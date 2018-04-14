@@ -1,4 +1,17 @@
+#
+# widgets.jl -
+#
 # Implement Tk (and TTk) widgets
+#
+
+# export
+#     cget,
+#     configure,
+#     getparent,
+#     getpath,
+#     grid,
+#     pack,
+#     place,
 
 """
     @TkWidget cls cmd pfx
@@ -125,7 +138,7 @@ __createwidget(interp::TclInterp, cmd::String, path::Symbol; kwds...) =
     __createwidget(interp, cmd, string(path); kwds...)
 
 
-@doc """
+"""
     TkToplevel([interp], ".")
 
 yields the toplevel Tk window for interpreter `interp` (or for the initial

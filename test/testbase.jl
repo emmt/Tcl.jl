@@ -12,6 +12,7 @@ using Base.Test
         for (name, value) in (("a", 42), ("1", 1), ("", "empty"),
                               ("π", π), ("w\0rld is beautiful!", true))
             # Check methods.
+            tclcatch("array","unset",name)
             Tcl.setvar(name, value)
             if typeof(value) <: Union{String,Integer}
                 @test Tcl.getvar(name) == value
@@ -40,6 +41,7 @@ using Base.Test
                                       ("π", "φ", π),
                                       ("w\0rld is", "beautiful!", true))
             # Check methods.
+            Tcl.unsetvar(name1, nocomplain=true)
             Tcl.setvar(name1, name2, value)
             if typeof(value) <: Union{String,Integer}
                 @test Tcl.getvar(name1, name2) == value
@@ -154,6 +156,27 @@ using Base.Test
         @test all(lst4[2][2] .== yc)
         @test all(lst4[2][3] .== zc)
 
+        lst5 = Tcl.list(π, 1, "hello", 2:6)
+        @test length(lst5) == 4
+        @test lst5[1] ≈ π
+        @test lst5[2] == 1
+        @test lst5[3] == "hello"
+        @test all(lst5[4] .== 2:6)
+        push!(lst5, sqrt(2))
+        @test length(lst5) == 5
+        @test lst5[end] ≈ sqrt(2)
+        @test all(lst5[4:end][1] .== 2:6)
+        @test lst5[0] == nothing
+        @test lst5[end+1] == nothing
+        A = lst5[[1 2; 3 4; 5 6]]
+        @test size(A) == (3, 2)
+        @test A[1,1] == lst5[1]
+        @test A[1,2] == lst5[2]
+        @test A[2,1] == lst5[3]
+        @test A[2,2] == lst5[4]
+        @test A[3,1] == lst5[5]
+        @test A[3,2] == lst5[6]
+
         #yc = tcleval("list",x,z)
         #r = tcleval(TclObj,"list",4.6,pi)
         #q = tcleval(TclObj,"list",4,pi)
@@ -168,4 +191,3 @@ using Base.Test
 end
 
 end
-
