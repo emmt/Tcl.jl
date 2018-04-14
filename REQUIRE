@@ -1,0 +1,4 @@
+Julia 0.6
+Compat 0.17.0
+BinDeps 0.2.2-
+@windows WinRPM
