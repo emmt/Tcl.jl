@@ -54,3 +54,29 @@ but with different design choices and some issues I wanted to avoid (for
 instance, X conflict with PyPlot when using Gtk backend, Qt backend is OK).
 This is why I started this project.  I would be very happy if, eventually, the
 two projects merge.
+
+
+# Installation
+
+[**Tcl**](https://github.com/emmt/Tcl.jl) is not yet an
+[offical Julia package](https://pkg.julialang.org/) but it is easy to install
+from the [julia REPL](https://docs.julialang.org/en/stable/manual/interacting-with-julia/) as follows:
+
+```julia
+Pkg.clone("https://github.com/emmt/Tcl.jl.git")
+Pkg.build("Tcl")
+```
+
+which uses `https` protocol; if `ssh` is more suitable for you, then type:
+
+```julia
+Pkg.clone("git@github.com:emmt/Tcl.jl.git")
+Pkg.build("Tcl")
+```
+
+To update to the last version, just type:
+
+```julia
+Pkg.update("Tcl")
+Pkg.build("Tcl")
+```

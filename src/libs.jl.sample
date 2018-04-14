@@ -1,3 +1,0 @@
-# Indicate below the path of Tcl/Tk libraries.
-const libtcl = "/usr/lib/x86_64-linux-gnu/libtcl.so"
-const libtk = "/usr/lib/x86_64-linux-gnu/libtk.so"
