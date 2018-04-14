@@ -74,9 +74,17 @@ Pkg.clone("git@github.com:emmt/Tcl.jl.git")
 Pkg.build("Tcl")
 ```
 
+To check whether Tcl package works correctly:
+
+```julia
+Pkg.test("Tcl")
+```
+
 To update to the last version, just type:
 
 ```julia
 Pkg.update("Tcl")
 Pkg.build("Tcl")
 ```
+
+and perhaps test again...
