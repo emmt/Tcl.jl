@@ -18,7 +18,7 @@ end
 function Base.next(iter::TclObj{List}, state)
     i, n, objv = state
     i += 1
-    item = __objptr_to_value(__peek(objv, i))
+    item = __objptr_to(Any, __peek(objv, i))
     return item, (i, n, objv)
 end
 
@@ -175,22 +175,35 @@ function __lappendoption!(listptr::TclObjPtr, key::String, val)
     nothing
 end
 
-function __objptr_to_value(::Type{List}, listptr::Ptr{Void})
-    if listptr == C_NULL
-        return Array{Any}(0)
-    end
-    objc_ref = Ref{Cint}()
-    objv_ref = Ref{Ptr{Ptr{Void}}}()
-    code = ccall((:Tcl_ListObjGetElements, libtcl), Cint,
-                 (TclInterpPtr, Ptr{Void}, Ptr{Cint}, Ptr{Ptr{Ptr{Void}}}),
-                 C_NULL, listptr, objc_ref, objv_ref)
-    code == TCL_OK || tclerror("Tcl_ListObjGetElements failed ($code)")
-    objc = convert(Int, objc_ref[])
-    objv = objv_ref[] # do not free this buffer (see Tcl doc.)
-    v = Array{Any}(objc)
-    if objc ≥ 1
-        for i in 1:objc
-            v[i] = __objptr_to_value(__peek(objv, i))
+# FIXME: should be Vector, interp for messages
+# Tcl_ListObjGetElements will attempt to convert the
+# object to a list if it is not one.
+function __objptr_to(::Type{List}, listptr::Ptr{Void})
+    listptr == C_NULL && return Array{Any}(0)
+    objc, objv = __getlistelements(C_NULL, listptr)
+    return buildvector(i -> __objptr_to(Any, __peek(objv, i)), objc)
+end
+
+function __objptr_to(::Type{List}, interp::TclInterp, listptr::Ptr{Void})
+    listptr == C_NULL && return Array{Any}(0)
+    objc, objv = __getlistelements(interp.ptr, listptr)
+    return buildvector(i -> __objptr_to(Any, interp, __peek(objv, i)), objc)
+end
+
+"""
+```julia
+buildvector(f, n)
+```
+
+yields a vector of length `n` whose elements are `f(i)` for `i ∈ 1:n`.
+If possible the type of the elements is standardized.
+
+"""
+function buildvector(f::Function, n::Integer)
+    v = Array{Any}(n)
+    if n ≥ 1
+        for i in 1:n
+            v[i] = f(i)
         end
         return standardizetype(v)
     end
@@ -429,32 +442,39 @@ in case of failure.
 See also: [`Tcl.list`](@ref), [`Tcl.getvar`](@ref).
 
 """
-lindex(interp::TclInterp, list::TclObj{List}, i::Integer) =
-    __itemptr_to_value(__lindex(interp, list, i))
-
-lindex(::Type{TclObj}, interp::TclInterp, list::TclObj{List}, i::Integer) =
-    __itemptr_to_object(__lindex(interp, list, i))
-
-lindex(::Type{String}, interp::TclInterp, list::TclObj{List}, i::Integer) =
-    __itemptr_to_string(__lindex(interp, list, i))
-
 lindex(list::TclObj{List}, i::Integer) =
-    __itemptr_to_value(__lindex(list, i))
+    lindex(Any, list, i)
 
-lindex(::Type{TclObj}, list::TclObj{List}, i::Integer) =
-    __itemptr_to_object(__lindex(list, i))
+lindex(::Type{T}, list::TclObj{List}, i::Integer) where {T} =
+    __itemptr_to(T, __lindex(list, i))
 
-lindex(::Type{String}, list::TclObj{List}, i::Integer) =
-    __itemptr_to_string(__lindex(list, i))
+lindex(interp::TclInterp, list::TclObj{List}, i::Integer) =
+    lindex(Any, interp, list, i)
 
-__itemptr_to_object(objptr::TclObjPtr) =
-    (objptr == C_NULL ? TclObj() : __objptr_to_object(objptr))
+lindex(::Type{T}, interp::TclInterp, list::TclObj{List}, i::Integer) where {T} =
+    __itemptr_to(T, interp, __lindex(interp, list, i))
 
-__itemptr_to_string(objptr::TclObjPtr) =
-    (objptr == C_NULL ? "" : __objptr_to_string(objptr))
+__itemptr_to(::Type{T}, interp::TclInterp, objptr::TclObjPtr) where {T} =
+    (objptr == C_NULL ? __missing_item(T) : __objptr_to(T, interp, objptr))
 
-__itemptr_to_value(objptr::TclObjPtr) =
-    (objptr == C_NULL ? nothing : __objptr_to_value(objptr))
+__itemptr_to(::Type{T}, objptr::TclObjPtr) where {T} =
+    (objptr == C_NULL ? __missing_item(T) : __objptr_to(T, objptr))
+
+"""
+```julia
+___missing_item(T)
+```
+
+yields the value of missing list item of type `T`.  May throw an error if
+missing items of such type are not allowed.
+
+"""
+__missing_item(::Type{String}) = ""
+__missing_item(::Type{Any}) = nothing
+__itemptr_item(::Type{TclObj}) = TclObj()
+__itemptr_item(::Type{Vector}) = Array{Any}(0)
+__missing_item(::Type{T}) where {T<:Union{Integer,AbstractFloat}} = zero(T)
+__missing_item(::Type{Char}) = '\0'
 
 # Get a list item.
 #
@@ -477,23 +497,31 @@ function __lindex(interp::TclInterp, list::TclObj{List}, i::Integer)
     return objptr
 end
 
-function __getlistitem(interptr::TclInterpPtr, listptr::TclObjPtr, i::Integer)
+function __getlistitem(intptr::TclInterpPtr, listptr::TclObjPtr, i::Integer)
     objptr = Ref{TclObjPtr}()
     code = ccall((:Tcl_ListObjIndex, libtcl), Cint,
                  (TclInterpPtr, TclObjPtr, Cint, Ptr{TclObjPtr}),
-                 interptr, listptr, i - 1, objptr)
+                 intptr, listptr, i - 1, objptr)
     if code != TCL_OK
         objptr[] = C_NULL
     end
     return code, objptr[]
 end
 
-function __getlistelements(listptr::TclObjPtr)
+# Yields (objc, objv) do not free this buffer (see Tcl doc.)
+function __getlistelements(intptr::TclInterpPtr, listptr::TclObjPtr)
     objc = Ref{Cint}()
     objv = Ref{Ptr{Ptr{Void}}}()
     code = ccall((:Tcl_ListObjGetElements, libtcl), Cint,
                  (TclInterpPtr, Ptr{Void}, Ptr{Cint}, Ptr{Ptr{Ptr{Void}}}),
-                 C_NULL, listptr, objc, objv)
-    code == TCL_OK || tclerror("Tcl_ListObjGetElements failed ($code)")
+                 intptr, listptr, objc, objv)
+    if code != TCL_OK
+        if intptr == C_NULL
+            msg = "failed to convert Tcl object into a list"
+        else
+            msg = __getstringresult(intptr)
+        end
+        tclerror(msg)
+    end
     return convert(Int, objc[]), objv[]
 end

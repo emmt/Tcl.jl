@@ -27,17 +27,44 @@ const VARIABLE_FLAGS = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG
 
 """
 ```julia
-Tcl.getvar([T,][interp,] name1 [,name2])
+Tcl.getvar([T=Any,][interp,] name1 [,name2])
 ```
 
 yields the value of the global variable `name1` or `name1(name2)` in Tcl
 interpreter `interp` or in the initial interpreter if this argument is omitted.
 
-If optional argument `T` is omitted, the type of the returned value reflects
-that of the Tcl variable; otherwise, `T` can be `String` to get the string
-representation of the value or `TclObj` to get a managed Tcl object.  The
-latter type is more efficient if the returned value is intended to be put in a
-Tcl list or to be an argument of a Tcl script or command.
+Optional argument `T` (`Any` by default) can be used to specify the type of the
+returned value.  Some possibilities are:
+
+* If `T` is `Any`, the type of the returned value is determined so as to best
+  reflect that of the Tcl variable.
+
+* If `T` is `TclObj`, a managed Tcl object is returned.  This is the most
+  efficient if the returned value is intended to be put in a Tcl list or to be
+  an argument of a Tcl script or command.
+
+* If `T` is `Bool`, a boolean value is returned.
+
+* If `T` is `String`, a string is returned.
+
+* If `T` is `Char`, a single character is returned (an exception is thrown if
+  Tcl object is not a single character string).
+
+* If `T <: Integer`, an integer value of type `T` is returned.
+
+* If `T <: AbstractFloat`, a floating-point value of type `T` is returned.
+
+* If `T` is `Vector`, a vector of values is returned (the Tcl object is
+  converted into a list if necessary).
+
+* `TclObj` to get a managed Tcl object;
+
+* If `T` is `Vector`, a vector of values is returned (the Tcl object is
+  converted into a list if necessary).
+
+Note that, except if `T` is `Any` or `TclObj`, a conversion of the Tcl
+object stored by the variable may be needed.
+
 
 See also: [`Tcl.exists`](@ref), [`Tcl.setvar`](@ref), [`Tcl.unsetvar`](@ref).
 
@@ -46,41 +73,21 @@ getvar(args...) = getvar(getinterp(), args...)
 
 getvar(::Type{T}, args...) where {T} = getvar(T, getinterp(), args...)
 
-function getvar(interp::TclInterp, name::Name)
+getvar(interp::TclInterp, args...) = getvar(Any, interp, args...)
+
+function getvar(::Type{T}, interp::TclInterp, name::Name) where {T}
     ptr = __getvar(interp, name, C_NULL, VARIABLE_FLAGS)
     ptr != C_NULL || tclerror(interp)
-    return __objptr_to_value(ptr)
+    return __objptr_to(T, interp, ptr)
 end
 
-function getvar(::Type{TclObj}, interp::TclInterp, name::Name)
-    ptr = __getvar(interp, name, C_NULL, VARIABLE_FLAGS)
-    ptr != C_NULL || tclerror(interp)
-    return __objptr_to_object(ptr)
-end
-
-function getvar(::Type{String}, interp::TclInterp, name::Name)
-    ptr = __getvar(interp, name, C_NULL, VARIABLE_FLAGS)
-    ptr != C_NULL || tclerror(interp)
-    return __objptr_to_string(ptr)
-end
-
-function getvar(interp::TclInterp, name1::Name, name2::Name)
+function getvar(::Type{T}, interp::TclInterp,
+                name1::Name, name2::Name) where {T}
     ptr = __getvar(interp, name1, name2, VARIABLE_FLAGS)
     ptr != C_NULL || tclerror(interp)
-    return __objptr_to_value(ptr)
+    return __objptr_to(T, interp, ptr)
 end
 
-function getvar(::Type{TclObj}, interp::TclInterp, name1::Name, name2::Name)
-    ptr = __getvar(interp, name1, name2, VARIABLE_FLAGS)
-    ptr != C_NULL || tclerror(interp)
-    return __objptr_to_object(ptr)
-end
-
-function getvar(::Type{String}, interp::TclInterp, name1::Name, name2::Name)
-    ptr = __getvar(interp, name1, name2, VARIABLE_FLAGS)
-    ptr != C_NULL || tclerror(interp)
-    return __objptr_to_string(ptr)
-end
 
 # Tcl_GetVar would yield an incorrect result if the variable value has embedded
 # nulls and symbol Tcl_ObjGetVar2Ex does not exist in the library (despite what

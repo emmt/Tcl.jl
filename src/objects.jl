@@ -9,7 +9,7 @@
 
 # FIXME: A slight optimization is possible here because we know that
 #        the object pointer cannot be NULL.
-Base.string(obj::TclObj) = __objptr_to_string(obj.ptr)
+Base.string(obj::TclObj) = __objptr_to(String, obj.ptr)
 
 Base.show(io::IO, ::MIME"text/plain", obj::T) where {T<:TclObj} =
     print(io, "$T($(string(obj)))")
@@ -35,9 +35,7 @@ yields the value of a Tcl object.  The type of the result corresponds to
 the internal representation of the object.
 
 """
-getvalue(obj::TclObj{String}) = __objptr_to_string(obj.ptr)
-getvalue(obj::TclObj{T}) where {T<:Union{Bool,Cint,Clong,Int64,Cdouble,List}} =
-    __objptr_to_value(T, obj.ptr)
+getvalue(obj::TclObj{T}) where {T} = __objptr_to(T, obj.ptr)
 
 
 """
@@ -346,7 +344,7 @@ const __wideint_type = Ref{Ptr{Void}}(0)
 const __double_type  = Ref{Ptr{Void}}(0)
 const __list_type    = Ref{Ptr{Void}}(0)
 const __string_type  = Ref{Ptr{Void}}(0)
-const KnownTypes = Union{Void,Bool,Cint,Int64,Cdouble,String,List}
+const KnownTypes = Union{Void,Bool,Cint,WideInt,Cdouble,String,List}
 function __init_types(bynames::Bool = false)
     if bynames
         __int_type[]     = __getobjtype("int")
@@ -360,7 +358,7 @@ function __init_types(bynames::Bool = false)
         __bool_type[] = __int_type[]
     else
         int_obj = TclObj(Cint(0))
-        wideint_obj = TclObj(Int64(0))
+        wideint_obj = TclObj(WideInt(0))
         double_obj = TclObj(Cdouble(0))
         string_obj = TclObj("")
         list_obj = Tcl.list(int_obj, wideint_obj)
@@ -382,32 +380,62 @@ __illegal_null_string_pointer() =
 
 """
 ```julia
-__ptr_to_string(strptr::Cstring)
+__ptr_to(T::DataType, strptr::Cstring)
 ````
-or
-```julia
-__objptr_to_string(objptr::Ptr{Void})
-```
 
-yield the string representation corresponding to an address returned by a call
-to a Tcl C function.  Here `strptr` is the address of a C-string while `objptr`
-is assumed to be a pointer to a Tcl object.
+converts a C-string (for instance, returned by a C function) into a Julia value
+of type `T`.  If `T` is `Any` or `String`, a Julia string is returned, if `T`
+is `TclObj` or `TclObj{String}` a managed Tcl object with a string value is
+returned.
 
-This function is to be considered as *private*, the end-user should call the
-`string` method on managed Tcl objects (of type `TclObj`).
-
-See also: [`string`](@ref), [`__objptr_to_value`](@ref).
+See also: [`string`](@ref), [`__objptr_to`](@ref).
 
 """
-__ptr_to_string(strptr::Cstring) =
+__ptr_to(::Type{String}, strptr::Cstring) =
     # In principle, `unsafe_string` will refuse to convert NULL to string.  So
     # no checks here.
     unsafe_string(strptr)
 
-function __objptr_to_string(objptr::TclObjPtr)
-    if objptr == C_NULL
-        __illegal_null_object_pointer()
-    end
+__ptr_to(::Type{Any}, strptr::Cstring) = __ptr_to(String, strptr::Cstring)
+
+__ptr_to(::Type{<:Union{TclObj,TclObj{String}}}, strptr::Cstring) =
+    TclObj{String}(__newobj(__ptr_to(String, strptr)))
+
+
+"""
+
+```julia
+__objptr_to(T::DataType, [interp::TclInterp,] objptr::Ptr{Void})
+````
+
+converts the Tcl object at address `objptr` into a value of type `T`.
+See [`Tcl.getvar`](@ref) for details about how `T` is interpreted.
+
+If Tcl interpreter `interp` is specified, it is used to retrieve an
+error message if the conversion fails.
+
+See also: [`Tcl.getvar`](@ref), [`Tcl.getvalue`](@ref).
+
+"""
+__objptr_to(::Type{Any}, interp::TclInterp, objptr::Ptr{Void}) =
+    __objptr_to(__objtype(objptr), interp, objptr)
+
+__objptr_to(::Type{Any}, objptr::Ptr{Void}) =
+    __objptr_to(__objtype(objptr), objptr)
+
+
+__objptr_to(::Type{TclObj}, interp::TclInterp, objptr::Ptr{Void}) =
+    TclObj{__objtype(objptr)}(objptr)
+
+__objptr_to(::Type{TclObj}, objptr::Ptr{Void}) =
+    TclObj{__objtype(objptr)}(objptr)
+
+
+__objptr_to(::Type{String}, interp::TclInterp, objptr::Ptr{Void}) =
+    __objptr_to(String, objptr)
+
+function __objptr_to(::Type{String}, objptr::TclObjPtr)
+    objptr != C_NULL || __illegal_null_object_pointer()
     lenref = Ref{Cint}()
     strptr = ccall((:Tcl_GetStringFromObj, libtcl), Ptr{UInt8},
                    (TclObjPtr, Ptr{Cint}), objptr, lenref)
@@ -417,96 +445,116 @@ function __objptr_to_string(objptr::TclObjPtr)
     return unsafe_string(strptr, lenref[])
 end
 
-"""
-```julia
-__ptr_to_value(strptr::Cstring)
-````
-or
-```julia
-__objptr_to_value([T::DataType,] objptr::Ptr{Void})
-````
+__objptr_to(::Type{Char}, interp::TclInterp, objptr::Ptr{Void}) =
+    __objptr_to(Char, objptr)
 
-yield the value corresponding to an address returned by a call to a Tcl C
-function.  Here `strptr` is the address of a C-string while `objptr` is assumed
-to be a pointer to a Tcl object.  For a Tcl object, the type `T` of the result
-must correspond to the internal representation of the object.  If the type `T`
-is omitted, it is retrieved in the object structure at the given address.
-
-This function is to be considered as *private*, the end-user should call the
-`getvalue` method on managed Tcl objects (of type `TclObj`).
-
-See also: [`getvalue`](@ref), [`__objptr_to_string`](@ref).
-
-"""
-__objptr_to_value(objptr::Ptr{Void}) =
-    __objptr_to_value(__objtype(objptr), objptr)
-
-__ptr_to_value(strptr::Cstring) = unsafe_string(strptr)
-
-__objptr_to_value(::Type{String}, objptr::Ptr{Void}) =
-    __objptr_to_string(objptr)
-
-for (T, f) in ((Cint, :Tcl_GetIntFromObj),
-               (Clong, :Tcl_GetLongFromObj),
-               (Int64, :Tcl_GetWideIntFromObj),
-               (Cdouble, :Tcl_GetDoubleFromObj))
-    # Avoid duplicates.
-    if ((f == :Tcl_GetIntFromObj && (T == Clong || T == Int64)) ||
-        (f == :Tcl_GetLongFromObj && T == Int64))
-        continue
+function __objptr_to(::Type{Char}, objptr::TclObjPtr)
+    objptr != C_NULL || __illegal_null_object_pointer()
+    lenref = Ref{Cint}()
+    strptr = ccall((:Tcl_GetStringFromObj, libtcl), Ptr{UInt8},
+                   (TclObjPtr, Ptr{Cint}), objptr, lenref)
+    if strptr == C_NULL
+        tclerror("failed to retrieve string representation of Tcl object")
     end
-    msg = "$f failed"
-    tup = (f, libtcl)
-    @eval begin
+    if lenref[] != 1
+        tclerror("failed to convert Tcl object to a single character")
+    end
+    return unsafe_string(strptr, 1)[1]
+end
 
-        function __objptr_to_value(::Type{$T}, objptr::Ptr{Void})
-            ref = Ref{$T}()
-            code = ccall($tup, Cint, (TclInterpPtr, TclObjPtr, Ptr{$T}),
-                         C_NULL, objptr, ref)
-            code == TCL_OK || tclerror($msg)
-            return ref[]
+function __objptr_to(::Type{Bool}, interp::TclInterp,
+                     objptr::TclObjPtr) :: Bool
+    code, value = __get_boolean_from_obj(interp.ptr, objptr)
+    code == TCL_OK || tclerror(interp)
+    return (value != zero(value))
+end
+
+function __objptr_to(::Type{Bool}, objptr::TclObjPtr) :: Bool
+    code, value = __get_boolean_from_obj(C_NULL, objptr)
+    code == TCL_OK || tclerror("failed to convert Tcl object to a boolean")
+    return (value != zero(value))
+end
+
+# Find closest approximation for converting an object to an integer.
+for Tj in (Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
+    msg = "failed to convert Tcl object to an integer ($Tj)"
+    for pass in 1:2,
+        (f,Tc) in ((:__get_int_from_obj,     Cint),
+                   (:__get_long_from_obj,    Clong),
+                   (:__get_wideint_from_obj, WideInt))
+        if (pass == 1 && Tj == Tc) || (pass == 2 && sizeof(Tj) ≤ sizeof(Tc))
+            # Exact match found or size large enough.
+            result = (Tj == Tc ? :value : :(convert(Tj, value)))
+            @eval begin
+
+                function __objptr_to(::Type{$Tj}, interp::TclInterp,
+                                     objptr::TclObjPtr) :: $Tj
+                    code, value = $f(interp.ptr, objptr)
+                    code == TCL_OK || tclerror(interp)
+                    return $result
+                end
+
+                function __objptr_to(::Type{$Tj}, objptr::TclObjPtr) :: $Tj
+                    code, value = $f(C_NULL, objptr)
+                    code == TCL_OK || tclerror($msg)
+                    return $result
+                end
+
+            end
+            break
+        end
+    end
+end
+
+function __objptr_to(::Type{Cdouble}, interp::TclInterp,
+                     objptr::TclObjPtr) :: Cdouble
+    code, value = __get_double_from_obj(interp.ptr, objptr)
+    code == TCL_OK || tclerror(interp)
+    return value
+end
+
+function __objptr_to(::Type{Cdouble}, objptr::TclObjPtr) :: Cdouble
+    code, value = __get_double_from_obj(C_NULL, objptr)
+    code == TCL_OK || tclerror("failed to convert Tcl object to a float")
+    return value
+end
+
+for T in subtypes(AbstractFloat)
+    if T != Cdouble
+        @eval begin
+
+            function __objptr_to(::Type{$T}, interp::TclInterp,
+                                 objptr::TclObjPtr) :: $T
+                return convert($T, __objptr_to(Cdouble, interp, objptr))
+            end
+
+            function __objptr_to(::Type{$T}, objptr::TclObjPtr) :: $T
+                return convert($T, __objptr_to(Cdouble, objptr))
+            end
+
         end
 
     end
 end
 
-function __objptr_to_value(::Type{Bool}, objptr::Ptr{Void})
-    ref = Ref{Cint}() # a boolean is an int in C
-    code = ccall((:Tcl_GetBooleanFromObj, libtcl), Cint,
-                 (TclInterpPtr, TclObjPtr, Ptr{Cint}),
-                 C_NULL, objptr, ref)
-    code == TCL_OK || tclerror("Tcl_GetBooleanFromObj failed ($code)")
-    return (ref[] != zero(Cint))
+# Direct interface to Tcl library for all numerical types.
+for (j,c,T) in ((:__get_boolean_from_obj, :Tcl_GetBooleanFromObj, Cint),
+                (:__get_int_from_obj,     :Tcl_GetIntFromObj,     Cint),
+                (:__get_long_from_obj,    :Tcl_GetLongFromObj,    Clong),
+                (:__get_wideint_from_obj, :Tcl_GetWideIntFromObj, WideInt),
+                (:__get_double_from_obj,  :Tcl_GetDoubleFromObj,  Cdouble))
+    tup = (c, libtcl)
+    @eval begin
+        function $j(intptr::TclInterpPtr,
+                    objptr::TclObjPtr) :: Tuple{Cint,$T}
+            objptr != C_NULL || __illegal_null_object_pointer()
+            valref = Ref{$T}()
+            code = ccall($tup, Cint, (TclInterpPtr, TclObjPtr, Ptr{$T}),
+                         intptr, objptr, valref)
+            return code, valref[]
+        end
+    end
 end
-
-"""
-```julia
-__ptr_to_object(strptr::Cstring)
-````
-or
-```julia
-__objptr_to_object([T::DataType,] objptr::Ptr{Void})
-````
-
-yield a managed Tcl object corresponding to an address returned by a call to a
-Tcl C function.  Here `strptr` is the address of a C-string while `objptr` is
-assumed to be a pointer to a Tcl object.  For a Tcl object, `T` is the type of
-the internal representation of the object.  If the type `T` is omitted, it is
-retrieved in the object struture at the given address.
-
-This function should be considered as *private*.
-
-See also: [`getvalue`](@ref), [`__objptr_to_string`](@ref).
-
-"""
-__ptr_to_object(strptr::Cstring) = # FIXME: ?????
-    __objptr_to_object(String, __newobj(__ptr_to_string(strptr)))
-
-__objptr_to_object(objptr::Ptr{Void}) =
-    __objptr_to_object(__objtype(objptr), objptr)
-
-__objptr_to_object(::Type{T}, objptr::Ptr{Void}) where {T<:KnownTypes} =
-    TclObj{T}(objptr)
 
 """
 ```julia
@@ -528,7 +576,7 @@ function __objtype(objptr::Ptr{Void})
         # on some machines
         typeptr = __getobjtype(objptr)
         if typeptr == __wideint_type[]
-            return Int64
+            return WideInt
         elseif typeptr == __double_type[]
             return Cdouble
         elseif typeptr == __list_type[]

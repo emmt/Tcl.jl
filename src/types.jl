@@ -77,8 +77,14 @@ mutable struct TclObj{T}
     end
 end
 
-struct List    end # Used in the signature of a Tcl list object.
-struct Command end # Used in the signature of a Tcl command object.
+# Tcl wide integer is 64-bit integer.
+const WideInt = Int64
+
+# Type used in the signature of a Tcl list object (a.k.a. vector in Julia).
+const List = Vector
+
+# Singleton type used in the signature of a Tcl command object.
+struct Command end
 
 const TclObjList    = TclObj{List}
 const TclObjCommand = TclObj{Command}

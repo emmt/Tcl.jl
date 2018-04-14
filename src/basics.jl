@@ -168,36 +168,38 @@ end
 
 """
 ```julia
-Tcl.getresult([T,][interp])
+Tcl.getresult([T=Any,][interp])
 ```
 
 yields the current result stored in Tcl interpreter `interp` or in the initial
 interpreter if this argument is omitted.  If optional argument `T` is omitted,
 the type of the returned value reflects that of the internal representation of
-the result stored in Tcl interpreter; otherwise, `T` can be `String` to get the
-string representation of the result or `TclObj` to get a managed Tcl object.  `
+the result stored in Tcl interpreter; otherwise, `T` can be used to specify
+how Tcl result should be converted (see [`Tcl.getvar`](@ref) for details).
+
+See also: [`Tcl.getvar`](@ref).
 
 """
 getresult() = getresult(getinterp())
 
-getresult(::Type{T}) where {T<:Union{TclObj,String}} =
-    getresult(T, getinterp())
+getresult(interp::TclInterp) = getresult(Any, interp)
 
-getresult(::Type{String}, interp::TclInterp) =
-    __objptr_to_string(__getobjresult(interp))
+getresult(::Type{T}) where {T} = getresult(T, getinterp())
 
-getresult(::Type{TclObj}, interp::TclInterp) =
-    __objptr_to_object(__getobjresult(interp))
-
-getresult(interp::TclInterp) =
-    __objptr_to_value(__getobjresult(interp))
+getresult(::Type{T}, interp::TclInterp) where {T} =
+    __objptr_to(T, interp, __getobjresult(interp.ptr))
 
 # Tcl_GetStringResult calls Tcl_GetObjResult, so we only interface to this
 # latter function.  Incrementing the reference count of the result is only
-# needed if we want to keep a long-term reference to it (__objptr_to_object
-# takes care of that).
-__getobjresult(interp::TclInterp) =
-    ccall((:Tcl_GetObjResult, libtcl), Ptr{Void}, (TclInterpPtr,), interp.ptr)
+# needed if we want to keep a long-term reference to it,
+# `__objptr_to(TclObj,...)` takes care of that).
+__getobjresult(interp::TclInterp) = __getobjresult(interp.ptr)
+__getobjresult(intptr::TclInterpPtr) =
+    ccall((:Tcl_GetObjResult, libtcl), TclObjPtr, (TclInterpPtr,), intptr)
+
+__getstringresult(interp::TclInterp) = __getstringresult(interp.ptr)
+__getstringresult(intptr::TclInterpPtr) =
+    __objptr_to(String, __getobjresult(intptr))
 
 """
 ```julia

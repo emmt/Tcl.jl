@@ -83,7 +83,7 @@ Pkg.test("Tcl")
 To update to the last version, just type:
 
 ```julia
-Pkg.update("Tcl")
+Pkg.update()
 Pkg.build("Tcl")
 ```
 
