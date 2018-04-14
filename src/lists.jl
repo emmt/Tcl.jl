@@ -32,7 +32,7 @@ Base.endof(list::TclObj{List}) = llength(list)
 Base.push!(list::TclObj{List}, args...; kwds...) =
     lappend!(list, args...; kwds...)
 
-Base.getindex(list::TclObj{List}, i::Integer) = getitem(list, i)
+Base.getindex(list::TclObj{List}, i::Integer) = lindex(list, i)
 
 function Base.getindex(list::TclObj{List}, msk::AbstractVector{Bool})
     n = countnz(msk)
@@ -301,7 +301,7 @@ lst[sel] # -> Any[3.14159,1]
 Use `push!` (or [`Tcl.lappend!`](@ref]) to append elements to a list.  Use
 [`Tcl.concat`](@ref) to concatenate lists.
 
-See also: [`Tcl.concat`](@ref), [`Tcl.getindex`](@ref).
+See also: [`Tcl.concat`](@ref), [`Tcl.lindex`](@ref), [`Tcl.lappend!`](@ref).
 
 """
 list(args...; kwds...) = TclObj{List}(__newlistobj(args...; kwds...))
@@ -320,8 +320,12 @@ end
 ```julia
 lappend!(lst, args...; kwds...)
 ```
+or
+```julia
+push!(lst, args...; kwds...)
+```
 
-appends to the list `lst` of Tcl objects one object per argument `args...` (in
+append to the list `lst` of Tcl objects one object per argument `args...` (in
 the same order as they appear) and then followed by two objects per keyword,
 say `key=val`, in the form `-key`, `val` (note the hyphen in front of the
 keyword name).  To allow for option names that are Julia keywords, a leading
@@ -393,8 +397,8 @@ function __concat(listptr::TclObjPtr, list::TclObj{List})
     #    __lappend!(listptr, obj)
     #end
     for i in 1:length(list)
-        # Use `getitem(TclObj,...` to avoid conversion of items.
-        __lappend!(listptr, getitem(TclObj, list, i))
+        # Use `lindex(TclObj,...` to avoid conversion of items.
+        __lappend!(listptr, lindex(TclObj, list, i))
     end
 end
 
@@ -407,33 +411,41 @@ end
 
 """
 ```julia
-getitem([T,] [interp,] list, i)
+lindex([T,] [interp,] list, i)
 ```
 
 yields the element at index `i` in Tcl list `list`.  An *empty* result is
 returned if index is out of range.
 
+If optional argument `T` is omitted, the type of the returned value reflects
+that of the Tcl variable; otherwise, `T` can be `String` to get the string
+representation of the value or `TclObj` to get a managed Tcl object.  The
+latter type is more efficient if the returned item is intended to be put in a
+Tcl list or to be an argument of a Tcl script or command.
+
 Tcl interpreter `interp` may be provided to have more detailed error messages
 in case of failure.
 
+See also: [`Tcl.list`](@ref), [`Tcl.getvar`](@ref).
+
 """
-getitem(interp::TclInterp, list::TclObj{List}, i::Integer) =
-    __itemptr_to_value(__getitem(interp, list, i))
+lindex(interp::TclInterp, list::TclObj{List}, i::Integer) =
+    __itemptr_to_value(__lindex(interp, list, i))
 
-getitem(::Type{TclObj}, interp::TclInterp, list::TclObj{List}, i::Integer) =
-    __itemptr_to_object(__getitem(interp, list, i))
+lindex(::Type{TclObj}, interp::TclInterp, list::TclObj{List}, i::Integer) =
+    __itemptr_to_object(__lindex(interp, list, i))
 
-getitem(::Type{String}, interp::TclInterp, list::TclObj{List}, i::Integer) =
-    __itemptr_to_string(__getitem(interp, list, i))
+lindex(::Type{String}, interp::TclInterp, list::TclObj{List}, i::Integer) =
+    __itemptr_to_string(__lindex(interp, list, i))
 
-getitem(list::TclObj{List}, i::Integer) =
-    __itemptr_to_value(__getitem(list, i))
+lindex(list::TclObj{List}, i::Integer) =
+    __itemptr_to_value(__lindex(list, i))
 
-getitem(::Type{TclObj}, list::TclObj{List}, i::Integer) =
-    __itemptr_to_object(__getitem(list, i))
+lindex(::Type{TclObj}, list::TclObj{List}, i::Integer) =
+    __itemptr_to_object(__lindex(list, i))
 
-getitem(::Type{String}, list::TclObj{List}, i::Integer) =
-    __itemptr_to_string(__getitem(list, i))
+lindex(::Type{String}, list::TclObj{List}, i::Integer) =
+    __itemptr_to_string(__lindex(list, i))
 
 __itemptr_to_object(objptr::TclObjPtr) =
     (objptr == C_NULL ? TclObj() : __objptr_to_object(objptr))
@@ -449,7 +461,7 @@ __itemptr_to_value(objptr::TclObjPtr) =
 #     The convention of Tcl_ListObjIndex is to return TCL_ERROR if some error
 #     occured and TCL_OK with a NULL pointer if index is out of range.
 
-function __getitem(list::TclObj{List}, i::Integer)
+function __lindex(list::TclObj{List}, i::Integer)
     code, objptr = __getlistitem(C_NULL, list.ptr, i)
     if code != TCL_OK
         tclerror("failed to get Tcl list element at index $i")
@@ -457,7 +469,7 @@ function __getitem(list::TclObj{List}, i::Integer)
     return objptr
 end
 
-function __getitem(interp::TclInterp, list::TclObj{List}, i::Integer)
+function __lindex(interp::TclInterp, list::TclObj{List}, i::Integer)
     code, objptr = __getlistitem(interp.ptr, list.ptr, i)
     if code != TCL_OK
         tclerror(interp)

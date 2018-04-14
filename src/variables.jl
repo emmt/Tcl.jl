@@ -35,7 +35,9 @@ interpreter `interp` or in the initial interpreter if this argument is omitted.
 
 If optional argument `T` is omitted, the type of the returned value reflects
 that of the Tcl variable; otherwise, `T` can be `String` to get the string
-representation of the value or `TclObj` to get a managed Tcl object.
+representation of the value or `TclObj` to get a managed Tcl object.  The
+latter type is more efficient if the returned value is intended to be put in a
+Tcl list or to be an argument of a Tcl script or command.
 
 See also: [`Tcl.exists`](@ref), [`Tcl.setvar`](@ref), [`Tcl.unsetvar`](@ref).
 
