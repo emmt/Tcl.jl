@@ -96,6 +96,9 @@ end
 # of performances as it turns out that Tcl_GetVar, Tcl_GetVar2 and
 # Tcl_ObjGetVar2Ex all call Tcl_ObjGetVar2.
 #
+# Tcl_ObjGetVar2 does not manage the reference count of the variable name
+# parts.
+#
 # Since all arguments are passed as pointers to Tcl object, we have to take
 # care of correctly unreference temporary objects.  As far as possible we
 # try to avoid the ovehead of the `try ... catch ... finally` statements.
@@ -107,6 +110,8 @@ end
 
 function __getvar(interp::TclInterp, name1::Name,
                   name2::StringOrSymbol, flags::Integer)
+    # We have to protect against interrupts because __newobj may throw an
+    # exception.
     name2ptr = __incrrefcount(__newobj(name2))
     try
         return __getvar(interp, name1, name2ptr, flags)
@@ -122,7 +127,6 @@ end
 
 function __getvar(interp::TclInterp, name1::StringOrSymbol,
                   name2ptr::Ptr{Void}, flags::Integer)
-
     name1ptr = __incrrefcount(__newobj(name1))
     result = __getvar(interp, name1ptr, name2ptr, flags)
     __decrrefcount(name1ptr)
@@ -167,8 +171,11 @@ end
 # Like Tcl_ObjGetVar2Ex, Tcl_ObjSetVar2Ex may be not found in library so we
 # avoid using it.  In fact, it turns out that Tcl_SetVar, Tcl_SetVar2 and
 # Tcl_ObjSetVar2Ex call Tcl_ObjGetVar2 to do their stuff, so we only use
-# Tcl_ObjGetVar2 with no loss of performances. as it turns out that Tcl_SetVar
+# Tcl_ObjGetVar2 with no loss of performances as it turns out that Tcl_SetVar
 # calls Tcl_ObjGetVar2.
+#
+# Tcl_ObjSetVar2 does not manage the reference count of the variable name
+# parts but do manage the reference count of the variable value.
 #
 # Same remarks as for `__getvar` about correctly unreferencing temporary
 # objects.
@@ -180,14 +187,14 @@ end
 
 function __setvar(interp::TclInterp, name::StringOrSymbol,
                   value, flags::Integer)
+    # We have to protect against interrupts because __newobj and __objptr may
+    # throw an exception.
     nameptr = C_NULL
     try
         nameptr = __incrrefcount(__newobj(name))
         return __setvar(interp, nameptr, C_NULL, __objptr(value), flags)
     finally
-        if nameptr != C_NULL
-            __decrrefcount(nameptr)
-        end
+        nameptr == C_NULL || __decrrefcount(nameptr)
     end
 end
 
@@ -198,32 +205,34 @@ end
 
 function __setvar(interp::TclInterp, name1::TclObj{String},
                   name2::StringOrSymbol, value, flags::Integer)
+    # We have to protect against interrupts because __newobj and __objptr may
+    # throw an exception.
     name2ptr = C_NULL
     try
         name2ptr = __incrrefcount(__newobj(name2))
         return __setvar(interp, name1.ptr, name2ptr, __objptr(value), flags)
     finally
-        if name2ptr != C_NULL
-            __decrrefcount(name2ptr)
-        end
+        name2ptr == C_NULL || __decrrefcount(name2ptr)
     end
 end
 
 function __setvar(interp::TclInterp, name1::StringOrSymbol,
                   name2::TclObj{String}, value, flags::Integer)
+    # We have to protect against interrupts because __newobj and __objptr may
+    # throw an exception.
     name1ptr = C_NULL
     try
         name1ptr = __incrrefcount(__newobj(name1))
         return __setvar(interp, name1ptr, name2.ptr, __objptr(value), flags)
     finally
-        if name1ptr != C_NULL
-            __decrrefcount(name1ptr)
-        end
+        name1ptr == C_NULL || __decrrefcount(name1ptr)
     end
 end
 
 function __setvar(interp::TclInterp, name1::StringOrSymbol,
                   name2::StringOrSymbol, value, flags::Integer)
+    # We have to protect against interrupts because __newobj and __objptr may
+    # throw an exception.
     name1ptr = C_NULL
     name2ptr = C_NULL
     try
@@ -231,12 +240,8 @@ function __setvar(interp::TclInterp, name1::StringOrSymbol,
         name2ptr = __incrrefcount(__newobj(name2))
         return __setvar(interp, name1ptr, name2ptr, __objptr(value), flags)
     finally
-        if name1ptr != C_NULL
-            __decrrefcount(name1ptr)
-        end
-        if name2ptr != C_NULL
-            __decrrefcount(name2ptr)
-        end
+        name1ptr == C_NULL || __decrrefcount(name1ptr)
+        name2ptr == C_NULL || __decrrefcount(name2ptr)
     end
 end
 
