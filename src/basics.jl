@@ -79,21 +79,20 @@ should load Tk extension and create the "." toplevel Tk window.  But see
 function TclInterp(permanent::Bool=false)
     ptr = ccall((:Tcl_CreateInterp, libtcl), Ptr{Void}, ())
     ptr != C_NULL || tclerror("unable to create Tcl interpreter")
+    code = ccall((:Tcl_Init, libtcl), Cint, (TclInterpPtr,), ptr)
+    if code != TCL_OK
+        __deleteinterp(ptr)
+        tclerror("unable to initialize Tcl interpreter")
+    end
     obj = TclInterp(ptr)
     if ! permanent
-        __preserve(ptr)
         finalizer(obj, __finalize)
     end
-    code = ccall((:Tcl_Init, libtcl), Cint, (TclInterpPtr,), ptr)
-    code == TCL_OK || tclerror("unable to initialize Tcl interpreter")
     return obj
 end
 
 function __finalize(interp::TclInterp)
-    # According to Tcl doc. Tcl_Release should be finally called after
-    # Tcl_DeleteInterp.
-    __deleteinterp(interp)
-    __release(interp.ptr)
+    __deleteinterp(interp.ptr)
 end
 
 (interp::TclInterp)(args...; kwds...) = evaluate(interp, args...; kwds...)
@@ -106,14 +105,14 @@ isactive(interp::TclInterp) =
     ccall((:Tcl_InterpActive, libtcl), Cint,
           (TclInterpPtr,), interp.ptr) != zero(Cint)
 
-__preserve(ptr::Ptr{Void}) =
-    ccall((:Tcl_Preserve, libtcl), Void, (Ptr{Void},), ptr)
+__preserve(ptr::Ptr{T}) where {T} =
+    ccall((:Tcl_Preserve, libtcl), Void, (Ptr{T},), ptr)
 
-__release(ptr::Ptr{Void}) =
-    ccall((:Tcl_Release, libtcl), Void, (Ptr{Void},), ptr)
+__release(ptr::Ptr{T}) where {T} =
+    ccall((:Tcl_Release, libtcl), Void, (Ptr{T},), ptr)
 
-__deleteinterp(interp::TclInterp) =
-    ccall((:Tcl_DeleteInterp, libtcl), Void, (TclInterpPtr,), interp.ptr)
+__deleteinterp(intptr::TclInterpPtr) =
+    ccall((:Tcl_DeleteInterp, libtcl), Void, (TclInterpPtr,), intptr)
 
 
 #------------------------------------------------------------------------------
@@ -141,6 +140,9 @@ setresult(interp::TclInterp, arg) = __setresult(interp, __objptr(arg))
 # strings as copies are avoided.  Julia strings are immutable but I am not sure
 # that they are non-volatile, so I prefer to not try using `Tcl_SetResult` and
 # rather use `Tcl_SetObjResult` for any object.
+#
+# `Tcl_SetObjResult` does manage the reference count of its object argument so
+# it is OK to directly pass a temporary object.
 __setresult(interp::TclInterp, objptr::TclObjPtr) =
     ccall((:Tcl_SetObjResult, libtcl), Void, (TclInterpPtr, TclObjPtr),
           interp.ptr, objptr)
@@ -153,11 +155,11 @@ __setresult(interp::TclInterp, objptr::TclObjPtr) =
         ptr = Base.unsafe_convert(Ptr{Cchar}, str)
         nbytes = sizeof(str)
         if Base.containsnul(ptr, nbytes)
-            # String has embedded NULLs, wrap it into a temporary object.
-            temp = __incrrefcount(__newstringobj(ptr, nbytes))
+            # String has embedded NULLs, wrap it into a temporary object.  It
+            # is not necessary to dela with its reference count as
+            # Tcl_SetObjResult takes care of that.
             ccall((:Tcl_SetObjResult, libtcl), Void, (TclInterpPtr, TclObjPtr),
-                  interp.ptr, temp)
-            __decrrefcount(temp)
+                  interp.ptr, __newstringobj(ptr, nbytes))
         else
             ccall((:Tcl_SetResult, libtcl), Void,
                   (TclInterpPtr, Ptr{Cchar}, Ptr{Void}),
@@ -286,8 +288,9 @@ tclcatch(interp::TclInterp, script) = __eval(interp, __objptr(script))
 #    end
 #end
 
-# We use `Tcl_EvalObjEx` and not `Tcl_EvalEx` to evaluate a script
-# because the script may contain embedded nulls.
+# We use `Tcl_EvalObjEx` and not `Tcl_EvalEx` to evaluate a script because the
+# script may contain embedded nulls.  `Tcl_EvalObjEx` does manage the reference
+# count of its object argument.
 
 @inline function __eval(interp::TclInterp, objptr::TclObjPtr)
     flags = TCL_EVAL_GLOBAL
