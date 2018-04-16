@@ -4,12 +4,22 @@
 # Definitions of Tcl constants and types.
 #
 
-# Codes returned by Tcl fucntions.
-const TCL_OK       = convert(Cint, 0)
-const TCL_ERROR    = convert(Cint, 1)
-const TCL_RETURN   = convert(Cint, 2)
-const TCL_BREAK    = convert(Cint, 3)
-const TCL_CONTINUE = convert(Cint, 4)
+"""
+
+`TclStatus` is used to represent a status like `TCL_OK` or `TCL_ERROR` returned
+by Tcl functions.
+
+"""
+struct TclStatus
+    code::Cint
+end
+
+# Status codes returned by Tcl functions.
+const TCL_OK       = TclStatus(0)
+const TCL_ERROR    = TclStatus(1)
+const TCL_RETURN   = TclStatus(2)
+const TCL_BREAK    = TclStatus(3)
+const TCL_CONTINUE = TclStatus(4)
 
 # Flags for settings the result.
 const TCL_VOLATILE = convert(Ptr{Void}, 1)

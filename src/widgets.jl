@@ -47,7 +47,7 @@ macro TkWidget(_cls, cmd, pfx)
         $cls(name::Name = autoname($pfx); kwds...) =
             $cls(getinterp(), name; kwds...)
 
-        (w::$cls)(args...; kwds...) = evaluate(w, args...; kwds...)
+        (w::$cls)(args...; kwds...) = tcleval(w, args...; kwds...)
 
     end : quote
 
@@ -65,7 +65,7 @@ macro TkWidget(_cls, cmd, pfx)
             end
         end
 
-        (w::$cls)(args...; kwds...) = evaluate(w, args...; kwds...)
+        (w::$cls)(args...; kwds...) = tcleval(w, args...; kwds...)
 
     end
 end
@@ -142,7 +142,7 @@ function __createwidget(::Type{T}, interp::TclInterp,
         objptr = __newobj(path)
     else
         # Widget does not already exists, create it with configuration options.
-        if tclcatch(interp, cmd, path; kwds...) != TCL_OK
+        if tcleval(TclStatus, interp, cmd, path; kwds...) != TCL_OK
             tclerror(interp)
         end
         objptr = __getobjresult(interp)
@@ -176,8 +176,8 @@ getpath(root::TkWidget, args::AbstractString...) =
 getpath(arg0::AbstractString, args::AbstractString...) =
    join(((arg0 == "." ? "" : arg0), args...), '.')
 
-evaluate(w::TkWidget, args...; kwds...) =
-    evaluate(getinterp(w), w.obj, args...; kwds...)
+tcleval(w::TkWidget, args...; kwds...) =
+    tcleval(getinterp(w), w.obj, args...; kwds...)
 
 """
 If Tk package is not yet loaded in interpreter `interp` (or in the initial
@@ -193,10 +193,10 @@ terminate the Tcl application.
 """
 function tkstart(interp::TclInterp = getinterp()) :: TclInterp
     if interp("info","exists","tk_version") == 0
-        code = tclcatch(interp, "package", "require", "Tk")
+        code = tcleval(TclStatus, interp, "package", "require", "Tk")
         if code == TCL_OK
-            tclcatch(interp, "package", "require", "Ttk")
-            code = tclcatch(interp, "wm", "withdraw", ".")
+            tcleval(TclStatus, interp, "package", "require", "Ttk")
+            code = tcleval(TclStatus, interp, "wm", "withdraw", ".")
         end
         code == TCL_OK || tclerror(interp)
         resume()
@@ -218,7 +218,7 @@ or `Symbol`.  Another way to change the settings is:
     w[opt2] = val2
 
 """
-configure(w::TkWidget; kwds...) = evaluate(w, "configure"; kwds...)
+configure(w::TkWidget; kwds...) = tcleval(w, "configure"; kwds...)
 
 """
 
@@ -231,11 +231,11 @@ value is:
     w[opt]
 
 """
-cget(w::TkWidget, opt::Name) = evaluate(w, "cget", "-"*string(opt))
+cget(w::TkWidget, opt::Name) = tcleval(w, "cget", "-"*string(opt))
 
 Base.getindex(w::TkWidget, key::Name) = cget(w, key)
 Base.setindex!(w::TkWidget, value, key::Name) =
-    evaluate(w, "configure", "-"*string(key), value)
+    tcleval(w, "configure", "-"*string(key), value)
 
 """
     Tcl.grid(args...; kwds...)

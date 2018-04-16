@@ -4,6 +4,20 @@
 # Implement interface to Tcl interpreter, evaluation of scripts, callbacks...
 #
 
+# Make TclStatus behaves as an integer when used in comparisons with another
+# status or an integer.
+for op in (:(==), :(!=), :(<), :(<=), :(>), :(>=))
+    @eval begin
+        Base.$op(a::TclStatus, b::Integer  ) = $op(a.code, b     )
+        Base.$op(a::Integer,   b::TclStatus) = $op(a     , b.code)
+        Base.$op(a::TclStatus, b::TclStatus) = $op(a.code, b.code)
+    end
+end
+TclStatus(status::TclStatus) = status
+Base.convert(::Type{T}, status::TclStatus) where {T<:Integer} =
+    convert(T, status.code)
+Base.convert(::Type{Integer}, status::TclStatus) = status.code
+
 #------------------------------------------------------------------------------
 # Automatically named objects.
 
@@ -79,8 +93,8 @@ should load Tk extension and create the "." toplevel Tk window.  But see
 function TclInterp(permanent::Bool=false)
     ptr = ccall((:Tcl_CreateInterp, libtcl), Ptr{Void}, ())
     ptr != C_NULL || tclerror("unable to create Tcl interpreter")
-    code = ccall((:Tcl_Init, libtcl), Cint, (TclInterpPtr,), ptr)
-    if code != TCL_OK
+    status = ccall((:Tcl_Init, libtcl), Cint, (TclInterpPtr,), ptr)
+    if status != TCL_OK
         __deleteinterp(ptr)
         tclerror("unable to initialize Tcl interpreter")
     end
@@ -95,7 +109,10 @@ function __finalize(interp::TclInterp)
     __deleteinterp(interp.ptr)
 end
 
-(interp::TclInterp)(args...; kwds...) = evaluate(interp, args...; kwds...)
+(interp::TclInterp)(::Type{T}, args...; kwds...) where {T} =
+    tcleval(T, interp, args...; kwds...)
+
+(interp::TclInterp)(args...; kwds...) = tcleval(interp, args...; kwds...)
 
 isdeleted(interp::TclInterp) =
     ccall((:Tcl_InterpDeleted, libtcl), Cint,
@@ -205,19 +222,20 @@ __getstringresult(intptr::TclInterpPtr) =
 
 """
 ```julia
-tcleval([T,][interp,], arg0, args...; kwds...)
-```
-or
-```julia
-Tcl.evaluate([T,][interp,], arg0, args...; kwds...)
+Tcl.eval([T,][interp,], arg0, args...; kwds...)
 ```
 
-evaluate Tcl script or command with interpreter `interp` (or in the initial
-interpreter if this argument is omitted).  If optional argument `T` is omitted,
-the type of the returned value reflects that of the internal representation of
-the result of the script; otherwise, `T` can be `String` to get the string
-representation of the result of the script or `TclObj` to get a managed Tcl
-object whose value is the result of the script.
+evaluates Tcl script or command with interpreter `interp` (or in the initial
+interpreter if this argument is omitted).
+
+If optional argument `T` is omitted, the type of the returned value reflects
+that of the internal representation of the result of the script; otherwise, `T`
+specifies the type of the result (see [`getvar`](@ref) for details).  As a
+special case, when `T` is `TclStatus`, `Tcl.eval` behaves like the Tcl `catch`
+command: the script is evaluated and no exception get thrown in case of error
+but a status such as `TCL_OK` or `TCL_ERROR` is always returned and
+[`Tcl.getresult`](@ref) can be used to retrieve the value of the result (which
+is an error message if the returned status is `TCL_ERROR`).
 
 If only `arg0` is present, it may be a `TclObjList` which is evaluated as a
 single Tcl command; otherwise, `arg0` is evaluated as a Tcl script and may be
@@ -229,57 +247,36 @@ a list of Tcl objects which is evaluated as a single command.  Any keyword, say
 this list (note the hyphen before the keyword name).  All keywords appear at
 the end of the list in unspecific order.
 
-Use `tclcatch` if you want to avoid throwing errors and `Tcl.getresult` to
-retrieve the result.
+Specify `T` as `TclStatus`, if you want to avoid throwing errors and
+`Tcl.getresult` to retrieve the result.
 
 """
-evaluate(args...; kwds...) = evaluate(getinterp(), args...; kwds...)
+tcleval(args...; kwds...) = tcleval(getinterp(), args...; kwds...)
 
-evaluate(::Type{T}, args...; kwds...) where {T} =
-    evaluate(T, getinterp(), args...; kwds...)
+tcleval(::Type{T}, args...; kwds...) where {T} =
+    tcleval(T, getinterp(), args...; kwds...)
 
-function evaluate(interp::TclInterp, args...; kwds...)
-    tclcatch(interp, args...; kwds...) == TCL_OK || tclerror(interp)
+function tcleval(interp::TclInterp, args...; kwds...)
+    tcleval(TclStatus, interp, args...; kwds...) == TCL_OK || tclerror(interp)
     return getresult(interp)
 end
 
-function evaluate(::Type{T}, interp::TclInterp, args...; kwds...) where {T}
-    tclcatch(interp, args...; kwds...) == TCL_OK || tclerror(interp)
+function tcleval(::Type{T}, interp::TclInterp, args...; kwds...) where {T}
+    tcleval(TclStatus, interp, args...; kwds...) == TCL_OK || tclerror(interp)
     return getresult(T, interp)
 end
 
-const tcleval = evaluate
-
-"""
-```julia
-tclcatch([interp,], args...; kwds...) -> code
-```
-
-evaluates Tcl script or command with interpreter `interp` (or in the initial
-interpreter if this argument is omitted) and return a code like `TCL_OK` or
-`TCL_ERROR` indicating whether the script was successful.  The result of the
-script can be retrieved with `Tcl.getresult`.  See `tcleval` for a description
-of the interpretation of arguments `args...` and keywords `kwds...`.
-
-"""
-tclcatch(args...; kwds...) = tclcatch(getinterp(), args...; kwds...)
-
 # This version gets called when there are any keywords or when zero or more
 # than one argument.
-function tclcatch(interp::TclInterp, args...; kwds...)
+function tcleval(::Type{TclStatus}, interp::TclInterp, args...; kwds...)
     if length(args) < 1
         tclerror("expecting at least one argument")
     end
-    return __evallist(interp, __newlistobj(args...; kwds...))
+    return TclStatus(__evallist(interp, __newlistobj(args...; kwds...)))
 end
 
-tclcatch(interp::TclInterp, script::TclObj{List}) =
-    __evallist(interp, script.ptr)
-
-tclcatch(interp::TclInterp, script) = __eval(interp, __objptr(script))
-
 # FIXME: I do not understand this
-#function tclcatch(interp::TclInterp, script)
+#function tcleval(interp::TclInterp, script)
 #    __currentinterpreter[] = interp
 #    try
 #        return __eval(interp, __objptr(script))
@@ -307,15 +304,15 @@ function __evallist(interp::TclInterp, listptr::TclObjPtr)
     flags = TCL_EVAL_GLOBAL
     objc = Ref{Cint}(0)
     objv = Ref{Ptr{TclObjPtr}}(C_NULL)
-    code = ccall((:Tcl_ListObjGetElements, libtcl), Cint,
-                 (TclInterpPtr, TclObjPtr, Ptr{Cint}, Ptr{Ptr{TclObjPtr}}),
-                 interp.ptr, listptr, objc, objv)
-    if code == TCL_OK
-        code = ccall((:Tcl_EvalObjv, libtcl), Cint,
-                     (TclInterpPtr, Cint, Ptr{TclObjPtr}, Cint),
-                     interp.ptr, objc[], objv[], flags)
+    status = ccall((:Tcl_ListObjGetElements, libtcl), Cint,
+                   (TclInterpPtr, TclObjPtr, Ptr{Cint}, Ptr{Ptr{TclObjPtr}}),
+                   interp.ptr, listptr, objc, objv)
+    if status == TCL_OK
+        status = ccall((:Tcl_EvalObjv, libtcl), Cint,
+                       (TclInterpPtr, Cint, Ptr{TclObjPtr}, Cint),
+                       interp.ptr, objc[], objv[], flags)
     end
-    return code
+    return status
 end
 
 #------------------------------------------------------------------------------
@@ -378,7 +375,7 @@ suspend the processing of events.
 
 Calling `Tcl.resume` is mandatory when Tk extension is loaded.  Thus:
 
-    Tcl.evaluate(interp, "package require Tk")
+    Tcl.tcleval(interp, "package require Tk")
     Tcl.resume()
 
 is the recommended way to load Tk package.  Alternatively:
@@ -478,17 +475,17 @@ function __init__()
     __init_types()
 end
 
-# If the function provides a return code, we do want to return it to the
+# If the function provides a return status, we do want to return it to the
 # interpreter, otherwise TCL_OK is assumed.
-__setcommandresult(interp::TclInterp, result::Tuple{Cint,Any}) =
+__setcommandresult(interp::TclInterp, result::Tuple{TclStatus,Any}) =
     __setcommandresult(interp, result[1], result[2])
 
 __setcommandresult(interp::TclInterp, result) =
     __setcommandresult(interp, TCL_OK, result)
 
-function __setcommandresult(interp::TclInterp, code::Cint, result)
+function __setcommandresult(interp::TclInterp, status::TclStatus, result)
     __setresult(interp, __objptr(result))
-    return code
+    return status
 end
 
 """
@@ -508,10 +505,10 @@ f(name, arg1, arg2, ...)
 
 where all arguments are strings and the first one is the name of the command.
 
-If the result of the call is a tuple of `(code, value)` of respective type
-`(Cint, String)` then `value` is stored as the interpreter result while `code`
-(one of `TCL_OK`, `TCL_ERROR`, `TCL_RETURN`, `TCL_BREAK` or `TCL_CONTINUE`) is
-returned to Tcl.
+If the result of the call is a tuple of `(status, value)` of respective type
+`(TclStatus, String)` then `value` is stored as the interpreter result while
+`status` (one of `TCL_OK`, `TCL_ERROR`, `TCL_RETURN`, `TCL_BREAK` or
+`TCL_CONTINUE`) is returned to Tcl.
 
 The result can also be a scalar value (string or real) which is stored as the
 interpreter result and `TCL_OK` is returned to Tcl.  A result which is
@@ -563,9 +560,9 @@ deletecommand(name::StringOrSymbol) =
     deletecommand(getinterp(), name)
 
 function deletecommand(interp::TclInterp, name::StringOrSymbol)
-    code = ccall((:Tcl_DeleteCommand, libtcl), Cint,
-                 (TclInterpPtr, Cstring), interp.ptr, name)
-    if code != TCL_OK
+    status = ccall((:Tcl_DeleteCommand, libtcl), Cint,
+                   (TclInterpPtr, Cstring), interp.ptr, name)
+    if status != TCL_OK
         tclerror(interp)
     end
     return nothing

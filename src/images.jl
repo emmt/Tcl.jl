@@ -15,7 +15,7 @@ TkImage(interp::TclInterp, kind::Name; kwds...) =
 
 function TkImage(interp::TclInterp, kind::AbstractString,
                  name::AbstractString; kwds...)
-    if tclcatch(interp, "image", "type", name) == TCL_OK
+    if tcleval(TclStatus, interp, "image", "type", name) == TCL_OK
         # Image already exists.
         if kind != getresult(interp)
             tclerror("image exists with a different type")
@@ -36,25 +36,27 @@ function __wrapimage(interp::TclInterp, kind::AbstractString,
 end
 
 (img::TkImage)(args...; kdws...) =
-    evaluate(img.interp, img, args...; kwds...)
+    tcleval(img.interp, img, args...; kwds...)
 
 getinterp(img::TkImage) = img.interp
 
 getpath(img::TkImage) = img.path
 
+# FIXME: extend __objptr and add a TclObj field to the TkImage structure and
+# replace getpath(img) below by just img.
 TclObj(img::T) where {T<:TkImage} = TclObj{T}(__newobj(getpath(img)))
 
 delete(img::TkImage) =
-    evaluate(getinterp(img), "delete", getpath(img))
+    tcleval(getinterp(img), "delete", getpath(img))
 
 getwidth(img::TkImage) =
-    Parse(Int, evaluate(getinterp(img), "width", getpath(img)))
+    tcleval(Int, getinterp(img), "width", getpath(img))
 
 getheight(img::TkImage) =
-    Parse(Int, evaluate(getinterp(img), "height", getpath(img)))
+    tcleval(Int, getinterp(img), "height", getpath(img))
 
 exists(img::TkImage) =
-    tclcatch(getinterp(img), "image", "inuse", getpath(img)) == TCL_OK
+    tcleval(TclStatus, getinterp(img), "image", "inuse", getpath(img)) == TCL_OK
 
 Base.resize!(img::TkImage{:Photo}, args...) =
     setphotosize(getinterp(img), getpath(img), args...)

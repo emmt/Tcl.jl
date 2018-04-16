@@ -12,7 +12,7 @@ using Base.Test
         for (name, value) in (("a", 42), ("1", 1), ("", "empty"),
                               ("π", π), ("w\0rld is beautiful!", true))
             # Check methods.
-            tclcatch("array","unset",name)
+            tcleval(TclStatus, "array", "unset", name)
             Tcl.setvar(name, value)
             if typeof(value) <: Union{String,Integer}
                 @test Tcl.getvar(name) == value
