@@ -314,20 +314,25 @@ lst[sel] # -> Any[3.14159,1]
 Use `push!` (or [`Tcl.lappend!`](@ref]) to append elements to a list.  Use
 [`Tcl.concat`](@ref) to concatenate lists.
 
-See also: [`Tcl.concat`](@ref), [`Tcl.lindex`](@ref), [`Tcl.lappend!`](@ref).
+See also: [`Tcl.concat`](@ref), [`Tcl.lindex`](@ref), [`Tcl.lappend!`](@ref),
+          [`Tcl.exec`](@ref), .
 
 """
 list(args...; kwds...) = TclObj{List}(__newlistobj(args...; kwds...))
 
 function llength(lst::TclObj{List}) :: Int
-    len = Ref{Cint}(0)
-    code = ccall((:Tcl_ListObjLength, libtcl), Cint,
-                 (TclInterpPtr, TclObjPtr, Ptr{Cint}),
-                 C_NULL, lst.ptr, len)
+    code, len = __llength!(C_NULL, lst.ptr)
     code == TCL_OK || Tcl.error("failed to query length of list")
-    return len[]
+    return len
 end
 
+@inline function __llength!(intptr::TclInterpPtr, objptr::TclObjPtr)
+    len = Ref{Cint}()
+    code = ccall((:Tcl_ListObjLength, libtcl), Cint,
+                 (TclInterpPtr, TclObjPtr, Ptr{Cint}),
+                 C_NULL, objptr, len)
+    return code, convert(Int, len[])
+end
 
 """
 ```julia
@@ -376,9 +381,9 @@ Tcl.concat(args...)
 
 concatenates the specified arguments and yields a Tcl list.  Compared to
 `Tcl.list` which considers that each argument correspond to a single item,
-`Tcl.concat` flatten its arguments.
+`Tcl.concat` flatten its arguments and does not accept keyword arguments.
 
-See also: [`Tcl.list`](@ref).
+See also: [`Tcl.list`](@ref), [`Tcl.eval`](@ref).
 
 """
 function concat(args...)
@@ -395,9 +400,28 @@ end
 # __concat(listptr, itr).  Note that `Number` are perfectly usable as iterables
 # but we add them to the union below in order to use a faster method for them.
 
-function __concat(listptr::TclObjPtr,
-                  arg::Union{AbstractString,Char,Symbol,Number})
+function __concat(listptr::TclObjPtr, arg::Union{Char,Symbol,Number})
     __lappend!(listptr, arg)
+end
+
+function __concat(listptr::TclObjPtr, str::AbstractString)
+    # Convert string into a list.
+    objptr = __newobj(str)
+    try
+        code, n = __llength!(C_NULL, objptr)
+        code == TCL_OK || Tcl.error("failed to convert string into a Tcl list")
+        for i in 1:n
+            code, itemptr = __getlistitem(C_NULL, objptr, i)
+            if code == TCL_OK
+                code = __appendlistelement!(listptr, itemptr)
+            end
+            if code != TCL_OK
+                Tcl.error("failed to append element to a Tcl list")
+            end
+        end
+    finally
+        __decrrefcount(objptr)
+    end
 end
 
 function __concat(listptr::TclObjPtr, obj::TclObj)

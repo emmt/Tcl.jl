@@ -222,11 +222,61 @@ __getstringresult(intptr::TclInterpPtr) =
 
 """
 ```julia
-Tcl.eval([T,][interp,], arg0, args...; kwds...)
+Tcl.exec([T,][interp,], args...; kwds...)
 ```
 
-evaluates Tcl script or command with interpreter `interp` (or in the initial
-interpreter if this argument is omitted).
+makes a list of the arguments `args...` and keywords `kwds...` and evaluates it
+as a Tcl script.  See [`Tcl.eval`](@ref) for details about optional result type
+`T` and Tcl interpreter `interp`.  Any specified keyword, say `key=val`, is
+automatically converted in the pair of arguments `-key` `val` in this list
+(note the hyphen before the keyword name).  All keywords appear at the end of
+the list in unspecific order.
+
+Apart from the accounting of keywords, the main difference with `Tcl.eval` is
+that each input argument is interpreted as a different "word" of the Tcl
+script.  Using `Tcl.eval`, `Tcl.exec` is equivalent to:
+
+```julia
+Tcl.eval([T,][interp,], Tcl.list(args...; kwds...))
+```
+
+Specify `T` as `TclStatus`, if you want to avoid throwing errors and call
+`Tcl.getresult` to retrieve the result.
+
+See also: [`Tcl.eval`](@ref), [`Tcl.list`](@ref), [`Tcl.getresult`](@ref).
+
+"""
+exec(args...; kwds...) = exec(getinterp(), args...; kwds...)
+
+exec(::Type{T}, args...; kwds...) where {T} =
+    exec(T, getinterp(), args...; kwds...)
+
+function exec(interp::TclInterp, args...; kwds...)
+    exec(TclStatus, interp, args...; kwds...) == TCL_OK || Tcl.error(interp)
+    return getresult(interp)
+end
+
+function exec(::Type{T}, interp::TclInterp, args...; kwds...) where {T}
+    exec(TclStatus, interp, args...; kwds...) == TCL_OK || Tcl.error(interp)
+    return getresult(T, interp)
+end
+
+# This version gets called when there are any keywords or when zero or more
+# than one argument.
+function exec(::Type{TclStatus}, interp::TclInterp, args...; kwds...)
+    length(args) ≥ 1 || Tcl.error("expecting at least one argument")
+    return TclStatus(__evallist(interp, __newlistobj(args...; kwds...)))
+end
+
+"""
+```julia
+Tcl.eval([T,][interp,], args...)
+```
+
+concatenates arguments `args...` into a list and evaluates it as a Tcl script
+with interpreter `interp` (or in the initial interpreter if this argument is
+omitted).  See [`Tcl.concat`](@ref) for details about how arguments are
+concatenated into a list.
 
 If optional argument `T` is omitted, the type of the returned value reflects
 that of the internal representation of the result of the script; otherwise, `T`
@@ -237,53 +287,52 @@ but a status such as `TCL_OK` or `TCL_ERROR` is always returned and
 [`Tcl.getresult`](@ref) can be used to retrieve the value of the result (which
 is an error message if the returned status is `TCL_ERROR`).
 
-If only `arg0` is present, it may be a `TclObjList` which is evaluated as a
-single Tcl command; otherwise, `arg0` is evaluated as a Tcl script and may be
-anything, like a string or a symbol, that can be converted into a `TclObj`.
-
-If keywords or other arguments than `arg0` are present, they are used to build
-a list of Tcl objects which is evaluated as a single command.  Any keyword, say
-`key=val`, is automatically converted in the pair of arguments `-key` `val` in
-this list (note the hyphen before the keyword name).  All keywords appear at
-the end of the list in unspecific order.
+Use `Tcl.exec` if you want to consider each argument in `args...` as a distinct
+command argument.
 
 Specify `T` as `TclStatus`, if you want to avoid throwing errors and
 `Tcl.getresult` to retrieve the result.
 
+See also: [`Tcl.concat`](@ref), [`Tcl.exec`](@ref), [`getvar`](@ref).
+
 """
-Tcl.eval(args...; kwds...) = Tcl.eval(getinterp(), args...; kwds...)
+Tcl.eval(args...) = Tcl.eval(getinterp(), args...)
 
-Tcl.eval(::Type{T}, args...; kwds...) where {T} =
-    Tcl.eval(T, getinterp(), args...; kwds...)
+Tcl.eval(::Type{T}, args...) where {T} =
+    Tcl.eval(T, getinterp(), args...)
 
-function Tcl.eval(interp::TclInterp, args...; kwds...)
-    Tcl.eval(TclStatus, interp, args...; kwds...) == TCL_OK || Tcl.error(interp)
+function Tcl.eval(interp::TclInterp, args...)
+    Tcl.eval(TclStatus, interp, args...) == TCL_OK || Tcl.error(interp)
     return getresult(interp)
 end
 
-function Tcl.eval(::Type{T}, interp::TclInterp, args...; kwds...) where {T}
-    Tcl.eval(TclStatus, interp, args...; kwds...) == TCL_OK || Tcl.error(interp)
+function Tcl.eval(::Type{T}, interp::TclInterp, args...) where {T}
+    Tcl.eval(TclStatus, interp, args...) == TCL_OK || Tcl.error(interp)
     return getresult(T, interp)
 end
 
 # This version gets called when there are any keywords or when zero or more
 # than one argument.
-function Tcl.eval(::Type{TclStatus}, interp::TclInterp, args...; kwds...)
-    if length(args) < 1
-        Tcl.error("expecting at least one argument")
+function Tcl.eval(::Type{TclStatus}, interp::TclInterp, args...)
+    length(args) ≥ 1 || Tcl.error("missing script to evaluate")
+    listptr = __newlistobj()
+    try
+        for arg in args
+            __concat(listptr, arg)
+        end
+        return TclStatus(__evallist(interp, listptr))
+    finally
+        __decrrefcount(listptr)
     end
-    return TclStatus(__evallist(interp, __newlistobj(args...; kwds...)))
 end
 
-# FIXME: I do not understand this
-#function Tcl.eval(interp::TclInterp, script)
-#    __currentinterpreter[] = interp
-#    try
-#        return __eval(interp, __objptr(script))
-#    finally
-#        __currentinterpreter[] = __initialinterpreter[]
-#    end
-#end
+# Concatenating a list yields the same list, the following version avoid this
+# extra work.
+function Tcl.eval(::Type{TclStatus}, interp::TclInterp, cmd::TclObj)
+    if __objtype(cmd.ptr) == List
+        return TclStatus(__evallist(interp, cmd.ptr))
+    end
+end
 
 # We use `Tcl_EvalObjEx` and not `Tcl_EvalEx` to evaluate a script because the
 # script may contain embedded nulls.  `Tcl_EvalObjEx` does manage the reference

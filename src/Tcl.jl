@@ -121,6 +121,7 @@ import .Impl:
     cget,
     concat,
     configure,
+    exec,
     exists,
     getinterp,
     getparent,
