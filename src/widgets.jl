@@ -4,15 +4,6 @@
 # Implement Tk (and TTk) widgets
 #
 
-# export
-#     cget,
-#     configure,
-#     getparent,
-#     getpath,
-#     grid,
-#     pack,
-#     place,
-
 """
     @TkWidget cls cmd pfx
 
@@ -47,7 +38,7 @@ macro TkWidget(_cls, cmd, pfx)
         $cls(name::Name = autoname($pfx); kwds...) =
             $cls(getinterp(), name; kwds...)
 
-        (w::$cls)(args...; kwds...) = tcleval(w, args...; kwds...)
+        (w::$cls)(args...; kwds...) = Tcl.eval(w, args...; kwds...)
 
     end : quote
 
@@ -65,7 +56,7 @@ macro TkWidget(_cls, cmd, pfx)
             end
         end
 
-        (w::$cls)(args...; kwds...) = tcleval(w, args...; kwds...)
+        (w::$cls)(args...; kwds...) = Tcl.eval(w, args...; kwds...)
 
     end
 end
@@ -111,7 +102,7 @@ end
 # Private method called to check/build the path of a child widget.
 function __widgetpath(parent::TkWidget, child::String) :: String
     if search(child, '.') != 0
-        tclerror("illegal window name \"$(child)\"")
+        Tcl.error("illegal window name \"$(child)\"")
     end
     parentpath = getpath(parent)
     return (parentpath == "." ? "." : parentpath*".")*child
@@ -120,10 +111,10 @@ end
 # Private method called to check the path of a root widget.
 function __widgetpath(path::String) :: String
     if path[1] != '.'
-        tclerror("root window name must start with a dot")
+        Tcl.error("root window name must start with a dot")
     end
     if search(path, '.', 2) != 0
-        tclerror("illegal root window name \"$(path)\"")
+        Tcl.error("illegal root window name \"$(path)\"")
     end
     return path
 end
@@ -142,8 +133,8 @@ function __createwidget(::Type{T}, interp::TclInterp,
         objptr = __newobj(path)
     else
         # Widget does not already exists, create it with configuration options.
-        if tcleval(TclStatus, interp, cmd, path; kwds...) != TCL_OK
-            tclerror(interp)
+        if Tcl.eval(TclStatus, interp, cmd, path; kwds...) != TCL_OK
+            Tcl.error(interp)
         end
         objptr = __getobjresult(interp)
     end
@@ -176,8 +167,8 @@ getpath(root::TkWidget, args::AbstractString...) =
 getpath(arg0::AbstractString, args::AbstractString...) =
    join(((arg0 == "." ? "" : arg0), args...), '.')
 
-tcleval(w::TkWidget, args...; kwds...) =
-    tcleval(getinterp(w), w.obj, args...; kwds...)
+Tcl.eval(w::TkWidget, args...; kwds...) =
+    Tcl.eval(getinterp(w), w.obj, args...; kwds...)
 
 """
 If Tk package is not yet loaded in interpreter `interp` (or in the initial
@@ -193,12 +184,12 @@ terminate the Tcl application.
 """
 function tkstart(interp::TclInterp = getinterp()) :: TclInterp
     if interp("info","exists","tk_version") == 0
-        code = tcleval(TclStatus, interp, "package", "require", "Tk")
+        code = Tcl.eval(TclStatus, interp, "package", "require", "Tk")
         if code == TCL_OK
-            tcleval(TclStatus, interp, "package", "require", "Ttk")
-            code = tcleval(TclStatus, interp, "wm", "withdraw", ".")
+            Tcl.eval(TclStatus, interp, "package", "require", "Ttk")
+            code = Tcl.eval(TclStatus, interp, "wm", "withdraw", ".")
         end
-        code == TCL_OK || tclerror(interp)
+        code == TCL_OK || Tcl.error(interp)
         resume()
     end
     return interp
@@ -218,7 +209,7 @@ or `Symbol`.  Another way to change the settings is:
     w[opt2] = val2
 
 """
-configure(w::TkWidget; kwds...) = tcleval(w, "configure"; kwds...)
+configure(w::TkWidget; kwds...) = Tcl.eval(w, "configure"; kwds...)
 
 """
 
@@ -231,11 +222,11 @@ value is:
     w[opt]
 
 """
-cget(w::TkWidget, opt::Name) = tcleval(w, "cget", "-"*string(opt))
+cget(w::TkWidget, opt::Name) = Tcl.eval(w, "cget", "-"*string(opt))
 
 Base.getindex(w::TkWidget, key::Name) = cget(w, key)
 Base.setindex!(w::TkWidget, value, key::Name) =
-    tcleval(w, "configure", "-"*string(key), value)
+    Tcl.eval(w, "configure", "-"*string(key), value)
 
 """
     Tcl.grid(args...; kwds...)
@@ -265,7 +256,7 @@ for cmd in (:grid, :pack, :place)
                     return interp($(string(cmd)), args...; kwds...)
                 end
             end
-            tclerror("missing a widget argument")
+            Tcl.error("missing a widget argument")
         end
     end
 end

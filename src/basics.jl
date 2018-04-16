@@ -68,7 +68,7 @@ interp("set", "x", 42)
 ```
 
 which yields the value `42`.  See methods [`Tcl.evaluate`](@ref) or
-[`tcleval`](@ref) for more details about script evaluation.
+[`Tcl.eval`](@ref) for more details about script evaluation.
 
 The object can also be used as an array to access global Tcl variables (the
 variable name can be specified as a string or as a symbol):
@@ -92,11 +92,11 @@ should load Tk extension and create the "." toplevel Tk window.  But see
 """
 function TclInterp(permanent::Bool=false)
     ptr = ccall((:Tcl_CreateInterp, libtcl), Ptr{Void}, ())
-    ptr != C_NULL || tclerror("unable to create Tcl interpreter")
+    ptr != C_NULL || Tcl.error("unable to create Tcl interpreter")
     status = ccall((:Tcl_Init, libtcl), Cint, (TclInterpPtr,), ptr)
     if status != TCL_OK
         __deleteinterp(ptr)
-        tclerror("unable to initialize Tcl interpreter")
+        Tcl.error("unable to initialize Tcl interpreter")
     end
     obj = TclInterp(ptr)
     if ! permanent
@@ -110,9 +110,9 @@ function __finalize(interp::TclInterp)
 end
 
 (interp::TclInterp)(::Type{T}, args...; kwds...) where {T} =
-    tcleval(T, interp, args...; kwds...)
+    Tcl.eval(T, interp, args...; kwds...)
 
-(interp::TclInterp)(args...; kwds...) = tcleval(interp, args...; kwds...)
+(interp::TclInterp)(args...; kwds...) = Tcl.eval(interp, args...; kwds...)
 
 isdeleted(interp::TclInterp) =
     ccall((:Tcl_InterpDeleted, libtcl), Cint,
@@ -251,32 +251,32 @@ Specify `T` as `TclStatus`, if you want to avoid throwing errors and
 `Tcl.getresult` to retrieve the result.
 
 """
-tcleval(args...; kwds...) = tcleval(getinterp(), args...; kwds...)
+Tcl.eval(args...; kwds...) = Tcl.eval(getinterp(), args...; kwds...)
 
-tcleval(::Type{T}, args...; kwds...) where {T} =
-    tcleval(T, getinterp(), args...; kwds...)
+Tcl.eval(::Type{T}, args...; kwds...) where {T} =
+    Tcl.eval(T, getinterp(), args...; kwds...)
 
-function tcleval(interp::TclInterp, args...; kwds...)
-    tcleval(TclStatus, interp, args...; kwds...) == TCL_OK || tclerror(interp)
+function Tcl.eval(interp::TclInterp, args...; kwds...)
+    Tcl.eval(TclStatus, interp, args...; kwds...) == TCL_OK || Tcl.error(interp)
     return getresult(interp)
 end
 
-function tcleval(::Type{T}, interp::TclInterp, args...; kwds...) where {T}
-    tcleval(TclStatus, interp, args...; kwds...) == TCL_OK || tclerror(interp)
+function Tcl.eval(::Type{T}, interp::TclInterp, args...; kwds...) where {T}
+    Tcl.eval(TclStatus, interp, args...; kwds...) == TCL_OK || Tcl.error(interp)
     return getresult(T, interp)
 end
 
 # This version gets called when there are any keywords or when zero or more
 # than one argument.
-function tcleval(::Type{TclStatus}, interp::TclInterp, args...; kwds...)
+function Tcl.eval(::Type{TclStatus}, interp::TclInterp, args...; kwds...)
     if length(args) < 1
-        tclerror("expecting at least one argument")
+        Tcl.error("expecting at least one argument")
     end
     return TclStatus(__evallist(interp, __newlistobj(args...; kwds...)))
 end
 
 # FIXME: I do not understand this
-#function tcleval(interp::TclInterp, script)
+#function Tcl.eval(interp::TclInterp, script)
 #    __currentinterpreter[] = interp
 #    try
 #        return __eval(interp, __objptr(script))
@@ -344,15 +344,15 @@ getinterp() = __initialinterpreter[]
 # Exceptions
 
 """
-    tclerror(arg)
+    Tcl.error(arg)
 
 throws a `TclError` exception, argument `arg` can be the error message as a
 string or a Tcl interpreter (in which case the error message is assumed to be
 the current result of the Tcl interpreter).
 
 """
-tclerror(msg::AbstractString) = throw(TclError(string(msg)))
-tclerror(interp::TclInterp) = tclerror(getresult(String, interp))
+Tcl.error(msg::AbstractString) = throw(TclError(string(msg)))
+Tcl.error(interp::TclInterp) = Tcl.error(getresult(String, interp))
 
 """
     geterrmsg(ex)
@@ -375,7 +375,7 @@ suspend the processing of events.
 
 Calling `Tcl.resume` is mandatory when Tk extension is loaded.  Thus:
 
-    Tcl.tcleval(interp, "package require Tk")
+    Tcl.eval(interp, "package require Tk")
     Tcl.resume()
 
 is the recommended way to load Tk package.  Alternatively:
@@ -540,7 +540,7 @@ function createcommand(interp::TclInterp, name::String, f::Function)
                 __releaseobject_ref[])
     if ptr == C_NULL
         release(f)
-        tclerror(interp)
+        Tcl.error(interp)
     end
     return name
 end
@@ -563,7 +563,7 @@ function deletecommand(interp::TclInterp, name::StringOrSymbol)
     status = ccall((:Tcl_DeleteCommand, libtcl), Cint,
                    (TclInterpPtr, Cstring), interp.ptr, name)
     if status != TCL_OK
-        tclerror(interp)
+        Tcl.error(interp)
     end
     return nothing
 end

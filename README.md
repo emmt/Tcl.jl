@@ -11,7 +11,7 @@ This package provides an optimized Julia interface to
 * As many Tcl interpreters as needed can be started.  At least one is always
   there and serves as the default interpreter.
 
-* Reading/writting a Tcl variable is as easy as:
+* Reading/writing a Tcl variable is as easy as:
 
   ```julia
   interp[var]             # read Tcl variable value
@@ -24,19 +24,27 @@ This package provides an optimized Julia interface to
 
 * Consistent conversion between Tcl internal representation of values and Julia
   types.  That is to say, evaluating a Tcl script or getting the value of a Tcl
-  variable not necessarily yield a string.  For instance, a Tcl float yields a
+  variable not necessarily yields a string.  For instance, a Tcl float yields a
   Julia float, a list of integers yields a Julia vector of integers, a list of
   lists yields a vector of vectors, and so on.  Of course, forcing conversion
   to strings is still possible (and easy).
 
-* By avoing string conversion, faster communication with Tcl/Tk is achieved.
+* By avoiding systematic string conversion, faster communication with Tcl/Tk is
+  achieved.
 
 * Tcl objects can be manipulated directly in Julia and may be converted to
   Julia values (strings, integers, floats or vectors of these).
 
 * Scripts can be strings but can also be expressed using a syntax which is
   closer to Julia.  For instance, keywords are converted to Tcl options.
-  Scripts can also be built as efficient lists of Tcl objects.
+  Scripts can also be built as efficient lists of Tcl objects.  Evaluating
+  a script is done by:
+
+  ```julia
+  Tcl.eval(script)         # evaluate Tcl script in initial interpreter
+  Tcl.eval(interp, script) # evaluate Tcl script with specific interpreter
+  interp(script)           # idem
+  ```
 
 * A number of wrappers are provided to symplify the use of widgets.
 

@@ -77,14 +77,14 @@ getvar(interp::TclInterp, args...) = getvar(Any, interp, args...)
 
 function getvar(::Type{T}, interp::TclInterp, name::Name) where {T}
     ptr = __getvar(interp, name, C_NULL, VARIABLE_FLAGS)
-    ptr != C_NULL || tclerror(interp)
+    ptr != C_NULL || Tcl.error(interp)
     return __objptr_to(T, interp, ptr)
 end
 
 function getvar(::Type{T}, interp::TclInterp,
                 name1::Name, name2::Name) where {T}
     ptr = __getvar(interp, name1, name2, VARIABLE_FLAGS)
-    ptr != C_NULL || tclerror(interp)
+    ptr != C_NULL || Tcl.error(interp)
     return __objptr_to(T, interp, ptr)
 end
 
@@ -158,13 +158,13 @@ setvar(args...) = setvar(getinterp(), args...)
 
 function setvar(interp::TclInterp, name::Name, value)
     ptr = __setvar(interp, name, value, VARIABLE_FLAGS)
-    ptr != C_NULL || tclerror(interp)
+    ptr != C_NULL || Tcl.error(interp)
     return nothing
 end
 
 function setvar(interp::TclInterp, name1::Name, name2::Name, value)
     ptr = __setvar(interp, name1, name2, value, VARIABLE_FLAGS)
-    ptr != C_NULL || tclerror(interp)
+    ptr != C_NULL || Tcl.error(interp)
     return nothing
 end
 
@@ -272,7 +272,7 @@ function unsetvar(interp::TclInterp, name::Name; nocomplain::Bool=false)
     flags = (nocomplain ? TCL_GLOBAL_ONLY : (TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG))
     code = __unsetvar(interp, __string(name), flags)
     if code != TCL_OK && ! nocomplain
-        tclerror(interp)
+        Tcl.error(interp)
     end
     return nothing
 end
@@ -282,7 +282,7 @@ function unsetvar(interp::TclInterp, name1::Name, name2::Name;
     flags = (nocomplain ? TCL_GLOBAL_ONLY : (TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG))
     code = __unsetvar(interp, __string(name1), __string(name2), flags)
     if code != TCL_OK && ! nocomplain
-        tclerror(interp)
+        Tcl.error(interp)
     end
     return nothing
 end

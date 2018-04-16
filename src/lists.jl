@@ -127,7 +127,7 @@ function __newlistobj()
     objptr = ccall((:Tcl_NewListObj, libtcl), TclObjPtr,
                    (Cint, Ptr{TclObjPtr}), 0, C_NULL)
     if objptr == C_NULL
-        tclerror("failed to create an empty Tcl list")
+        Tcl.error("failed to create an empty Tcl list")
     end
     return objptr
 end
@@ -155,7 +155,7 @@ __appendlistelement!(listptr::TclObjPtr, itemptr::TclObjPtr) =
 function __lappend!(listptr::TclObjPtr, item)
     code = __appendlistelement!(listptr, __objptr(item))
     if code != TCL_OK
-        tclerror("failed to append a new item to the Tcl list")
+        Tcl.error("failed to append a new item to the Tcl list")
     end
     nothing
 end
@@ -170,7 +170,7 @@ function __lappendoption!(listptr::TclObjPtr, key::String, val)
         code = __appendlistelement!(listptr, __objptr(val))
     end
     if code != TCL_OK
-        tclerror("failed to append a new option to the Tcl list")
+        Tcl.error("failed to append a new option to the Tcl list")
     end
     nothing
 end
@@ -324,14 +324,14 @@ function llength(lst::TclObj{List}) :: Int
     code = ccall((:Tcl_ListObjLength, libtcl), Cint,
                  (TclInterpPtr, TclObjPtr, Ptr{Cint}),
                  C_NULL, lst.ptr, len)
-    code == TCL_OK || tclerror("failed to query length of list")
+    code == TCL_OK || Tcl.error("failed to query length of list")
     return len[]
 end
 
 
 """
 ```julia
-lappend!(lst, args...; kwds...)
+Tcl.lappend!(lst, args...; kwds...)
 ```
 or
 ```julia
@@ -345,7 +345,7 @@ keyword name).  To allow for option names that are Julia keywords, a leading
 underscore is stripped, if any, in `key`; for instance:
 
 ```julia
-lappend!(lst, _in="something")
+Tcl.lappend!(lst, _in="something")
 ```
 
 appends `"-in"` and `something` to the list `lst`.
@@ -424,7 +424,7 @@ end
 
 """
 ```julia
-lindex([T,] [interp,] list, i)
+Tcl.lindex([T,] [interp,] list, i)
 ```
 
 yields the element at index `i` in Tcl list `list`.  An *empty* result is
@@ -484,7 +484,7 @@ __missing_item(::Type{Char}) = '\0'
 function __lindex(list::TclObj{List}, i::Integer)
     code, objptr = __getlistitem(C_NULL, list.ptr, i)
     if code != TCL_OK
-        tclerror("failed to get Tcl list element at index $i")
+        Tcl.error("failed to get Tcl list element at index $i")
     end
     return objptr
 end
@@ -492,7 +492,7 @@ end
 function __lindex(interp::TclInterp, list::TclObj{List}, i::Integer)
     code, objptr = __getlistitem(interp.ptr, list.ptr, i)
     if code != TCL_OK
-        tclerror(interp)
+        Tcl.error(interp)
     end
     return objptr
 end
@@ -521,7 +521,7 @@ function __getlistelements(intptr::TclInterpPtr, listptr::TclObjPtr)
         else
             msg = __getstringresult(intptr)
         end
-        tclerror(msg)
+        Tcl.error(msg)
     end
     return convert(Int, objc[]), objv[]
 end

@@ -74,7 +74,7 @@ function __newobj(value::Bool)
     objptr = ccall((:Tcl_NewBooleanObj, libtcl), TclObjPtr,
                    (Cint,), (value ? one(Cint) : zero(Cint)))
     if objptr == C_NULL
-        tclerror("failed to create a Tcl boolean object")
+        Tcl.error("failed to create a Tcl boolean object")
     end
     return objptr
 end
@@ -99,7 +99,7 @@ for Tj in (Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
         function __newobj(value::$Tj)
             objptr = ccall($tup, TclObjPtr, ($Tc,), value)
             if objptr == C_NULL
-                tclerror("failed to create a Tcl integer object")
+                Tcl.error("failed to create a Tcl integer object")
             end
             return objptr
         end
@@ -124,7 +124,7 @@ function __newobj(value::Cdouble)
     objptr = ccall((:Tcl_NewDoubleObj, libtcl), TclObjPtr,
                    (Cdouble,), value)
     if objptr == C_NULL
-        tclerror("failed to create a Tcl floating-point object")
+        Tcl.error("failed to create a Tcl floating-point object")
     end
     return objptr
 end
@@ -152,7 +152,7 @@ function __newobj(str::AbstractString, nbytes::Integer = sizeof(str))
     objptr = ccall((:Tcl_NewStringObj, libtcl), TclObjPtr,
                    (Ptr{Cchar}, Cint), str, nbytes)
     if objptr == C_NULL
-        tclerror("failed to create a Tcl string object")
+        Tcl.error("failed to create a Tcl string object")
     end
     return objptr
 end
@@ -161,7 +161,7 @@ function __newstringobj(ptr::Ptr{T}, nbytes::Integer) where {T<:Byte}
     objptr = ccall((:Tcl_NewStringObj, libtcl), TclObjPtr,
                    (Ptr{T}, Cint), ptr, nbytes)
     if objptr == C_NULL
-        tclerror("failed to create a Tcl string object")
+        Tcl.error("failed to create a Tcl string object")
     end
     return objptr
 end
@@ -194,7 +194,7 @@ TclObj(::T) where T = __unsupported_object_type(T)
 __newobj(::T) where T = __unsupported_object_type(T)
 
 __unsupported_object_type(::Type{T}) where T =
-    tclerror("making a Tcl object for type $T is not supported")
+    Tcl.error("making a Tcl object for type $T is not supported")
 
 
 # Arrays of bytes.
@@ -208,7 +208,7 @@ function __newbytearrayobj(ptr::Ptr{T}, nbytes::Integer) where {T<:Byte}
     objptr = ccall((:Tcl_NewByteArrayObj, libtcl), TclObjPtr,
           (Ptr{T}, Cint), ptr, nbytes)
     if objptr == C_NULL
-        tclerror("failed to create a Tcl byte array object")
+        Tcl.error("failed to create a Tcl byte array object")
     end
     return objptr
 end
@@ -361,7 +361,7 @@ function __init_types(bynames::Bool = false)
         wideint_obj = TclObj(WideInt(0))
         double_obj = TclObj(Cdouble(0))
         string_obj = TclObj("")
-        list_obj = Tcl.list(int_obj, wideint_obj)
+        list_obj = list(int_obj, wideint_obj)
         bool_obj = TclObj(true)
         __int_type[]     = __getobjtype(int_obj)
         __wideint_type[] = __getobjtype(wideint_obj)
@@ -373,10 +373,10 @@ function __init_types(bynames::Bool = false)
 end
 
 __illegal_null_object_pointer() =
-    tclerror("illegal NULL Tcl object pointer")
+    Tcl.error("illegal NULL Tcl object pointer")
 
 __illegal_null_string_pointer() =
-    tclerror("illegal NULL C-string pointer")
+    Tcl.error("illegal NULL C-string pointer")
 
 """
 ```julia
@@ -440,7 +440,7 @@ function __objptr_to(::Type{String}, objptr::TclObjPtr)
     strptr = ccall((:Tcl_GetStringFromObj, libtcl), Ptr{UInt8},
                    (TclObjPtr, Ptr{Cint}), objptr, lenref)
     if strptr == C_NULL
-        tclerror("failed to retrieve string representation of Tcl object")
+        Tcl.error("failed to retrieve string representation of Tcl object")
     end
     return unsafe_string(strptr, lenref[])
 end
@@ -454,10 +454,10 @@ function __objptr_to(::Type{Char}, objptr::TclObjPtr)
     strptr = ccall((:Tcl_GetStringFromObj, libtcl), Ptr{UInt8},
                    (TclObjPtr, Ptr{Cint}), objptr, lenref)
     if strptr == C_NULL
-        tclerror("failed to retrieve string representation of Tcl object")
+        Tcl.error("failed to retrieve string representation of Tcl object")
     end
     if lenref[] != 1
-        tclerror("failed to convert Tcl object to a single character")
+        Tcl.error("failed to convert Tcl object to a single character")
     end
     return unsafe_string(strptr, 1)[1]
 end
@@ -465,13 +465,13 @@ end
 function __objptr_to(::Type{Bool}, interp::TclInterp,
                      objptr::TclObjPtr) :: Bool
     code, value = __get_boolean_from_obj(interp.ptr, objptr)
-    code == TCL_OK || tclerror(interp)
+    code == TCL_OK || Tcl.error(interp)
     return (value != zero(value))
 end
 
 function __objptr_to(::Type{Bool}, objptr::TclObjPtr) :: Bool
     code, value = __get_boolean_from_obj(C_NULL, objptr)
-    code == TCL_OK || tclerror("failed to convert Tcl object to a boolean")
+    code == TCL_OK || Tcl.error("failed to convert Tcl object to a boolean")
     return (value != zero(value))
 end
 
@@ -490,13 +490,13 @@ for Tj in (Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
                 function __objptr_to(::Type{$Tj}, interp::TclInterp,
                                      objptr::TclObjPtr) :: $Tj
                     code, value = $f(interp.ptr, objptr)
-                    code == TCL_OK || tclerror(interp)
+                    code == TCL_OK || Tcl.error(interp)
                     return $result
                 end
 
                 function __objptr_to(::Type{$Tj}, objptr::TclObjPtr) :: $Tj
                     code, value = $f(C_NULL, objptr)
-                    code == TCL_OK || tclerror($msg)
+                    code == TCL_OK || Tcl.error($msg)
                     return $result
                 end
 
@@ -509,13 +509,13 @@ end
 function __objptr_to(::Type{Cdouble}, interp::TclInterp,
                      objptr::TclObjPtr) :: Cdouble
     code, value = __get_double_from_obj(interp.ptr, objptr)
-    code == TCL_OK || tclerror(interp)
+    code == TCL_OK || Tcl.error(interp)
     return value
 end
 
 function __objptr_to(::Type{Cdouble}, objptr::TclObjPtr) :: Cdouble
     code, value = __get_double_from_obj(C_NULL, objptr)
-    code == TCL_OK || tclerror("failed to convert Tcl object to a float")
+    code == TCL_OK || Tcl.error("failed to convert Tcl object to a float")
     return value
 end
 

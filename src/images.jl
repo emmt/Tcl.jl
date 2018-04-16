@@ -11,20 +11,20 @@ TkImage(obj::TkObject, kind::Name, args...; kwds...) =
 
 TkImage(interp::TclInterp, kind::Name; kwds...) =
     __wrapimage(interp, kind,
-                tcleval(interp, "image", "create", kind; kwds...))
+                Tcl.eval(interp, "image", "create", kind; kwds...))
 
 function TkImage(interp::TclInterp, kind::AbstractString,
                  name::AbstractString; kwds...)
-    if tcleval(TclStatus, interp, "image", "type", name) == TCL_OK
+    if Tcl.eval(TclStatus, interp, "image", "type", name) == TCL_OK
         # Image already exists.
         if kind != getresult(interp)
-            tclerror("image exists with a different type")
+            Tcl.error("image exists with a different type")
         end
         if length(kwds) > 0
-            tcleval(interp, name, "configure"; kwds...)
+            Tcl.eval(interp, name, "configure"; kwds...)
         end
     else
-        name = tcleval(interp, "image", "create", kind, name; kwds...)
+        name = Tcl.eval(interp, "image", "create", kind, name; kwds...)
     end
     return __wrapimage(interp, kind, name)
 end
@@ -36,7 +36,7 @@ function __wrapimage(interp::TclInterp, kind::AbstractString,
 end
 
 (img::TkImage)(args...; kdws...) =
-    tcleval(img.interp, img, args...; kwds...)
+    Tcl.eval(img.interp, img, args...; kwds...)
 
 getinterp(img::TkImage) = img.interp
 
@@ -47,16 +47,16 @@ getpath(img::TkImage) = img.path
 TclObj(img::T) where {T<:TkImage} = TclObj{T}(__newobj(getpath(img)))
 
 delete(img::TkImage) =
-    tcleval(getinterp(img), "delete", getpath(img))
+    Tcl.eval(getinterp(img), "delete", getpath(img))
 
 getwidth(img::TkImage) =
-    tcleval(Int, getinterp(img), "width", getpath(img))
+    Tcl.eval(Int, getinterp(img), "width", getpath(img))
 
 getheight(img::TkImage) =
-    tcleval(Int, getinterp(img), "height", getpath(img))
+    Tcl.eval(Int, getinterp(img), "height", getpath(img))
 
 exists(img::TkImage) =
-    tcleval(TclStatus, getinterp(img), "image", "inuse", getpath(img)) == TCL_OK
+    Tcl.eval(TclStatus, getinterp(img), "image", "inuse", getpath(img)) == TCL_OK
 
 Base.resize!(img::TkImage{:Photo}, args...) =
     setphotosize(getinterp(img), getpath(img), args...)
@@ -206,7 +206,7 @@ function findphoto(interp::TclInterp, name::AbstractString)
     imgptr = ccall((:Tk_FindPhoto, libtk), Ptr{Void},
                    (TclInterpPtr, Ptr{UInt8}), interp.ptr, name)
     if imgptr == C_NULL
-        tclerror("invalid image name")
+        Tcl.error("invalid image name")
     end
     return imgptr
 end
@@ -356,7 +356,7 @@ function __setphotosize(interp::TclInterp, imgptr::Ptr{Void},
     code = ccall((:Tk_PhotoSetSize, libtk), Cint,
                  (TclInterpPtr, Ptr{Void}, Cint, Cint),
                  interp.ptr, imgptr, width, height)
-    code == TCL_OK || tclerror(tclresult(interp))
+    code == TCL_OK || Tcl.error(tclresult(interp))
     return nothing
 end
 
@@ -365,7 +365,7 @@ function __expandphotosize(interp::TclInterp, imgptr::Ptr{Void},
     code = ccall((:Tk_PhotoExpand, libtk), Cint,
                  (TclInterpPtr, Ptr{Void}, Cint, Cint),
                  interp.ptr, imgptr, width, height)
-    code == TCL_OK || tclerror(tclresult(interp))
+    code == TCL_OK || Tcl.error(tclresult(interp))
     return nothing
 end
 
@@ -401,7 +401,7 @@ function __setpixels(interp::TclInterp, name::AbstractString,
                   Cint, Cint, Cint, Cint, Cint),
                  interp.ptr, imgptr, &block, x, y,
                  block.width, block.height, composite)
-    code == TCL_OK || tclerror(tclresult(interp))
+    code == TCL_OK || Tcl.error(tclresult(interp))
 
     if false
         # Notify that image has changed (FIXME: not needed as it is done by
