@@ -91,11 +91,11 @@ should load Tk extension and create the "." toplevel Tk window.  But see
 
 """
 function TclInterp(permanent::Bool=false)
-    ptr = ccall((:Tcl_CreateInterp, libtcl), Ptr{Void}, ())
-    ptr != C_NULL || Tcl.error("unable to create Tcl interpreter")
-    status = ccall((:Tcl_Init, libtcl), Cint, (TclInterpPtr,), ptr)
-    if status != TCL_OK
-        __deleteinterp(ptr)
+    if (ptr = Tcl_CreateInterp()) == C_NULL
+        Tcl.error("unable to create Tcl interpreter")
+    end
+    if Tcl_Init(ptr) != TCL_OK
+        Tcl_DeleteInterp(ptr)
         Tcl.error("unable to initialize Tcl interpreter")
     end
     obj = TclInterp(ptr)
@@ -106,7 +106,7 @@ function TclInterp(permanent::Bool=false)
 end
 
 function __finalize(interp::TclInterp)
-    __deleteinterp(interp.ptr)
+    Tcl_DeleteInterp(interp.ptr)
 end
 
 (interp::TclInterp)(::Type{T}, args...; kwds...) where {T} =
@@ -114,22 +114,8 @@ end
 
 (interp::TclInterp)(args...; kwds...) = Tcl.eval(interp, args...; kwds...)
 
-isdeleted(interp::TclInterp) =
-    ccall((:Tcl_InterpDeleted, libtcl), Cint,
-          (TclInterpPtr,), interp.ptr) != zero(Cint)
-
-isactive(interp::TclInterp) =
-    ccall((:Tcl_InterpActive, libtcl), Cint,
-          (TclInterpPtr,), interp.ptr) != zero(Cint)
-
-__preserve(ptr::Ptr{T}) where {T} =
-    ccall((:Tcl_Preserve, libtcl), Void, (Ptr{T},), ptr)
-
-__release(ptr::Ptr{T}) where {T} =
-    ccall((:Tcl_Release, libtcl), Void, (Ptr{T},), ptr)
-
-__deleteinterp(intptr::TclInterpPtr) =
-    ccall((:Tcl_DeleteInterp, libtcl), Void, (TclInterpPtr,), intptr)
+isdeleted(interp::TclInterp) = Tcl_InterpDeleted(interp.ptr)
+isactive(interp::TclInterp) = Tcl_InterpActive(interp.ptr)
 
 
 #------------------------------------------------------------------------------
@@ -147,9 +133,6 @@ this argument is omitted.
 setresult() = setresult(getinterp())
 setresult(arg) = setresult(getinterp(), arg)
 setresult(args...) = setresult(getinterp(), args...)
-setresult(interp::TclInterp) = __setresult(interp, __objptr())
-setresult(interp::TclInterp, args...) = setresult(interp, __newlistobj(args))
-setresult(interp::TclInterp, arg) = __setresult(interp, __objptr(arg))
 
 # To set Tcl interpreter result, we can call `Tcl_SetObjResult` for any object,
 # or `Tcl_SetResult` but only for string results with no embedded nulls.  There
@@ -160,27 +143,30 @@ setresult(interp::TclInterp, arg) = __setresult(interp, __objptr(arg))
 #
 # `Tcl_SetObjResult` does manage the reference count of its object argument so
 # it is OK to directly pass a temporary object.
-__setresult(interp::TclInterp, objptr::TclObjPtr) =
-    ccall((:Tcl_SetObjResult, libtcl), Void, (TclInterpPtr, TclObjPtr),
-          interp.ptr, objptr)
+setresult(interp::TclInterp) =
+    Tcl_SetObjResult(interp.ptr, __objptr())
+
+setresult(interp::TclInterp, arg) =
+    Tcl_SetObjResult(interp.ptr, __objptr(arg))
+
+setresult(interp::TclInterp, args...) =
+    Tcl_SetObjResult(interp.ptr, __newlistobj(args))
 
 @static if false
     # The code for strings (taking care of embedded nulls and using
     # `Tcl_SetResult` if possible) is written below for reference but not
     # compiled.
-    function __setresult(interp::TclInterp, str::AbstractString, volatile::Bool)
-        ptr = Base.unsafe_convert(Ptr{Cchar}, str)
-        nbytes = sizeof(str)
-        if Base.containsnul(ptr, nbytes)
+    function setresult(interp::TclInterp, str::AbstractString;
+                       volatile::Bool = true)
+        ptr, siz = Base.unsafe_convert(Ptr{Cchar}, str), sizeof(str)
+        if Base.containsnul(ptr, siz)
             # String has embedded NULLs, wrap it into a temporary object.  It
             # is not necessary to dela with its reference count as
             # Tcl_SetObjResult takes care of that.
-            ccall((:Tcl_SetObjResult, libtcl), Void, (TclInterpPtr, TclObjPtr),
-                  interp.ptr, __newstringobj(ptr, nbytes))
+            Tcl_SetObjResult(interp.ptr, __newstringobj(ptr, siz))
         else
-            ccall((:Tcl_SetResult, libtcl), Void,
-                  (TclInterpPtr, Ptr{Cchar}, Ptr{Void}),
-                  interp.ptr, ptr, (volatile ? TCL_VOLATILE : TCL_STATIC))
+            Tcl_SetResult(interp.ptr, ptr,
+                          (volatile ? TCL_VOLATILE : TCL_STATIC))
         end
     end
 end
@@ -205,20 +191,18 @@ getresult(interp::TclInterp) = getresult(Any, interp)
 
 getresult(::Type{T}) where {T} = getresult(T, getinterp())
 
-getresult(::Type{T}, interp::TclInterp) where {T} =
-    __objptr_to(T, interp, __getobjresult(interp.ptr))
-
 # Tcl_GetStringResult calls Tcl_GetObjResult, so we only interface to this
 # latter function.  Incrementing the reference count of the result is only
 # needed if we want to keep a long-term reference to it,
 # `__objptr_to(TclObj,...)` takes care of that).
-__getobjresult(interp::TclInterp) = __getobjresult(interp.ptr)
-__getobjresult(intptr::TclInterpPtr) =
-    ccall((:Tcl_GetObjResult, libtcl), TclObjPtr, (TclInterpPtr,), intptr)
+getresult(::Type{T}, interp::TclInterp) where {T} =
+    __objptr_to(T, interp.ptr, Tcl_GetObjResult(interp.ptr))
 
-__getstringresult(interp::TclInterp) = __getstringresult(interp.ptr)
-__getstringresult(intptr::TclInterpPtr) =
-    __objptr_to(String, __getobjresult(intptr))
+# In case of error, getting a string result is needed, we provide the following
+# method.
+__errmsg(intptr::TclInterpPtr, defmsg::String) :: String =
+    (intptr == C_NULL ? defmsg :
+     __objptr_to(String, C_NULL, Tcl_GetObjResult(intptr)))
 
 """
 ```julia
@@ -322,7 +306,7 @@ function Tcl.eval(::Type{TclStatus}, interp::TclInterp, args...)
         end
         return TclStatus(__evallist(interp, listptr))
     finally
-        __decrrefcount(listptr)
+        Tcl_DecrRefCount(listptr)
     end
 end
 
@@ -338,28 +322,20 @@ end
 # script may contain embedded nulls.  `Tcl_EvalObjEx` does manage the reference
 # count of its object argument.
 
-@inline function __eval(interp::TclInterp, objptr::TclObjPtr)
+function __eval(interp::TclInterp, objptr::TclObjPtr)
     flags = TCL_EVAL_GLOBAL
-    if __getrefcount(objptr) < 1
+    if Tcl_GetRefCount(objptr) < 1
         # For a temporary object there is no needs to compile the script.
         flags |= TCL_EVAL_DIRECT
     end
-    return ccall((:Tcl_EvalObjEx, libtcl), Cint,
-                 (TclInterpPtr, TclObjPtr, Cint),
-                 interp.ptr, objptr, flags)
+    return Tcl_EvalObjEx(interp.ptr, objptr, flags)
 end
 
 function __evallist(interp::TclInterp, listptr::TclObjPtr)
     flags = TCL_EVAL_GLOBAL
-    objc = Ref{Cint}(0)
-    objv = Ref{Ptr{TclObjPtr}}(C_NULL)
-    status = ccall((:Tcl_ListObjGetElements, libtcl), Cint,
-                   (TclInterpPtr, TclObjPtr, Ptr{Cint}, Ptr{Ptr{TclObjPtr}}),
-                   interp.ptr, listptr, objc, objv)
+    status, objc, objv = Tcl_ListObjGetElements(interp.ptr, listptr)
     if status == TCL_OK
-        status = ccall((:Tcl_EvalObjv, libtcl), Cint,
-                       (TclInterpPtr, Cint, Ptr{TclObjPtr}, Cint),
-                       interp.ptr, objc[], objv[], flags)
+        status = Tcl_EvalObjv(interp.ptr, objc, objv, flags)
     end
     return status
 end
@@ -465,7 +441,7 @@ called by the timer set by `Tcl.resume`.
 doevents(::Timer) = doevents()
 
 function doevents(flags::Integer = TCL_DONT_WAIT|TCL_ALL_EVENTS)
-    while ccall((:Tcl_DoOneEvent, libtcl), Cint, (Cint,), flags) != 0
+    while Tcl_DoOneEvent(flags)
     end
 end
 
@@ -533,7 +509,7 @@ __setcommandresult(interp::TclInterp, result) =
     __setcommandresult(interp, TCL_OK, result)
 
 function __setcommandresult(interp::TclInterp, status::TclStatus, result)
-    __setresult(interp, __objptr(result))
+    Tcl_SetObjResult(interp.ptr, __objptr(result))
     return status
 end
 
@@ -583,10 +559,11 @@ function createcommand(interp::TclInterp, name::String, f::Function)
     # Before creating the command, make sure object is not garbage collected
     # until Tcl deletes its reference.
     preserve(f)
-    ptr = ccall((:Tcl_CreateCommand, libtcl), Ptr{Void},
-                (TclInterpPtr, Cstring, Ptr{Void}, Ptr{Void}, Ptr{Void}),
-                interp.ptr, name, __evalcommand_ref[], pointer_from_objref(f),
-                __releaseobject_ref[])
+    ptr = Tcl_CreateCommand(interp.ptr,
+                            name,
+                            __evalcommand_ref[],
+                            pointer_from_objref(f),
+                            __releaseobject_ref[])
     if ptr == C_NULL
         release(f)
         Tcl.error(interp)
@@ -609,9 +586,7 @@ deletecommand(name::StringOrSymbol) =
     deletecommand(getinterp(), name)
 
 function deletecommand(interp::TclInterp, name::StringOrSymbol)
-    status = ccall((:Tcl_DeleteCommand, libtcl), Cint,
-                   (TclInterpPtr, Cstring), interp.ptr, name)
-    if status != TCL_OK
+    if Tcl_DeleteCommand(interp.ptr, name) != TCL_OK
         Tcl.error(interp)
     end
     return nothing

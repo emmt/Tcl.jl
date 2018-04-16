@@ -136,7 +136,7 @@ function __createwidget(::Type{T}, interp::TclInterp,
         if Tcl.eval(TclStatus, interp, cmd, path; kwds...) != TCL_OK
             Tcl.error(interp)
         end
-        objptr = __getobjresult(interp)
+        objptr = Tcl_GetObjResult(interp.ptr)
     end
     return TclObj{T}(objptr)
 end

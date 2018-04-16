@@ -78,14 +78,14 @@ getvar(interp::TclInterp, args...) = getvar(Any, interp, args...)
 function getvar(::Type{T}, interp::TclInterp, name::Name) where {T}
     ptr = __getvar(interp, name, C_NULL, VARIABLE_FLAGS)
     ptr != C_NULL || Tcl.error(interp)
-    return __objptr_to(T, interp, ptr)
+    return __objptr_to(T, interp.ptr, ptr)
 end
 
 function getvar(::Type{T}, interp::TclInterp,
                 name1::Name, name2::Name) where {T}
     ptr = __getvar(interp, name1, name2, VARIABLE_FLAGS)
     ptr != C_NULL || Tcl.error(interp)
-    return __objptr_to(T, interp, ptr)
+    return __objptr_to(T, interp.ptr, ptr)
 end
 
 
@@ -112,11 +112,11 @@ function __getvar(interp::TclInterp, name1::Name,
                   name2::StringOrSymbol, flags::Integer)
     # We have to protect against interrupts because __newobj may throw an
     # exception.
-    name2ptr = __incrrefcount(__newobj(name2))
+    name2ptr = Tcl_IncrRefCount(__newobj(name2))
     try
         return __getvar(interp, name1, name2ptr, flags)
     finally
-        __decrrefcount(name2ptr)
+        Tcl_DecrRefCount(name2ptr)
     end
 end
 
@@ -127,17 +127,15 @@ end
 
 function __getvar(interp::TclInterp, name1::StringOrSymbol,
                   name2ptr::Ptr{Void}, flags::Integer)
-    name1ptr = __incrrefcount(__newobj(name1))
-    result = __getvar(interp, name1ptr, name2ptr, flags)
-    __decrrefcount(name1ptr)
-    return result
+    name1ptr = Tcl_IncrRefCount(__newobj(name1))
+    objptr = Tcl_ObjGetVar2(interp.ptr, name1ptr, name2ptr, flags)
+    Tcl_DecrRefCount(name1ptr)
+    return objptr
 end
 
 function __getvar(interp::TclInterp, name1ptr::Ptr{Void},
                   name2ptr::Ptr{Void}, flags::Integer)
-    return ccall((:Tcl_ObjGetVar2, libtcl), Ptr{Void},
-                 (Ptr{Void}, Ptr{Void}, Ptr{Void}, Cint),
-                 interp.ptr, name1ptr, name2ptr, flags)
+    return Tcl_ObjGetVar2(interp.ptr, name1ptr, name2ptr, flags)
 end
 
 """
@@ -191,10 +189,10 @@ function __setvar(interp::TclInterp, name::StringOrSymbol,
     # throw an exception.
     nameptr = C_NULL
     try
-        nameptr = __incrrefcount(__newobj(name))
+        nameptr = Tcl_IncrRefCount(__newobj(name))
         return __setvar(interp, nameptr, C_NULL, __objptr(value), flags)
     finally
-        nameptr == C_NULL || __decrrefcount(nameptr)
+        nameptr == C_NULL || Tcl_DecrRefCount(nameptr)
     end
 end
 
@@ -209,10 +207,10 @@ function __setvar(interp::TclInterp, name1::TclObj{String},
     # throw an exception.
     name2ptr = C_NULL
     try
-        name2ptr = __incrrefcount(__newobj(name2))
+        name2ptr = Tcl_IncrRefCount(__newobj(name2))
         return __setvar(interp, name1.ptr, name2ptr, __objptr(value), flags)
     finally
-        name2ptr == C_NULL || __decrrefcount(name2ptr)
+        name2ptr == C_NULL || Tcl_DecrRefCount(name2ptr)
     end
 end
 
@@ -222,10 +220,10 @@ function __setvar(interp::TclInterp, name1::StringOrSymbol,
     # throw an exception.
     name1ptr = C_NULL
     try
-        name1ptr = __incrrefcount(__newobj(name1))
+        name1ptr = Tcl_IncrRefCount(__newobj(name1))
         return __setvar(interp, name1ptr, name2.ptr, __objptr(value), flags)
     finally
-        name1ptr == C_NULL || __decrrefcount(name1ptr)
+        name1ptr == C_NULL || Tcl_DecrRefCount(name1ptr)
     end
 end
 
@@ -236,20 +234,18 @@ function __setvar(interp::TclInterp, name1::StringOrSymbol,
     name1ptr = C_NULL
     name2ptr = C_NULL
     try
-        name1ptr = __incrrefcount(__newobj(name1))
-        name2ptr = __incrrefcount(__newobj(name2))
+        name1ptr = Tcl_IncrRefCount(__newobj(name1))
+        name2ptr = Tcl_IncrRefCount(__newobj(name2))
         return __setvar(interp, name1ptr, name2ptr, __objptr(value), flags)
     finally
-        name1ptr == C_NULL || __decrrefcount(name1ptr)
-        name2ptr == C_NULL || __decrrefcount(name2ptr)
+        name1ptr == C_NULL || Tcl_DecrRefCount(name1ptr)
+        name2ptr == C_NULL || Tcl_DecrRefCount(name2ptr)
     end
 end
 
 function __setvar(interp::TclInterp, name1ptr::Ptr{Void},
                   name2ptr::Ptr{Void}, valueptr::Ptr{Void}, flags::Integer)
-    return ccall((:Tcl_ObjSetVar2, libtcl), TclObjPtr,
-                 (TclInterpPtr, TclObjPtr, TclObjPtr, TclObjPtr, Cint),
-                 interp.ptr, name1ptr, name2ptr, valueptr, flags)
+    return Tcl_ObjSetVar2(interp.ptr, name1ptr, name2ptr, valueptr, flags)
 end
 
 
@@ -270,8 +266,8 @@ unsetvar(args...; kwds...) = unsetvar(getinterp(), args...; kwds...)
 
 function unsetvar(interp::TclInterp, name::Name; nocomplain::Bool=false)
     flags = (nocomplain ? TCL_GLOBAL_ONLY : (TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG))
-    code = __unsetvar(interp, __string(name), flags)
-    if code != TCL_OK && ! nocomplain
+    status = __unsetvar(interp, __string(name), flags)
+    if status != TCL_OK && ! nocomplain
         Tcl.error(interp)
     end
     return nothing
@@ -280,8 +276,8 @@ end
 function unsetvar(interp::TclInterp, name1::Name, name2::Name;
                   nocomplain::Bool=false)
     flags = (nocomplain ? TCL_GLOBAL_ONLY : (TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG))
-    code = __unsetvar(interp, __string(name1), __string(name2), flags)
-    if code != TCL_OK && ! nocomplain
+    status = __unsetvar(interp, __string(name1), __string(name2), flags)
+    if status != TCL_OK && ! nocomplain
         Tcl.error(interp)
     end
     return nothing
@@ -293,26 +289,22 @@ end
 
 function __unsetvar(interp::TclInterp, name::String, flags::Integer) :: Cint
     if (ptr = __cstring(name)[1]) != C_NULL
-        code = ccall((:Tcl_UnsetVar, libtcl), Cint,
-                     (TclInterpPtr, Ptr{Cchar}, Cint),
-                     interp.ptr, ptr, flags)
+        status = Tcl_UnsetVar(interp.ptr, ptr, flags)
     else
-        code = __eval(interp, __newobj("unset {$name}"))
+        status = __eval(interp, __newobj("unset {$name}"))
     end
-    return code
+    return status
 end
 
 function __unsetvar(interp::TclInterp, name1::String, name2::String,
                     flags::Integer) :: Cint
     if ((ptr1 = __cstring(name1)[1]) != C_NULL &&
         (ptr2 = __cstring(name2)[1]) != C_NULL)
-        code = ccall((:Tcl_UnsetVar2, libtcl), Cint,
-                     (TclInterpPtr, Ptr{Cchar}, Ptr{Cchar}, Cint),
-                     interp.ptr, ptr1, ptr2, flags)
+        status = Tcl_UnsetVar2(interp.ptr, ptr1, ptr2, flags)
     else
-        code = __eval(interp, __newobj("unset {$name1($name2)}"))
+        status = __eval(interp, __newobj("unset {$name1($name2)}"))
     end
-    return code
+    return status
 end
 
 
@@ -365,3 +357,5 @@ function __cstring(str::String)
     end
     return ptr, siz
 end
+
+__cstring(sym::Symbol) = __cstring(string(sym))

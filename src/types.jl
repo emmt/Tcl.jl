@@ -81,8 +81,8 @@ mutable struct TclObj{T}
     ptr::TclObjPtr
     function TclObj{T}(ptr::TclObjPtr) where {T}
         ptr != C_NULL || __illegal_null_object_pointer()
-        obj = new{T}(__incrrefcount(ptr))
-        finalizer(obj, __decrrefcount)
+        obj = new{T}(Tcl_IncrRefCount(ptr))
+        finalizer(obj, __finalize)
         return obj
     end
 end
@@ -93,8 +93,14 @@ const WideInt = Int64
 # Type used in the signature of a Tcl list object (a.k.a. vector in Julia).
 const List = Vector
 
+# Token used by Tcl to identify an object command.
+const TclCommand = Ptr{Void}
+
 # Singleton type used in the signature of a Tcl command object.
 struct Command end
+
+# Client data used by commands and callbacks.
+const ClientData = Ptr{Void}
 
 const TclObjList    = TclObj{List}
 const TclObjCommand = TclObj{Command}

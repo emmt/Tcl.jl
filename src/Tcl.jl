@@ -104,6 +104,7 @@ else
 end
 
 include("types.jl")
+include("calls.jl")
 include("basics.jl")
 include("objects.jl")
 include("lists.jl")
