@@ -105,7 +105,7 @@ end
 
 function __getvar(interp::TclInterp, name1::Name,
                   name2::TclObj{String}, flags::Integer)
-    return __getvar(interp, name1, name2.ptr, flags)
+    return __getvar(interp, name1, __objptr(name2), flags)
 end
 
 function __getvar(interp::TclInterp, name1::Name,
@@ -121,20 +121,20 @@ function __getvar(interp::TclInterp, name1::Name,
 end
 
 function __getvar(interp::TclInterp, name1::TclObj{String},
-                  name2ptr::Ptr{Void}, flags::Integer)
-    return __getvar(interp, name1.ptr, name2ptr, flags)
+                  name2ptr::TclObjPtr, flags::Integer)
+    return __getvar(interp, __objptr(name1), name2ptr, flags)
 end
 
 function __getvar(interp::TclInterp, name1::StringOrSymbol,
-                  name2ptr::Ptr{Void}, flags::Integer)
+                  name2ptr::TclObjPtr, flags::Integer)
     name1ptr = Tcl_IncrRefCount(__newobj(name1))
     objptr = Tcl_ObjGetVar2(interp.ptr, name1ptr, name2ptr, flags)
     Tcl_DecrRefCount(name1ptr)
     return objptr
 end
 
-function __getvar(interp::TclInterp, name1ptr::Ptr{Void},
-                  name2ptr::Ptr{Void}, flags::Integer)
+function __getvar(interp::TclInterp, name1ptr::TclObjPtr,
+                  name2ptr::TclObjPtr, flags::Integer)
     return Tcl_ObjGetVar2(interp.ptr, name1ptr, name2ptr, flags)
 end
 
@@ -180,7 +180,7 @@ end
 
 function __setvar(interp::TclInterp, name::TclObj{String},
                   value, flags::Integer)
-    return __setvar(interp, name.ptr, C_NULL, __objptr(value), flags)
+    return __setvar(interp, __objptr(name), C_NULL, __objptr(value), flags)
 end
 
 function __setvar(interp::TclInterp, name::StringOrSymbol,
@@ -198,7 +198,7 @@ end
 
 function __setvar(interp::TclInterp, name1::TclObj{String},
                   name2::TclObj{String}, value, flags::Integer)
-    return __setvar(interp, name1.ptr, name2.ptr, __objptr(value), flags)
+    return __setvar(interp, __objptr(name1), __objptr(name2), __objptr(value), flags)
 end
 
 function __setvar(interp::TclInterp, name1::TclObj{String},
@@ -208,7 +208,7 @@ function __setvar(interp::TclInterp, name1::TclObj{String},
     name2ptr = C_NULL
     try
         name2ptr = Tcl_IncrRefCount(__newobj(name2))
-        return __setvar(interp, name1.ptr, name2ptr, __objptr(value), flags)
+        return __setvar(interp, __objptr(name1), name2ptr, __objptr(value), flags)
     finally
         name2ptr == C_NULL || Tcl_DecrRefCount(name2ptr)
     end
@@ -221,7 +221,7 @@ function __setvar(interp::TclInterp, name1::StringOrSymbol,
     name1ptr = C_NULL
     try
         name1ptr = Tcl_IncrRefCount(__newobj(name1))
-        return __setvar(interp, name1ptr, name2.ptr, __objptr(value), flags)
+        return __setvar(interp, name1ptr, __objptr(name2), __objptr(value), flags)
     finally
         name1ptr == C_NULL || Tcl_DecrRefCount(name1ptr)
     end
@@ -243,8 +243,8 @@ function __setvar(interp::TclInterp, name1::StringOrSymbol,
     end
 end
 
-function __setvar(interp::TclInterp, name1ptr::Ptr{Void},
-                  name2ptr::Ptr{Void}, valueptr::Ptr{Void}, flags::Integer)
+function __setvar(interp::TclInterp, name1ptr::TclObjPtr,
+                  name2ptr::TclObjPtr, valueptr::TclObjPtr, flags::Integer)
     return Tcl_ObjSetVar2(interp.ptr, name1ptr, name2ptr, valueptr, flags)
 end
 

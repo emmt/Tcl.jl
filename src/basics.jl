@@ -253,11 +253,13 @@ end
 function exec(::Type{TclStatus}, interp::TclInterp, args...; kwds...)
     length(args) ≥ 1 || Tcl.error("expecting at least one argument")
     listptr = Tcl_IncrRefCount(__newlistobj())
+    __set_interpreter(interp)
     try
         @__build_list interp listptr args kwds
         return __eval(interp, TclObj{List}, listptr)
     finally
         Tcl_DecrRefCount(listptr)
+         __reset_interpreter()
     end
 end
 
@@ -308,11 +310,13 @@ end
 function Tcl.eval(::Type{TclStatus}, interp::TclInterp, args...)
     length(args) ≥ 1 || Tcl.error("missing script to evaluate")
     listptr = Tcl_IncrRefCount(__newlistobj())
+    __set_interpreter(interp)
     try
         @__concat_args interp listptr args
         return __eval(interp, TclObj{List}, listptr)
     finally
         Tcl_DecrRefCount(listptr)
+        __reset_interpreter()
     end
 end
 
@@ -326,8 +330,10 @@ Tcl.eval(::Type{TclStatus}, interp::TclInterp, script::AbstractString) =
 # Concatenating a list yields the same list, the following version avoids this
 # extra work.  We peek the real object type to decide which of `Tcl_EvalObjEx`
 # or `Tcl_EvalObjv` to call.
-Tcl.eval(::Type{TclStatus}, interp::TclInterp, obj::TclObj) =
-    __eval(interp, TclObj{__objtype(obj.ptr)}, obj.ptr)
+function Tcl.eval(::Type{TclStatus}, interp::TclInterp, obj::TclObj)
+    objptr = __objptr(obj)
+    return __eval(interp, TclObj{__objtype(objptr)}, objptr)
+end
 
 # For non-list objects, we use `Tcl_EvalObjEx` to evaluate a single argument
 # script.  `Tcl_EvalObjEx` does manage the reference count of its object
@@ -362,18 +368,30 @@ const __initialinterpreter = Ref{TclInterp}()
 const __currentinterpreter = Ref{TclInterp}()
 
 """
-    Tcl.getinterp()
+```julia
+Tcl.getinterp()
+```
 
 yields the initial Tcl interpreter which is used by default by many methods.
 An argument can be provided:
 
-    Tcl.getinterp(w)
+```julia
+Tcl.getinterp(w)
+```
 
-yields the Tcl interpreter for widget `w`.
+yields the Tcl interpreter for widget (or image) `w`.
 
 """
 getinterp() = __initialinterpreter[]
 
+@inline __get_interpreter() =
+    __currentinterpreter[]
+
+@inline __set_interpreter(interp::TclInterp) =
+    __currentinterpreter[] = interp
+
+@inline __reset_interpreter() =
+    __currentinterpreter[] = __initialinterpreter[]
 
 #------------------------------------------------------------------------------
 # Exceptions
@@ -566,27 +584,32 @@ createcommand(name::Name, f::Function) =
     createcommand(getinterp(), name, f)
 
 createcommand(interp::TclInterp, f::Function) =
-    createcommand(interp, autoname("jl_callback"), f)
+    __createcommand(interp.ptr, f)
 
 createcommand(interp::TclInterp, name::Symbol, f::Function) =
-    createcommand(interp, string(name), f)
+    __createcommand(interp.ptr, string(name), f)
 
-# FIXME: use object, not string name?
-function createcommand(interp::TclInterp, name::String, f::Function)
+createcommand(interp::TclInterp, name::String, f::Function) =
+    __createcommand(interp.ptr, name, f)
+
+__createcommand(intptr::TclInterpPtr, f::Function) =
+    __createcommand(intptr, autoname("jl_callback"), f)
+
+function __createcommand(intptr::TclInterpPtr, name::String, f::Function)
     # Before creating the command, make sure object is not garbage collected
     # until Tcl deletes its reference.
     preserve(f)
-    token = Tcl_CreateObjCommand(interp.ptr,
+    token = Tcl_CreateObjCommand(intptr,
                                  name,
                                  __evalcommand_ref[],
                                  pointer_from_objref(f),
                                  __releaseobject_ref[])
     if token == C_NULL
         release(f)
-        Tcl.error(interp)
+        Tcl.error(__objptr_to(String, C_NULL, Tcl_GetObjResult(intptr)))
     end
-    cmd = TclObj{Command}(__newobj(""))
-    Tcl_GetCommandFullName(interp.ptr, token, cmd.ptr)
+    cmd = TclObj{Function}(__newobj(""))
+    Tcl_GetCommandFullName(intptr, token, __objptr(cmd))
     return cmd
 end
 

@@ -96,20 +96,17 @@ const List = Vector
 # Token used by Tcl to identify an object command.
 const TclCommand = Ptr{Void}
 
-# Singleton type used in the signature of a Tcl command object.
-struct Command end
-
 # Floating-point types.
 const FloatingPoint = Union{Irrational,Rational,AbstractFloat}
 
 # Atomic types are those of values that are considered as single list element.
-const AtomicTypes = Union{Void,Char,Symbol,Integer,FloatingPoint}
+const AtomicTypes = Union{Void,Char,Symbol,Integer,FloatingPoint,Function}
 
 # Client data used by commands and callbacks.
 const ClientData = Ptr{Void}
 
 const TclObjList    = TclObj{List}
-const TclObjCommand = TclObj{Command}
+const TclObjCommand = TclObj{Function}
 
 # `Name` is anything that can be understood as the name of a variable or of a
 # command.

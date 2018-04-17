@@ -9,7 +9,7 @@
 
 # FIXME: A slight optimization is possible here because we know that
 #        the object pointer cannot be NULL.
-Base.string(obj::TclObj) = __objptr_to(String, C_NULL, obj.ptr)
+Base.string(obj::TclObj) = __objptr_to(String, C_NULL, __objptr(obj))
 
 Base.show(io::IO, ::MIME"text/plain", obj::T) where {T<:TclObj} =
     print(io, "$T($(string(obj)))")
@@ -26,7 +26,7 @@ Base.show(io::IO, lst::T) where {T<:TclObj{List}} =
     print(io, llength(lst), "-element(s) $T(\"$(string(lst))\")")
 
 # Finalizing the object is just a matter of decrementing its reference count.
-__finalize(obj::TclObj) = Tcl_DecrRefCount(obj.ptr)
+__finalize(obj::TclObj) = Tcl_DecrRefCount(__objptr(obj))
 
 
 """
@@ -38,7 +38,7 @@ yields the value of a Tcl object.  The type of the result corresponds to
 the internal representation of the object.
 
 """
-getvalue(obj::TclObj{T}) where {T} = __objptr_to(T, C_NULL, obj.ptr)
+getvalue(obj::TclObj{T}) where {T} = __objptr_to(T, C_NULL, __objptr(obj))
 
 
 """
@@ -175,7 +175,7 @@ __newobj(::Void) = __newobj("")
 #
 #     Functions are used for callbacks.
 
-TclObj(f::Function) = TclObj{Command}(__newobj(f))
+TclObj(f::Function) = TclObj{Function}(__newobj(f))
 # FIXME: impose to specify the interpreter.
 __newobj(f::Function) =
     __newobj(createcommand(__currentinterpreter[], f))
@@ -221,7 +221,7 @@ yields the address of a Tcl object type (`Tcl_ObjType*` in C).  Argument can be
 a managed Tcl object or the address of a Tcl object (must not be `C_NULL`).
 
 """
-__getobjtype(obj::TclObj) = __getobjtype(obj.ptr)
+__getobjtype(obj::TclObj) = __getobjtype(__objptr(obj))
 __getobjtype(objptr::TclObjPtr) =
     __peek(TclObjTypePtr, objptr + __offset_of_type)
 
