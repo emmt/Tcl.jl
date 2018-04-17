@@ -160,6 +160,7 @@ getparent(w::TkWidget) = w.parent
 getparent(::TkRootWidget) = nothing
 TclObj(w::TkWidget) = w.obj
 __objptr(w::TkWidget) = __objptr(w.obj)
+atomictype(::TkWidget) = Atomic
 
 getpath(root::TkWidget, args::AbstractString...) =
     getpath(getpath(root), args...)

@@ -346,7 +346,7 @@ function __lappend(intptr::TclInterpPtr, listptr::TclObjPtr, item)
 end
 
 function __lappend(intptr::TclInterpPtr, listptr::TclObjPtr,
-                   obj::Union{TclObj,TkWidget})
+                   obj::ManagedObject)
     if Tcl_ListObjAppendElement(intptr, listptr, __objptr(obj)) != TCL_OK
         __lappend_error(intptr)
     end
@@ -428,17 +428,18 @@ concat(args...) = concat(getinterp(), args...)
 
 # For atomic objects which are considered as single list element, __concat is
 # equivalent to __lappend.
-function __concat(intptr::TclInterpPtr, listptr::TclObjPtr,
-                  item::Union{AtomicTypes,TclObj{<:AtomicTypes},TkWidget})
+__concat(intptr::TclInterpPtr, listptr::TclObjPtr, item) =
+    __concat(intptr, listptr, atomictype(item), item)
+
+__concat(intptr::TclInterpPtr, listptr::TclObjPtr, ::Type{Atomic}, item) =
     __lappend(intptr, listptr, item)
-end
 
 # Strings are iterables but we want that making a list out of string(s) yields
 # a single element per string (not per character) so we have to short-circuit
 # __concat(listptr, itr).  Note that `Number` are perfectly usable as iterables
 # but we add them to the union below in order to use a faster method for them.
 function __concat(intptr::TclInterpPtr, listptr::TclObjPtr,
-                  str::AbstractString)
+                  ::Type{NonAtomic}, str::AbstractString)
     objptr = Tcl_IncrRefCount(__newobj(str))
     status = Tcl_ListObjAppendList(intptr, listptr, objptr)
     Tcl_DecrRefCount(objptr)
@@ -448,7 +449,8 @@ function __concat(intptr::TclInterpPtr, listptr::TclObjPtr,
     end
 end
 
-function __concat(intptr::TclInterpPtr, listptr::TclObjPtr, obj::TclObj)
+function __concat(intptr::TclInterpPtr, listptr::TclObjPtr,
+                  ::Type{NonAtomic}, obj::ManagedObject)
     status = Tcl_ListObjAppendList(intptr, listptr, __objptr(obj))
     if status != TCL_OK
         msg = __errmsg(intptr, "failed to concatenate Tcl lists")
@@ -457,7 +459,8 @@ function __concat(intptr::TclInterpPtr, listptr::TclObjPtr, obj::TclObj)
 end
 
 # Everything else is assumed to be an iterable.
-function __concat(intptr::TclInterpPtr, listptr::TclObjPtr, itr) ::TclObjPtr
+function __concat(intptr::TclInterpPtr, listptr::TclObjPtr,
+                  ::Type{NonAtomic}, itr) ::TclObjPtr
     for val in itr
         __concat(intptr, listptr, val)
     end

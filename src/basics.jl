@@ -19,6 +19,14 @@ Base.convert(::Type{T}, status::TclStatus) where {T<:Integer} =
 Base.convert(::Type{Integer}, status::TclStatus) = status.code
 
 #------------------------------------------------------------------------------
+# Default traits.
+
+atomictype(::Union{Void,Char,Symbol,Integer,FloatingPoint,Function}) = Atomic
+atomictype() = Atomic
+atomictype(x) = NonAtomic
+
+
+#------------------------------------------------------------------------------
 # Automatically named objects.
 
 const __counter = Dict{String,Int}()
@@ -366,6 +374,7 @@ const __initialinterpreter = Ref{TclInterp}()
 
 # Interpreter for callbacks and objects which need a Tcl interpreter.
 const __currentinterpreter = Ref{TclInterp}()
+const __currentinterpreterA = [TclInterpPtr(0) for i in 1:Threads.nthreads()]
 
 """
 ```julia

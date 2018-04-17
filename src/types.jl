@@ -72,12 +72,20 @@ mutable struct TclInterp
     TclInterp(ptr::TclInterpPtr) = new(ptr)
 end
 
+"""
+
+A `ManagedObject` is a Tcl or Tk object which manages its reference count and
+of which a pointer to a Tcl object can be retrieved by the `__objptr` method.
+
+"""
+abstract type ManagedObject end
+
 # Structure to store a pointer to a Tcl object. (Even though the address
 # should not be modified, it is mutable because immutable objects cannot be
 # finalized.)  The constructor will refuse to build a managed Tcl object with
 # a NULL address.
 const TclObjPtr = Ptr{Void}
-mutable struct TclObj{T}
+mutable struct TclObj{T} <: ManagedObject
     ptr::TclObjPtr
     function TclObj{T}(ptr::TclObjPtr) where {T}
         ptr != C_NULL || __illegal_null_object_pointer()
@@ -85,6 +93,13 @@ mutable struct TclObj{T}
         finalizer(obj, __finalize)
         return obj
     end
+end
+
+struct Callback <: ManagedObject
+    interp::TclInterp
+    name::TclObj{Function}
+    Callback(interp::TclInterp, name::TclObj{Function}) =
+        new(interp, name)
 end
 
 # Tcl wide integer is 64-bit integer.
@@ -99,8 +114,35 @@ const TclCommand = Ptr{Void}
 # Floating-point types.
 const FloatingPoint = Union{Irrational,Rational,AbstractFloat}
 
-# Atomic types are those of values that are considered as single list element.
-const AtomicTypes = Union{Void,Char,Symbol,Integer,FloatingPoint,Function}
+"""
+
+The abstract type `Trait` is inherited by types indicating specific traits.
+
+See also: [`atomictype`](@ref).
+
+"""
+abstract type Trait end
+
+"""
+
+Atomic types are those of values that are considered as single list element.
+The *atomic* trait indicates whether a value or an object is atomic or not;
+Abstract type `AtomicType` has two concrete singleton sub-types: `Atomic` for
+atomic objects and `NonAtomic` for other objects/values.  This trait is used
+when concatenating objects or values in lists: atomic objects will be seen as a
+single item while non atomic ones will be split in zero, one or several items.
+
+See also: [`atomictype`](@ref), [`Trait`](@ref).
+
+"""
+abstract type AtomicType <: Trait end
+
+for T in (:NonAtomic, :Atomic)
+    @eval begin
+        struct $T <: AtomicType end
+        @doc @doc(AtomicType) $T
+    end
+end
 
 # Client data used by commands and callbacks.
 const ClientData = Ptr{Void}
@@ -125,9 +167,9 @@ const Iterables = Union{AbstractVector,Tuple,Set,IntSet}
 #------------------------------------------------------------------------------
 # Tk widgets and other Tk objects.
 
-abstract type TkObject end
-abstract type TkWidget     <: TkObject end
-abstract type TkRootWidget <: TkWidget end
+abstract type TkObject     <: ManagedObject end
+abstract type TkWidget     <: TkObject      end
+abstract type TkRootWidget <: TkWidget      end
 
 # An image is parameterized by the image type (capitalized).
 mutable struct TkImage{T} <: TkObject
