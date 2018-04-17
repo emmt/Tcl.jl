@@ -124,16 +124,16 @@ function __createwidget(::Type{T}, interp::TclInterp,
                         cmd::String, path::String;
                         kwds...) where {T<:Union{TkWidget,TkRootWidget}}
     local objptr :: TclObjPtr
-    if interp("winfo", "exists", path) != 0
+    if interp(Bool, "winfo exists", path)
         # If widget already exists, it will be simply re-used, so we just apply
         # configuration options if any.
         if length(kwds) > 0
-            interp(path, "configure"; kwds...)
+            exec(path, "configure"; kwds...)
         end
         objptr = __newobj(path)
     else
         # Widget does not already exists, create it with configuration options.
-        if Tcl.eval(TclStatus, interp, cmd, path; kwds...) != TCL_OK
+        if exec(TclStatus, interp, cmd, path; kwds...) != TCL_OK
             Tcl.error(interp)
         end
         objptr = Tcl_GetObjResult(interp.ptr)
@@ -159,7 +159,7 @@ getpath(w::TkWidget) = w.path
 getparent(w::TkWidget) = w.parent
 getparent(::TkRootWidget) = nothing
 TclObj(w::TkWidget) = w.obj
-__objptr(w::TkWidget) = w.obj.ptr
+__objptr(w::TkWidget) = __objptr(w.obj)
 
 getpath(root::TkWidget, args::AbstractString...) =
     getpath(getpath(root), args...)
@@ -167,8 +167,11 @@ getpath(root::TkWidget, args::AbstractString...) =
 getpath(arg0::AbstractString, args::AbstractString...) =
    join(((arg0 == "." ? "" : arg0), args...), '.')
 
-Tcl.eval(w::TkWidget, args...; kwds...) =
-    Tcl.eval(getinterp(w), w.obj, args...; kwds...)
+Tcl.eval(w::TkWidget, args...) =
+    Tcl.eval(getinterp(w), w.obj, args...)
+
+exec(w::TkWidget, args...; kwds...) =
+    exec(getinterp(w), w.obj, args...; kwds...)
 
 """
 If Tk package is not yet loaded in interpreter `interp` (or in the initial
@@ -183,13 +186,13 @@ terminate the Tcl application.
 
 """
 function tkstart(interp::TclInterp = getinterp()) :: TclInterp
-    if interp("info","exists","tk_version") == 0
-        code = Tcl.eval(TclStatus, interp, "package", "require", "Tk")
-        if code == TCL_OK
-            Tcl.eval(TclStatus, interp, "package", "require", "Ttk")
-            code = Tcl.eval(TclStatus, interp, "wm", "withdraw", ".")
+    if ! interp(Bool, "info exists tk_version")
+        status = interp(TclStatus, "package require Tk")
+        if status == TCL_OK
+            status = interp(TclStatus, "package require Ttk")
+            status = interp(TclStatus, "wm withdraw .")
         end
-        code == TCL_OK || Tcl.error(interp)
+        status == TCL_OK || Tcl.error(interp)
         resume()
     end
     return interp
@@ -209,7 +212,7 @@ or `Symbol`.  Another way to change the settings is:
     w[opt2] = val2
 
 """
-configure(w::TkWidget; kwds...) = Tcl.eval(w, "configure"; kwds...)
+configure(w::TkWidget; kwds...) = exec(w, "configure"; kwds...)
 
 """
 
@@ -222,11 +225,11 @@ value is:
     w[opt]
 
 """
-cget(w::TkWidget, opt::Name) = Tcl.eval(w, "cget", "-"*string(opt))
+cget(w::TkWidget, opt::Name) = exec(w, "cget", "-"*string(opt))
 
 Base.getindex(w::TkWidget, key::Name) = cget(w, key)
 Base.setindex!(w::TkWidget, value, key::Name) =
-    Tcl.eval(w, "configure", "-"*string(key), value)
+    exec(w, "configure", "-"*string(key), value)
 
 """
     Tcl.grid(args...; kwds...)
@@ -253,7 +256,7 @@ for cmd in (:grid, :pack, :place)
             for arg in args
                 if isa(arg, TkWidget)
                     interp = getinterp(arg)
-                    return interp($(string(cmd)), args...; kwds...)
+                    return exec(interp, $(string(cmd)), args...; kwds...)
                 end
             end
             Tcl.error("missing a widget argument")
@@ -293,5 +296,5 @@ where `classname` is the name of the widget class (a string or a symbol).
 
 """
 Base.bind(arg0::TkWidget, args...) = bind(getinterp(arg0), arg0, args...)
-Base.bind(arg0::Name, args...) = bind(getinterp(), "bind", arg0, args...)
-Base.bind(interp::TclInterp, args...) = interp("bind", args...)
+Base.bind(arg0::Name, args...) = bind(getinterp(), arg0, args...)
+Base.bind(interp::TclInterp, args...) = exec(interp, "bind", args...)
