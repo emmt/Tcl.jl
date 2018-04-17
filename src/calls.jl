@@ -62,7 +62,7 @@ const TclObjTypePtr = fieldtype(__TclObj, :typePtr)
 
 # Julia takes care of managing its objects so we just need to add a single
 # reference for Julia for any Tcl object returned by Tcl library and make sure
-# that the refrence count is decremented when the Julia object is finalized.
+# that the reference count is decremented when the Julia object is finalized.
 #
 # The following methods correspond to the Tcl macros which are provided to
 # increment and decrement a Tcl_Obj's reference count, and to test whether an
@@ -135,10 +135,22 @@ end
 Tcl_GetRefCount(objptr)
 ```
 
-yeilds the reference count of the object referenced by `objptr`.
+yields the reference count of the object referenced by `objptr`.
 
 """
 @inline Tcl_GetRefCount(objptr::TclObjPtr) = __peek(Cint, objptr)
+
+
+"""
+```julia
+Tcl_IsShared(objptr)
+```
+
+yields whether the object referenced by `objptr` is shared; that is, its
+reference count is greater than one.
+
+"""
+@inline Tcl_IsShared(objptr::TclObjPtr) = Tcl_GetRefCount(objptr) > 1
 
 
 #------------------------------------------------------------------------------
@@ -226,6 +238,9 @@ Tcl_GetStringFromObj(objptr) -> ptr::Ptr{Cchar}, len::Int
             convert(Int, lenref[]))
 end
 
+@inline Tcl_DuplicateObj(objptr::TclObjPtr) =
+    ccall((:Tcl_DuplicateObj, libtcl), TclObjPtr, (TclObjPtr,), objptr)
+
 @inline Tcl_GetObjType(name::StringOrSymbol) =
     ccall((:Tcl_GetObjType, libtcl), TclObjTypePtr, (Cstring,), name)
 
@@ -262,6 +277,13 @@ end
 
 @inline Tcl_GetObjResult(intptr::TclInterpPtr) =
     ccall((:Tcl_GetObjResult, libtcl), TclObjPtr, (TclInterpPtr,), intptr)
+
+@inline function Tcl_EvalEx(intptr::TclInterpPtr, script::Ptr{Cchar},
+                            nbytes::Integer, flags::Integer)
+    return ccall((:Tcl_EvalEx, libtcl), TclStatus,
+                 (TclInterpPtr, Ptr{Cchar}, Cint, Cint),
+                 intptr, script, nbytes, flags)
+end
 
 @inline Tcl_EvalObjEx(intptr::TclInterpPtr, objptr::TclObjPtr, flags::Integer) =
     ccall((:Tcl_EvalObjEx, libtcl), TclStatus,
@@ -348,24 +370,24 @@ end
                  intptr, name1ptr, name2ptr, valueptr, flags)
 end
 
-@inline function Tcl_UnsetVar(intptr::TclInterpPtr, name::StringOrSymbol,
-                              flags::Integer)
-    return ccall((:Tcl_UnsetVar, libtcl), TclStatus,
-                 (TclInterpPtr, Cstring, Cint), intptr, name, flags)
-end
+for (Tj, Tc) in ((StringOrSymbol, Cstring),
+                 (Ptr{Cchar}, Ptr{Cchar}))
+    @eval begin
 
-@inline function Tcl_UnsetVar(intptr::TclInterpPtr, name::Ptr{T},
-                              flags::Integer) where {T<:Byte}
-    return ccall((:Tcl_UnsetVar, libtcl), TclStatus,
-                 (TclInterpPtr, Ptr{T}, Cint), intptr, name, flags)
-end
+        @inline function Tcl_UnsetVar(intptr::TclInterpPtr, name::$Tj,
+                                      flags::Integer)
+            return ccall((:Tcl_UnsetVar, libtcl), TclStatus,
+                         (TclInterpPtr, $Tc, Cint), intptr, name, flags)
+        end
 
-# FIXME: find a better definition
-@inline function Tcl_UnsetVar2(intptr::TclInterpPtr,
-                               name1, name2, flags::Integer)
-    ccall((:Tcl_UnsetVar2, libtcl), TclStatus,
-          (TclInterpPtr, Ptr{Void}, Ptr{Void}, Cint),
-          intptr, name1, name2, flags)
+        @inline function Tcl_UnsetVar2(intptr::TclInterpPtr, name1::$Tj,
+                                       name2::$Tj, flags::Integer)
+            return ccall((:Tcl_UnsetVar2, libtcl), TclStatus,
+                         (TclInterpPtr, $Tc, $Tc, Cint),
+                         intptr, name1, name2, flags)
+        end
+
+    end
 end
 
 #------------------------------------------------------------------------------
@@ -420,6 +442,10 @@ Tcl_ListObjAppendElement(intptr, listptr, objptr) -> status::TclStatus
 appends the single value referenced by `objptr` to to the end of the list value
 referenced by `listptr`.
 
+The object referenced by `listptr` must not be shared (its reference count must
+be ≤ 1) otherwise  Tcl will panic (and abort the program).  To avoid aborting,
+an error is reported.
+
 If `listptr` does not already point to a list value, an attempt will be made to
 convert it to one.
 
@@ -430,7 +456,16 @@ it is NULL.
 """
 @inline function Tcl_ListObjAppendElement(intptr::TclInterpPtr,
                                           listptr::TclObjPtr,
-                                          objptr::TclObjPtr)
+                                          objptr::TclObjPtr) :: TclStatus
+    if Tcl_IsShared(listptr)
+        msg = "modifying a shared Tcl list is forbidden"
+        if intptr == C_NULL
+            warn(msg, once=true)
+        else
+            Tcl_SetResult(intptr, msg)
+        end
+        return TCL_ERROR
+    end
     return ccall((:Tcl_ListObjAppendElement, libtcl), TclStatus,
                  (TclInterpPtr, TclObjPtr, TclObjPtr),
                  intptr, listptr, objptr)
@@ -479,16 +514,36 @@ end
 end
 
 """
+```julia
+Tcl_ListObjReplace(intptr, listptr, first, count,
+                   objc, objv) -> status::TclStatus
+```
 
 `first` can be the length of the list plus one and `count` can be 0 to append
 to the end of the list.
 
 `objc = 0` and `objv = NULL` are OK to delete elements.
 
+The object referenced by `listptr` must not be shared (its reference count must
+be ≤ 1) otherwise  Tcl will panic (and abort the program).  To avoid aborting,
+an error is reported.
+
+If `listptr` does not already point to a list value, an attempt will be made to
+convert it to one.
+
 """
-@inline function Tcl_ListObjIndex(intptr::TclInterpPtr, listptr::TclObjPtr,
-                                  first::Integer, count::Integer,
-                                  objc::Integer, objv::Ptr{TclObjPtr})
+@inline function Tcl_ListObjReplace(intptr::TclInterpPtr, listptr::TclObjPtr,
+                                    first::Integer, count::Integer,
+                                    objc::Integer, objv::Ptr{TclObjPtr})
+    if Tcl_IsShared(listptr)
+        msg = "modifying a shared Tcl list is forbidden"
+        if intptr == C_NULL
+            warn(msg, once=true)
+        else
+            Tcl_SetResult(intptr, msg)
+        end
+        return TCL_ERROR
+    end
     return ccall((:Tcl_ListObjReplace, libtcl), TclStatus,
                  (TclInterpPtr, TclObjPtr, Cint, Cint, Cint, Ptr{TclObjPtr}),
                  intptr, listptr, first + 1, count, objc, objv)

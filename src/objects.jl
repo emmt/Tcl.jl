@@ -115,11 +115,9 @@ end
 #     All floating point types, rationals and irrationals yield `Cdouble` Tcl
 #     objects.
 
-TclObj(value::Union{Irrational,Rational,AbstractFloat}) =
-    TclObj{Cdouble}(__newobj(value))
+TclObj(value::FloatingPoint) = TclObj{Cdouble}(__newobj(value))
 
-__newobj(value::Union{Irrational,Rational,AbstractFloat}) =
-    __newobj(convert(Cdouble, value))
+__newobj(value::FloatingPoint) = __newobj(convert(Cdouble, value))
 
 function __newobj(value::Cdouble)
     objptr = Tcl_NewDoubleObj(value)
@@ -208,6 +206,7 @@ cannot be converted into a Tcl object.
 """
 __objptr(obj::TclObj) = obj.ptr
 __objptr(value) = __newobj(value)
+__objptr() = __newobj()
 
 
 #------------------------------------------------------------------------------

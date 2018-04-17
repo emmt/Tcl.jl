@@ -104,6 +104,7 @@ else
 end
 
 include("types.jl")
+include("macros.jl")
 include("calls.jl")
 include("basics.jl")
 include("objects.jl")
@@ -122,6 +123,8 @@ import .Impl:
     cget,
     concat,
     configure,
+    createcommand,
+    deletecommand,
     exec,
     exists,
     getinterp,

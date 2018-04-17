@@ -99,6 +99,12 @@ const TclCommand = Ptr{Void}
 # Singleton type used in the signature of a Tcl command object.
 struct Command end
 
+# Floating-point types.
+const FloatingPoint = Union{Irrational,Rational,AbstractFloat}
+
+# Atomic types are those of values that are considered as single list element.
+const AtomicTypes = Union{Void,Char,Symbol,Integer,FloatingPoint}
+
 # Client data used by commands and callbacks.
 const ClientData = Ptr{Void}
 

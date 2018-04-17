@@ -93,7 +93,7 @@ function __newobj(itr::Iterables) ::TclObjPtr
     listptr = __newlistobj()
     try
         for val in itr
-            __lappend!(listptr, val)
+            __lappend(listptr, val)
         end
     catch ex
         Tcl_DecrRefCount(listptr)
@@ -135,39 +135,16 @@ function __newlistobj(args...; kwds...) ::TclObjPtr
     listptr = __newlistobj()
     try
         for arg in args
-            __lappend!(listptr, arg)
+            __lappend(listptr, arg)
         end
         for (key, val) in kwds
-            __lappendoption!(listptr, key, val)
+            __lappendoption(listptr, key, val)
         end
     catch ex
         Tcl_DecrRefCount(listptr)
         rethrow(ex)
     end
     return listptr
-end
-
-function __lappend!(listptr::TclObjPtr, item)
-    status = Tcl_ListObjAppendElement(C_NULL, listptr, __objptr(item))
-    if status != TCL_OK
-        Tcl.error("failed to append a new item to the Tcl list")
-    end
-    nothing
-end
-
-__lappendoption!(listptr::TclObjPtr, key::Symbol, val) =
-    __lappendoption!(listptr, string(key), val)
-
-function __lappendoption!(listptr::TclObjPtr, key::String, val)
-    option = "-"*(length(key) ≥ 1 && key[1] == '_' ? key[2:end] : key)
-    status = Tcl_ListObjAppendElement(C_NULL, listptr, __newobj(option))
-    if status == TCL_OK
-        status = Tcl_ListObjAppendElement(C_NULL, listptr, __objptr(val))
-    end
-    if status != TCL_OK
-        Tcl.error("failed to append a new option to the Tcl list")
-    end
-    nothing
 end
 
 function __objptr_to(::Type{Vector}, intptr::TclInterpPtr,
@@ -340,90 +317,139 @@ See also: [`Tcl.list`](@ref).
 function lappend!(list::TclObj{List}, args...; kwds...)
     listptr = list.ptr
     for arg in args
-        __lappend!(listptr, arg)
+        __lappend(listptr, arg)
     end
     for (key, val) in kwds
-        __lappendoption!(listptr, key, val)
+        __lappendoption(listptr, key, val)
     end
     return list
 end
 
 function lappendoption!(list::TclObj{List}, key::Name, val)
-    __lappendoption!(list.ptr, __string(key), val)
+    __lappendoption(list.ptr, __string(key), val)
     return list
 end
 
+# Appending a new item to a list with Tcl_ListObjAppendElement increments the
+# reference count of the item, this is the only side effect for the item.  That
+# is to say, the appended item is not be duplicated, just shared.  So, to
+# manage the memory associated with the item, we can increment its reference
+# count before appending and decrement it after without effects on the
+# performances.  This is not necessary for a managed object.
+
+function __lappend(intptr::TclInterpPtr, listptr::TclObjPtr, item)
+    objptr = Tcl_IncrRefCount(__newobj(item))
+    status = Tcl_ListObjAppendElement(intptr, listptr, objptr)
+    Tcl_DecrRefCount(objptr)
+    if status != TCL_OK
+        __lappend_error(intptr)
+    end
+    nothing
+end
+
+function __lappend(intptr::TclInterpPtr, listptr::TclObjPtr, obj::TclObj)
+    if Tcl_ListObjAppendElement(intptr, listptr, obj.ptr) != TCL_OK
+        __lappend_error(intptr)
+    end
+    nothing
+end
+
+__lappend(listptr::TclObjPtr, item) = __lappend(C_NULL, listptr, item)
+
+__lappend_error(intptr::TclInterpPtr) =
+    Tcl.error(__errmsg(intptr, "failed to append a new item to the Tcl list"))
+
+function __lappendoption(intptr::TclInterpPtr, listptr::TclObjPtr,
+                         key::String, val)
+    # First, append the key.
+    option = "-"*(length(key) ≥ 1 && key[1] == '_' ? key[2:end] : key)
+    objptr = Tcl_IncrRefCount(__newobj(option))
+    status = Tcl_ListObjAppendElement(C_NULL, listptr, objptr)
+    Tcl_DecrRefCount(objptr)
+    if status == TCL_OK
+        # Second, append the value.
+        objptr = Tcl_IncrRefCount(__objptr(val))
+        status = Tcl_ListObjAppendElement(C_NULL, listptr, objptr)
+        Tcl_DecrRefCount(objptr)
+    end
+    if status != TCL_OK
+        Tcl.error("failed to append a new option to the Tcl list")
+    end
+    nothing
+end
+
+__lappendoption(intptr::TclInterpPtr, listptr::TclObjPtr, key::Symbol, val) =
+    __lappendoption(intptr, listptr, string(key), val)
+
+__lappendoption(listptr::TclObjPtr, key, val) =
+    __lappendoption(C_NULL, listptr, string(key), val)
+
 """
 ```julia
-Tcl.concat(args...)
+Tcl.concat([interp,]args...)
 ```
 
 concatenates the specified arguments and yields a Tcl list.  Compared to
 `Tcl.list` which considers that each argument correspond to a single item,
 `Tcl.concat` flatten its arguments and does not accept keyword arguments.
 
+Optional argument `interp` is the Tcl interpreter to use for error reporting
+or to create callbacks.
+
 See also: [`Tcl.list`](@ref), [`Tcl.eval`](@ref).
 
 """
-function concat(args...)
+function concat(interp::TclInterp, args...)
     list = TclObj{List}(__newlistobj())
-    listptr = list.ptr
-    for arg in args
-        __concat(listptr, arg)
-    end
+    @__concat_args interp list.ptr args
     return list
+end
+
+concat(args...) = concat(getinterp(), args...)
+
+# The basic functions used by most Tcl list manipulation functions are
+# Tcl_ListObjGetElements, Tcl_ListObjReplace and Tcl_ListObjAppendElement.
+# Tcl_ListObjReplace does not call Tcl_ListObjAppendElement.
+#
+# As a general rule, modifying a shared list is not allowed.  Thus
+# Tcl_ListObjReplace and Tcl_ListObjAppendElement must not be applied to a
+# shared list object.  This limits the risk of building circular lists.
+#
+
+# For *atomic* objects which are considered as single list element, __concat
+# is equivalent to __lappend.
+function __concat(intptr::TclInterpPtr, listptr::TclObjPtr,
+                  item::Union{T,TclObj{T}}) where {T<:Union{AtomicTypes}}
+    __lappend(intptr, listptr, item)
 end
 
 # Strings are iterables but we want that making a list out of string(s) yields
 # a single element per string (not per character) so we have to short-circuit
 # __concat(listptr, itr).  Note that `Number` are perfectly usable as iterables
 # but we add them to the union below in order to use a faster method for them.
-
-function __concat(listptr::TclObjPtr, arg::Union{Char,Symbol,Number})
-    __lappend!(listptr, arg)
-end
-
-function __concat(listptr::TclObjPtr, str::AbstractString)
-    # Convert string into a list.
-    objptr = __newobj(str)
-    try
-        status, n = Tcl_ListObjLength(C_NULL, objptr)
-        if status != TCL_OK
-            Tcl.error("failed to convert string into a Tcl list")
-        end
-        for i in 1:n
-            status, itemptr = Tcl_ListObjIndex(C_NULL, objptr, i)
-            if status == TCL_OK
-                status = Tcl_ListObjAppendElement(C_NULL, listptr, itemptr)
-            end
-            if status != TCL_OK
-                Tcl.error("failed to append element to a Tcl list")
-            end
-        end
-    finally
-        Tcl_DecrRefCount(objptr)
+function __concat(intptr::TclInterpPtr, listptr::TclObjPtr,
+                  str::AbstractString)
+    objptr = Tcl_IncrRefCount(__newobj(str))
+    status = Tcl_ListObjAppendList(intptr, listptr, objptr)
+    Tcl_DecrRefCount(objptr)
+    if status != TCL_OK
+        msg = __errmsg(intptr, "failed to concatenate a string to a Tcl list")
+        Tcl.error(msg)
     end
 end
 
-function __concat(listptr::TclObjPtr, obj::TclObj)
-    __lappend!(listptr, arg)
-end
-
-function __concat(listptr::TclObjPtr, list::TclObj{List})
-    # FIXME: make this faster.
-    #for obj in list
-    #    __lappend!(listptr, obj)
-    #end
-    for i in 1:length(list)
-        # Use `lindex(TclObj,...` to avoid conversion of items.
-        __lappend!(listptr, lindex(TclObj, list, i))
+function __concat(intptr::TclInterpPtr, listptr::TclObjPtr, obj::TclObj)
+    status = Tcl_ListObjAppendList(intptr, listptr, obj.ptr)
+    if status != TCL_OK
+        msg = __errmsg(intptr, "failed to concatenate Tcl lists")
+        Tcl.error(msg)
     end
 end
 
 # Everything else is assumed to be an iterable.
-function __concat(listptr::TclObjPtr, itr) ::TclObjPtr
+function __concat(intptr::TclInterpPtr, listptr::TclObjPtr, itr) ::TclObjPtr
     for val in itr
-        __lappend!(listptr, val)
+        __concat(intptr, listptr, val)
     end
 end
 

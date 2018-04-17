@@ -291,7 +291,7 @@ function __unsetvar(interp::TclInterp, name::String, flags::Integer) :: Cint
     if (ptr = __cstring(name)[1]) != C_NULL
         status = Tcl_UnsetVar(interp.ptr, ptr, flags)
     else
-        status = __eval(interp, __newobj("unset {$name}"))
+        status = Tcl.eval(TclStatus, interp, "unset {$name}")
     end
     return status
 end
@@ -302,7 +302,7 @@ function __unsetvar(interp::TclInterp, name1::String, name2::String,
         (ptr2 = __cstring(name2)[1]) != C_NULL)
         status = Tcl_UnsetVar2(interp.ptr, ptr1, ptr2, flags)
     else
-        status = __eval(interp, __newobj("unset {$name1($name2)}"))
+        status = Tcl.eval(TclStatus, "unset {$name1($name2)}")
     end
     return status
 end
