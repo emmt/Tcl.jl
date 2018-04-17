@@ -121,18 +121,26 @@ end
 import .Impl:
     WideInt,
     cget,
+    colorize!,
+    colorize,
     concat,
     configure,
     createcommand,
+    delete,
     deletecommand,
     exec,
     exists,
+    findphoto,
+    getheight,
     getinterp,
     getparent,
     getpath,
+    getphotosize,
+    getpixels,
     getresult,
     getvalue,
     getvar,
+    getwidth,
     grid,
     isactive,
     isdeleted,
@@ -142,10 +150,14 @@ import .Impl:
     llength,
     pack,
     place,
+    resume,
+    setphotosize!,
+    setpixels!,
     setresult,
     setvar,
+    suspend,
+    threshold!,
     unsetvar
-
 
 # Reexport prefixed public symbols.
 for sym in __EXPORTS

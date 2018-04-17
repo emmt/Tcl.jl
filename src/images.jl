@@ -59,7 +59,7 @@ exists(img::TkImage) =
     Tcl.eval(TclStatus, getinterp(img), "image", "inuse", getpath(img)) == TCL_OK
 
 Base.resize!(img::TkImage{:Photo}, args...) =
-    setphotosize(getinterp(img), getpath(img), args...)
+    setphotosize!(getinterp(img), getpath(img), args...)
 
 Base.size(img::TkImage{:Photo}) =
     getphotosize(getinterp(img), getpath(img))
@@ -336,8 +336,8 @@ function getphotosize(interp::TclInterp, name::AbstractString)
     return (Int(w), Int(h))
 end
 
-function setphotosize(interp::TclInterp, name::AbstractString,
-                      width::Integer, height::Integer)
+function setphotosize!(interp::TclInterp, name::AbstractString,
+                       width::Integer, height::Integer)
     __setphotosize(interp, findphoto(interp, name), Cint(width), Cint(height))
 end
 
@@ -415,16 +415,16 @@ function __setpixels(interp::TclInterp, name::AbstractString,
     return nothing
 end
 
-setpixels(img::TkImage{:Photo}, args...) =
-    setpixels(getinterp(img), getpath(img), args...)
+setpixels!(img::TkImage{:Photo}, args...) =
+    setpixels!(getinterp(img), getpath(img), args...)
 
-setpixels(name::Name, args...) = setpixels(getinterp(), name, args...)
+setpixels!(name::Name, args...) = setpixels!(getinterp(), name, args...)
 
-setpixels(interp::TclInterp, name::Symbol, args...) =
-    setpixels(interp, string(name), args...)
+setpixels!(interp::TclInterp, name::Symbol, args...) =
+    setpixels!(interp, string(name), args...)
 
-function setpixels(interp::TclInterp, name::AbstractString,
-                   src::DenseArray{UInt8,3})
+function setpixels!(interp::TclInterp, name::AbstractString,
+                    src::DenseArray{UInt8,3})
     block = TkPhotoImageBlock()
     block.ptr       = pointer(src)
     block.pixelsize = size(src, 1)
@@ -463,8 +463,8 @@ for (T, r, g, b, a) in ((:Gray8,  0, 0, 0, 0),
                         (:BGRA32, 2, 1, 0, 3),
                         (:ARGB32, 1, 2, 3, 0),
                         (:ABGR32, 3, 2, 1, 0))
-    @eval function setpixels(interp::TclInterp, name::AbstractString,
-                             A::DenseArray{T,2}) where {T<:$T}
+    @eval function setpixels!(interp::TclInterp, name::AbstractString,
+                              A::DenseArray{T,2}) where {T<:$T}
         block = TkPhotoImageBlock()
         block.ptr       = pointer(A)
         block.pixelsize = sizeof(T)
