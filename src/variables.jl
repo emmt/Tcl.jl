@@ -76,16 +76,16 @@ getvar(::Type{T}, args...) where {T} = getvar(T, getinterp(), args...)
 getvar(interp::TclInterp, args...) = getvar(Any, interp, args...)
 
 function getvar(::Type{T}, interp::TclInterp, name::Name) where {T}
-    ptr = __getvar(interp, name, C_NULL, VARIABLE_FLAGS)
+    ptr = __getvar(interp, name, VARIABLE_FLAGS)
     ptr != C_NULL || Tcl.error(interp)
-    return __objptr_to(T, interp.ptr, ptr)
+    return __objptr_to(T, ptr)
 end
 
 function getvar(::Type{T}, interp::TclInterp,
                 name1::Name, name2::Name) where {T}
     ptr = __getvar(interp, name1, name2, VARIABLE_FLAGS)
     ptr != C_NULL || Tcl.error(interp)
-    return __objptr_to(T, interp.ptr, ptr)
+    return __objptr_to(T, ptr)
 end
 
 
@@ -100,42 +100,24 @@ end
 # parts.
 #
 # Since all arguments are passed as pointers to Tcl object, we have to take
-# care of correctly unreference temporary objects.  As far as possible we
-# try to avoid the ovehead of the `try ... catch ... finally` statements.
+# care of correctly unreference temporary objects.  Since there can be no
+# failure for argument types allowed for variable name parts, we can avoid the
+# overhead of the `try ... catch ... finally` statements.
 
-function __getvar(interp::TclInterp, name1::Name,
-                  name2::TclObj{String}, flags::Integer)
-    return __getvar(interp, name1, __objptr(name2), flags)
-end
-
-function __getvar(interp::TclInterp, name1::Name,
-                  name2::StringOrSymbol, flags::Integer)
-    # We have to protect against interrupts because __newobj may throw an
-    # exception.
-    name2ptr = Tcl_IncrRefCount(__newobj(name2))
-    try
-        return __getvar(interp, name1, name2ptr, flags)
-    finally
-        Tcl_DecrRefCount(name2ptr)
-    end
-end
-
-function __getvar(interp::TclInterp, name1::TclObj{String},
-                  name2ptr::TclObjPtr, flags::Integer)
-    return __getvar(interp, __objptr(name1), name2ptr, flags)
-end
-
-function __getvar(interp::TclInterp, name1::StringOrSymbol,
-                  name2ptr::TclObjPtr, flags::Integer)
-    name1ptr = Tcl_IncrRefCount(__newobj(name1))
-    objptr = Tcl_ObjGetVar2(interp.ptr, name1ptr, name2ptr, flags)
-    Tcl_DecrRefCount(name1ptr)
+function __getvar(interp::TclInterp, name::Name, flags::Integer)
+    nameptr = Tcl_IncrRefCount(__objptr(name))
+    objptr = Tcl_ObjGetVar2(interp.ptr, nameptr, C_NULL, flags)
+    Tcl_DecrRefCount(nameptr)
     return objptr
 end
 
-function __getvar(interp::TclInterp, name1ptr::TclObjPtr,
-                  name2ptr::TclObjPtr, flags::Integer)
-    return Tcl_ObjGetVar2(interp.ptr, name1ptr, name2ptr, flags)
+function __getvar(interp::TclInterp, name1::Name, name2::Name, flags::Integer)
+    name1ptr = Tcl_IncrRefCount(__objptr(name1))
+    name2ptr = Tcl_IncrRefCount(__objptr(name2))
+    objptr = Tcl_ObjGetVar2(interp.ptr, name1ptr, name2ptr, flags)
+    Tcl_DecrRefCount(name1ptr)
+    Tcl_DecrRefCount(name2ptr)
+    return objptr
 end
 
 """
@@ -155,14 +137,16 @@ See also: [`Tcl.getvar`](@ref), [`Tcl.exists`](@ref), [`Tcl.unsetvar`](@ref).
 setvar(args...) = setvar(getinterp(), args...)
 
 function setvar(interp::TclInterp, name::Name, value)
-    ptr = __setvar(interp, name, value, VARIABLE_FLAGS)
-    ptr != C_NULL || Tcl.error(interp)
+    if __setvar(interp, name, value, VARIABLE_FLAGS) == C_NULL
+        Tcl.error(interp)
+    end
     return nothing
 end
 
 function setvar(interp::TclInterp, name1::Name, name2::Name, value)
-    ptr = __setvar(interp, name1, name2, value, VARIABLE_FLAGS)
-    ptr != C_NULL || Tcl.error(interp)
+    if __setvar(interp, name1, name2, value, VARIABLE_FLAGS) == C_NULL
+        Tcl.error(interp)
+    end
     return nothing
 end
 
@@ -176,78 +160,28 @@ end
 # parts but do manage the reference count of the variable value.
 #
 # Same remarks as for `__getvar` about correctly unreferencing temporary
-# objects.
+# objects and avoiding `try ... catch` statements.
 
-function __setvar(interp::TclInterp, name::TclObj{String},
+function __setvar(interp::TclInterp, name::Name, value, flags::Integer)
+    valueptr = Tcl_IncrRefCount(__objptr(value)) # must be first
+    nameptr = Tcl_IncrRefCount(__objptr(name))
+    objptr = Tcl_ObjSetVar2(interp.ptr, nameptr, C_NULL, valueptr, flags)
+    Tcl_DecrRefCount(valueptr)
+    Tcl_DecrRefCount(nameptr)
+    return objptr
+end
+
+function __setvar(interp::TclInterp, name1::Name, name2::Name,
                   value, flags::Integer)
-    return __setvar(interp, __objptr(name), C_NULL, __objptr(value), flags)
+    valueptr = Tcl_IncrRefCount(__objptr(value)) # must be first
+    name1ptr = Tcl_IncrRefCount(__objptr(name1))
+    name2ptr = Tcl_IncrRefCount(__objptr(name2))
+    objptr = Tcl_ObjSetVar2(interp.ptr, name1ptr, name2ptr, valueptr, flags)
+    Tcl_DecrRefCount(valueptr)
+    Tcl_DecrRefCount(name1ptr)
+    Tcl_DecrRefCount(name2ptr)
+    return objptr
 end
-
-function __setvar(interp::TclInterp, name::StringOrSymbol,
-                  value, flags::Integer)
-    # We have to protect against interrupts because __newobj and __objptr may
-    # throw an exception.
-    nameptr = C_NULL
-    try
-        nameptr = Tcl_IncrRefCount(__newobj(name))
-        return __setvar(interp, nameptr, C_NULL, __objptr(value), flags)
-    finally
-        nameptr == C_NULL || Tcl_DecrRefCount(nameptr)
-    end
-end
-
-function __setvar(interp::TclInterp, name1::TclObj{String},
-                  name2::TclObj{String}, value, flags::Integer)
-    return __setvar(interp, __objptr(name1), __objptr(name2), __objptr(value), flags)
-end
-
-function __setvar(interp::TclInterp, name1::TclObj{String},
-                  name2::StringOrSymbol, value, flags::Integer)
-    # We have to protect against interrupts because __newobj and __objptr may
-    # throw an exception.
-    name2ptr = C_NULL
-    try
-        name2ptr = Tcl_IncrRefCount(__newobj(name2))
-        return __setvar(interp, __objptr(name1), name2ptr, __objptr(value), flags)
-    finally
-        name2ptr == C_NULL || Tcl_DecrRefCount(name2ptr)
-    end
-end
-
-function __setvar(interp::TclInterp, name1::StringOrSymbol,
-                  name2::TclObj{String}, value, flags::Integer)
-    # We have to protect against interrupts because __newobj and __objptr may
-    # throw an exception.
-    name1ptr = C_NULL
-    try
-        name1ptr = Tcl_IncrRefCount(__newobj(name1))
-        return __setvar(interp, name1ptr, __objptr(name2), __objptr(value), flags)
-    finally
-        name1ptr == C_NULL || Tcl_DecrRefCount(name1ptr)
-    end
-end
-
-function __setvar(interp::TclInterp, name1::StringOrSymbol,
-                  name2::StringOrSymbol, value, flags::Integer)
-    # We have to protect against interrupts because __newobj and __objptr may
-    # throw an exception.
-    name1ptr = C_NULL
-    name2ptr = C_NULL
-    try
-        name1ptr = Tcl_IncrRefCount(__newobj(name1))
-        name2ptr = Tcl_IncrRefCount(__newobj(name2))
-        return __setvar(interp, name1ptr, name2ptr, __objptr(value), flags)
-    finally
-        name1ptr == C_NULL || Tcl_DecrRefCount(name1ptr)
-        name2ptr == C_NULL || Tcl_DecrRefCount(name2ptr)
-    end
-end
-
-function __setvar(interp::TclInterp, name1ptr::TclObjPtr,
-                  name2ptr::TclObjPtr, valueptr::TclObjPtr, flags::Integer)
-    return Tcl_ObjSetVar2(interp.ptr, name1ptr, name2ptr, valueptr, flags)
-end
-
 
 """
 ```julia
@@ -287,7 +221,7 @@ end
 # `Tcl_UnsetVar` and `Tcl_UnsetVar2` are available which both require strings
 # for the variable name parts.
 
-function __unsetvar(interp::TclInterp, name::String, flags::Integer) :: Cint
+function __unsetvar(interp::TclInterp, name::String, flags::Integer)
     if (ptr = __cstring(name)[1]) != C_NULL
         status = Tcl_UnsetVar(interp.ptr, ptr, flags)
     else
@@ -297,7 +231,7 @@ function __unsetvar(interp::TclInterp, name::String, flags::Integer) :: Cint
 end
 
 function __unsetvar(interp::TclInterp, name1::String, name2::String,
-                    flags::Integer) :: Cint
+                    flags::Integer)
     if ((ptr1 = __cstring(name1)[1]) != C_NULL &&
         (ptr2 = __cstring(name2)[1]) != C_NULL)
         status = Tcl_UnsetVar2(interp.ptr, ptr1, ptr2, flags)
@@ -322,7 +256,7 @@ See also: [`Tcl.getvar`](@ref), [`Tcl.setvar`](@ref), [`Tcl.unsetvar`](@ref).
 exists(args...) = exists(getinterp(), args...)
 
 function exists(interp::TclInterp, name::Name)
-    return (__getvar(interp, name, C_NULL, TCL_GLOBAL_ONLY) != C_NULL)
+    return (__getvar(interp, name, TCL_GLOBAL_ONLY) != C_NULL)
 end
 
 function exists(interp::TclInterp, name1::Name, name2::Name)

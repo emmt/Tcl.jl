@@ -13,7 +13,6 @@ using ...Tcl
 export
     cget,
     configure,
-    createcommand,
     getinterp,
     getparent,
     getpath,
@@ -61,7 +60,6 @@ export
 
 const cget          = Tcl.cget
 const configure     = Tcl.configure
-const createcommand = Tcl.createcommand
 const getinterp     = Tcl.getinterp
 const getparent     = Tcl.getparent
 const getpath       = Tcl.getpath

@@ -96,10 +96,9 @@ mutable struct TclObj{T} <: ManagedObject
 end
 
 struct Callback <: ManagedObject
-    interp::TclInterp
-    name::TclObj{Function}
-    Callback(interp::TclInterp, name::TclObj{Function}) =
-        new(interp, name)
+    intptr::TclInterpPtr # weak reference to interpreter
+    obj::TclObj{Function} # command name (possibly fully-qualified)
+    func::Function
 end
 
 # Tcl wide integer is 64-bit integer.

@@ -4,8 +4,10 @@
 # Implement interface to Tcl interpreter, evaluation of scripts, callbacks...
 #
 
+#------------------------------------------------------------------------------
 # Make TclStatus behaves as an integer when used in comparisons with another
 # status or an integer.
+
 for op in (:(==), :(!=), :(<), :(<=), :(>), :(>=))
     @eval begin
         Base.$op(a::TclStatus, b::Integer  ) = $op(a.code, b     )
@@ -17,14 +19,6 @@ TclStatus(status::TclStatus) = status
 Base.convert(::Type{T}, status::TclStatus) where {T<:Integer} =
     convert(T, status.code)
 Base.convert(::Type{Integer}, status::TclStatus) = status.code
-
-#------------------------------------------------------------------------------
-# Default traits.
-
-atomictype(::Union{Void,Char,Symbol,Integer,FloatingPoint,Function}) = Atomic
-atomictype() = Atomic
-atomictype(x) = NonAtomic
-
 
 #------------------------------------------------------------------------------
 # Automatically named objects.
@@ -126,6 +120,109 @@ isdeleted(interp::TclInterp) = Tcl_InterpDeleted(interp.ptr)
 isactive(interp::TclInterp) = Tcl_InterpActive(interp.ptr)
 
 
+"""
+```julia
+Tcl.getinterp()
+```
+
+yields the initial Tcl interpreter which is used by default by many methods.
+An argument can be provided:
+
+```julia
+Tcl.getinterp(w)
+```
+
+yields the Tcl interpreter for widget (or image) `w`.
+
+"""
+getinterp() = __initial_interpreter[]
+
+# This constant wraps a NULL pointer in a TclInterp structure.
+const __NO_INTERP = TclInterp(TclInterpPtr(0))
+
+# Many things do not work properly (e.g., freeing a Tcl object yield a
+# segmentation fault) if no interpreter has been created, so we always create
+# an initial Tcl interpreter (this is done by the __init__ method).
+const __initial_interpreter = Ref{TclInterp}(__NO_INTERP)
+
+# Interpreter pointer for callbacks and objects which need a Tcl interpreter.
+const __context = [__NO_INTERP for i in 1:Threads.nthreads()]
+
+"""
+```julia
+__interp()
+```
+
+yields the contextual Tcl interpreter of the calling thread.  Beware that this
+may be a NULL interpreter.  The contextual Tcl interpreter shall only be used
+for error messages and for creating callbacks.
+
+See also: [`__intptr`](@ref), [`__set_context`](@ref),
+          [`__reset_context`](@ref).
+
+"""
+@inline __interp() =
+    # one-line definition does not work as expected...
+    (@inbounds interp = __context[Threads.threadid()];
+     return interp)
+
+"""
+```julia
+__intptr()
+```
+
+yields a reference to the contextual Tcl interpreter of the calling thread.
+Beware that this may be a NULL pointer.  The contextual Tcl interpreter shall
+only be used for error messages and for creating callbacks.
+
+See also: [`__interp`](@ref), [`__set_context`](@ref),
+          [`__reset_context`](@ref).
+
+"""
+@inline __intptr() = __interp().ptr
+
+"""
+```julia
+__reset_context()
+```
+
+resets the context for the calling thread.
+
+See also: [`__interp`](@ref), [`__set_context`](@ref),
+          [`__contextual_error`](@ref).
+
+"""
+@inline __reset_context() = __set_context(__NO_INTERP)
+
+"""
+```julia
+__set_context(interp)
+```
+
+sets the contextual Tcl interpreter for the calling thread.
+
+See also: [`__interp`](@ref), [`__reset_context`](@ref),
+          [`__contextual_error`](@ref).
+
+"""
+@inline __set_context(interp::TclInterp) =
+    @inbounds __context[Threads.threadid()] = interp
+
+"""
+```julia
+__contextual_error(msg)
+```
+
+throws a Tcl error exception with message retrieved from the contextual
+Tcl interpreter of the calling thread, if any, or given by `msg`, otherwise.
+
+See also: [`__set_context`](@ref),  [`__reset_context`](@ref).
+
+"""
+__contextual_error(msg::String) =
+    (intptr = __intptr();
+     (intptr == C_NULL ? msg : __objptr_to(String, Tcl_GetObjResult(intptr))))
+
 #------------------------------------------------------------------------------
 # Evaluation of Tcl scripts.
 
@@ -199,18 +296,15 @@ getresult(interp::TclInterp) = getresult(Any, interp)
 
 getresult(::Type{T}) where {T} = getresult(T, getinterp())
 
+getresult(::Type{T}, interp::TclInterp) where {T} = __getresult(T, interp)
+
 # Tcl_GetStringResult calls Tcl_GetObjResult, so we only interface to this
 # latter function.  Incrementing the reference count of the result is only
 # needed if we want to keep a long-term reference to it,
 # `__objptr_to(TclObj,...)` takes care of that).
-getresult(::Type{T}, interp::TclInterp) where {T} =
-    __objptr_to(T, interp.ptr, Tcl_GetObjResult(interp.ptr))
+__getresult(::Type{T}, interp::TclInterp) where {T} =
+    __objptr_to(T, Tcl_GetObjResult(interp.ptr))
 
-# In case of error, getting a string result is needed, we provide the following
-# method.
-__errmsg(intptr::TclInterpPtr, defmsg::String) :: String =
-    (intptr == C_NULL ? defmsg :
-     __objptr_to(String, C_NULL, Tcl_GetObjResult(intptr)))
 
 """
 ```julia
@@ -241,33 +335,26 @@ Specify `T` as `TclStatus`, if you want to avoid throwing errors and call
 See also: [`Tcl.eval`](@ref), [`Tcl.list`](@ref), [`Tcl.getresult`](@ref).
 
 """
-exec(args...; kwds...) = exec(getinterp(), args...; kwds...)
+exec(args...; kwds...) =
+    exec(getinterp(), args...; kwds...)
 
 exec(::Type{T}, args...; kwds...) where {T} =
     exec(T, getinterp(), args...; kwds...)
 
-function exec(interp::TclInterp, args...; kwds...)
-    exec(TclStatus, interp, args...; kwds...) == TCL_OK || Tcl.error(interp)
-    return getresult(interp)
-end
+exec(interp::TclInterp, args...; kwds...) =
+    exec(Any, interp, args...; kwds...)
 
 function exec(::Type{T}, interp::TclInterp, args...; kwds...) where {T}
-    exec(TclStatus, interp, args...; kwds...) == TCL_OK || Tcl.error(interp)
-    return getresult(T, interp)
-end
-
-# This version gets called when there are any keywords or when zero or more
-# than one argument.
-function exec(::Type{TclStatus}, interp::TclInterp, args...; kwds...)
     length(args) ≥ 1 || Tcl.error("expecting at least one argument")
-    listptr = Tcl_IncrRefCount(__newlistobj())
-    __set_interpreter(interp)
+    listptr = C_NULL
+    __set_context(interp)
     try
-        @__build_list interp listptr args kwds
-        return __eval(interp, TclObj{List}, listptr)
+        listptr = Tcl_IncrRefCount(__newlistobj())
+        @__build_list listptr args kwds
+        return __eval(T, interp, TclObj{List}, listptr)
     finally
-        Tcl_DecrRefCount(listptr)
-         __reset_interpreter()
+        listptr == C_NULL || Tcl_DecrRefCount(listptr)
+         __reset_context()
     end
 end
 
@@ -299,54 +386,87 @@ Specify `T` as `TclStatus`, if you want to avoid throwing errors and
 See also: [`Tcl.concat`](@ref), [`Tcl.exec`](@ref), [`getvar`](@ref).
 
 """
-Tcl.eval(args...) = Tcl.eval(getinterp(), args...)
+Tcl.eval(args...) =
+    Tcl.eval(getinterp(), args...)
 
-Tcl.eval(::Type{T}, args...) where {T} = Tcl.eval(T, getinterp(), args...)
+Tcl.eval(::Type{T}, args...) where {T} =
+    Tcl.eval(T, getinterp(), args...)
 
-function Tcl.eval(interp::TclInterp, args...)
-    Tcl.eval(TclStatus, interp, args...) == TCL_OK || Tcl.error(interp)
-    return getresult(interp)
+Tcl.eval(interp::TclInterp, args...) =
+    Tcl.eval(Any, interp, args...)
+
+function Tcl.eval(::Type{T}, interp::TclInterp,
+                  script::Union{AbstractString,Symbol}) where {T}
+    return Tcl.eval(T, interp, string(script))
 end
 
-function Tcl.eval(::Type{T}, interp::TclInterp, args...) where {T}
-    Tcl.eval(TclStatus, interp, args...) == TCL_OK || Tcl.error(interp)
-    return getresult(T, interp)
-end
-
-# This version gets called when there are zero or more than one argument or a
-# single argument which is neither a string nor a managed Tcl object.
-function Tcl.eval(::Type{TclStatus}, interp::TclInterp, args...)
-    length(args) ≥ 1 || Tcl.error("missing script to evaluate")
-    listptr = Tcl_IncrRefCount(__newlistobj())
-    __set_interpreter(interp)
+function Tcl.eval(::Type{T}, interp::TclInterp, script::String) where {T}
+    # A single string (or equivalent) is argument is to be evaluated.
+    __set_context(interp)
     try
-        @__concat_args interp listptr args
-        return __eval(interp, TclObj{List}, listptr)
+        return __eval(T, interp, String, script)
     finally
-        Tcl_DecrRefCount(listptr)
-        __reset_interpreter()
+        __reset_context()
     end
 end
 
+function Tcl.eval(::Type{T}, interp::TclInterp, script::TclObj{S}) where{T,S}
+    # A managed Tcl object is directly evaluated.  This saves the concatenation
+    # which produces the same thing. FIXME: check this for a string.
+    __set_context(interp)
+    try
+        return __eval(T, interp, TclObj{S}, __objptr(script))
+    finally
+        __reset_context()
+    end
+end
+
+function Tcl.eval(::Type{T}, interp::TclInterp, args...) where {T}
+    # Zero or more arguments, or a single non-list and non-string-like argument
+    # are to be evaluated.  Concatenate all arguments and evaluate the
+    # resulting list.
+    length(args) ≥ 1 || Tcl.error("missing script to evaluate")
+    listptr = C_NULL
+    __set_context(interp)
+    try
+        listptr = Tcl_IncrRefCount(__newlistobj())
+        @__concat_args listptr args
+        return __eval(T, interp, TclObj{List}, listptr)
+    finally
+        listptr == C_NULL || Tcl_DecrRefCount(listptr)
+        __reset_context()
+    end
+end
+
+# Called in a properly set context, this method should produce consistent error
+# messages and result of given type T.
+function __eval(::Type{T}, interp::TclInterp, ::Type{S}, script) where {T,S}
+    status = __eval(TclStatus, interp, S, script)
+    if __eval(TclStatus, interp, S, script) != TCL_OK
+        Tcl.error(interp)
+    end
+    return __getresult(T, interp)
+end
+
+# For a not well defined Tcl object type, we peek the real object type to
+# decide which of `Tcl_EvalObjEx` or `Tcl_EvalObjv` to call.
+function __eval(::Type{TclStatus}, interp::TclInterp,
+                ::Type{TclObj}, objptr::TclObjPtr)
+    return __eval(TclStatus, interp, TclObj{__objtype(objptr)}, objptr)
+end
+
 # For a script given as a string, `Tcl_EvalEx` is slightly faster than
-# `Tcl_Eval` (says the doc.) and, more importantly, works the script may
-# contain embedded nulls.
-Tcl.eval(::Type{TclStatus}, interp::TclInterp, script::AbstractString) =
+# `Tcl_Eval` (says the doc.) and, more importantly, the script may contain
+# embedded nulls.
+__eval(::Type{TclStatus}, interp::TclInterp, ::Type{String}, script::String) =
     Tcl_EvalEx(interp.ptr, Base.unsafe_convert(Ptr{Cchar}, script),
                sizeof(script), TCL_EVAL_GLOBAL|TCL_EVAL_DIRECT)
-
-# Concatenating a list yields the same list, the following version avoids this
-# extra work.  We peek the real object type to decide which of `Tcl_EvalObjEx`
-# or `Tcl_EvalObjv` to call.
-function Tcl.eval(::Type{TclStatus}, interp::TclInterp, obj::TclObj)
-    objptr = __objptr(obj)
-    return __eval(interp, TclObj{__objtype(objptr)}, objptr)
-end
 
 # For non-list objects, we use `Tcl_EvalObjEx` to evaluate a single argument
 # script.  `Tcl_EvalObjEx` does manage the reference count of its object
 # argument.
-function __eval(interp::TclInterp, ::Type{TclObj}, objptr::TclObjPtr)
+function __eval(::Type{TclStatus}, interp::TclInterp,
+                ::Type{TclObj{S}}, objptr::TclObjPtr) where S
     flags = TCL_EVAL_GLOBAL
     if Tcl_GetRefCount(objptr) < 1
         # For a temporary object there is no needs to compile the script.
@@ -355,7 +475,8 @@ function __eval(interp::TclInterp, ::Type{TclObj}, objptr::TclObjPtr)
     return Tcl_EvalObjEx(interp.ptr, objptr, flags)
 end
 
-function __eval(interp::TclInterp, ::Type{TclObj{List}}, listptr::TclObjPtr)
+function __eval(::Type{TclStatus}, interp::TclInterp,
+                ::Type{TclObj{List}}, listptr::TclObjPtr)
     flags = TCL_EVAL_GLOBAL
     status, objc, objv = Tcl_ListObjGetElements(interp.ptr, listptr)
     if status == TCL_OK
@@ -363,44 +484,6 @@ function __eval(interp::TclInterp, ::Type{TclObj{List}}, listptr::TclObjPtr)
     end
     return status
 end
-
-#------------------------------------------------------------------------------
-# Initial Tcl interpreter.
-
-# Many things do not work properly (e.g. freeing a Tcl object yield a
-# segmentation fault) if no interpreter has been created, so we always create
-# an initial Tcl interpreter.
-const __initialinterpreter = Ref{TclInterp}()
-
-# Interpreter for callbacks and objects which need a Tcl interpreter.
-const __currentinterpreter = Ref{TclInterp}()
-const __currentinterpreterA = [TclInterpPtr(0) for i in 1:Threads.nthreads()]
-
-"""
-```julia
-Tcl.getinterp()
-```
-
-yields the initial Tcl interpreter which is used by default by many methods.
-An argument can be provided:
-
-```julia
-Tcl.getinterp(w)
-```
-
-yields the Tcl interpreter for widget (or image) `w`.
-
-"""
-getinterp() = __initialinterpreter[]
-
-@inline __get_interpreter() =
-    __currentinterpreter[]
-
-@inline __set_interpreter(interp::TclInterp) =
-    __currentinterpreter[] = interp
-
-@inline __reset_interpreter() =
-    __currentinterpreter[] = __initialinterpreter[]
 
 #------------------------------------------------------------------------------
 # Exceptions
@@ -504,22 +587,27 @@ function release(obj)
     nothing
 end
 
-const __releaseobject_ref = Ref{Ptr{Void}}() # will be set by __init__
+const __releaseobject_proc = Ref{Ptr{Void}}() # will be set by __init__
+
 function __releaseobject(ptr::Ptr{Void}) :: Void
     release(unsafe_pointer_to_objref(ptr))
 end
 
-const __evalcommand_ref = Ref{Ptr{Void}}() # will be set by __init__
+const __evalcommand_proc = Ref{Ptr{Void}}() # will be set by __init__
+
 function __evalcommand(fptr::ClientData, iptr::TclInterpPtr,
                        objc::Cint, objv::Ptr{TclObjPtr}) :: Cint
-    f = unsafe_pointer_to_objref(fptr)
-    interp = TclInterp(iptr)
+    func = unsafe_pointer_to_objref(fptr)
+    interp = TclInterp(iptr) # weak reference
+    __set_context(interp) # FIXME: not needed?
     try
-        args = buildvector(i -> __objptr_to(Any, iptr, __peek(objv, i)), objc)
-        return __setcommandresult(interp, f(interp, args...))
+        args = __buildvector(objc, objv)
+        return __setcommandresult(interp, func(interp, args...))
     catch ex
         setresult(interp, "(callback error) " * geterrmsg(ex))
         return TCL_ERROR
+    finally
+        __reset_context() # FIXME: not needed?
     end
 end
 
@@ -546,10 +634,9 @@ __setcommandresult(interp::TclInterp, status::TclStatus, args...) =
 # With precompilation, `__init__()` carries on initializations that must occur
 # at runtime like `cfunction` which returns a raw pointer.
 function __init__()
-    __initialinterpreter[] = TclInterp(true)
-    __currentinterpreter[] = __initialinterpreter[]
-    __releaseobject_ref[] = cfunction(__releaseobject, Void, (Ptr{Void},))
-    __evalcommand_ref[] = cfunction(__evalcommand, Cint,
+    __initial_interpreter[] = TclInterp(true)
+    __releaseobject_proc[] = cfunction(__releaseobject, Void, (Ptr{Void},))
+    __evalcommand_proc[] = cfunction(__evalcommand, Cint,
                                     (ClientData, TclInterpPtr,
                                      Cint, Ptr{TclObjPtr}))
     __init_types()
@@ -557,11 +644,11 @@ end
 
 """
 ```julia
-Tcl.createcommand([interp,] [name,] f) -> name
+Tcl.CallBack([interp,] [name,] f) -> name
 ```
 
-creates a command named `name` in Tcl interpreter `interp` (or in the initial
-Tcl interpreter if this argument is omitted).  If `name` is missing
+creates a callback command named `name` in Tcl interpreter `interp` (or in the
+initial Tcl interpreter if this argument is omitted).  If `name` is missing
 `Tcl.autoname("jl_callback")` is used to automatically define a name.  The
 command name is returned as a string.  The Tcl command will call the Julia
 function `f` as follows:
@@ -586,55 +673,75 @@ the interpreter.
 See also: [`Tcl.deletecommand`](@ref), [`Tcl.autoname`](@ref).
 
 """
-createcommand(f::Function) =
-    createcommand(getinterp(), f)
+Callback(func::Function) =
+    Callback(getinterp(), func)
 
-createcommand(name::Name, f::Function) =
-    createcommand(getinterp(), name, f)
+Callback(name::StringOrSymbol, func::Function) =
+    Callback(getinterp(), name, func)
 
-createcommand(interp::TclInterp, f::Function) =
-    __createcommand(interp.ptr, f)
+Callback(interp::TclInterp, func::Function) =
+    __newcallback(interp.ptr,func)
 
-createcommand(interp::TclInterp, name::Symbol, f::Function) =
-    __createcommand(interp.ptr, string(name), f)
+Callback(interp::TclInterp, name::StringOrSymbol, func::Function) =
+    __newcallback(interp.ptr, name, func)
 
-createcommand(interp::TclInterp, name::String, f::Function) =
-    __createcommand(interp.ptr, name, f)
+__newcallback(func::Function) =
+    __newcallback(__intptr(), func)
 
-__createcommand(intptr::TclInterpPtr, f::Function) =
-    __createcommand(intptr, autoname("jl_callback"), f)
+__newcallback(intptr::TclInterpPtr, func::Function) =
+    __newcallback(intptr, autoname("jl_callback"), func)
 
-function __createcommand(intptr::TclInterpPtr, name::String, f::Function)
-    # Before creating the command, make sure object is not garbage collected
-    # until Tcl deletes its reference.
-    preserve(f)
-    token = Tcl_CreateObjCommand(intptr,
-                                 name,
-                                 __evalcommand_ref[],
-                                 pointer_from_objref(f),
-                                 __releaseobject_ref[])
-    if token == C_NULL
-        release(f)
-        Tcl.error(__objptr_to(String, C_NULL, Tcl_GetObjResult(intptr)))
+__newcallback(intptr::TclInterpPtr, name::Symbol, func::Function) =
+    __newcallback(intptr, string(name), func)
+
+function __newcallback(intptr::TclInterpPtr, name::String, func::Function)
+    local cmd :: TclObj{Function}
+    if intptr != C_NULL
+        preserve(func)
+        token = Tcl_CreateObjCommand(intptr, name, __evalcommand_proc[],
+                                     pointer_from_objref(func),
+                                     __releaseobject_proc[])
+        if token == C_NULL
+            release(func)
+            Tcl.error(__objptr_to(String, Tcl_GetObjResult(intptr)))
+        end
+        cmd = TclObj{Function}(__newobj(""))
+        Tcl_GetCommandFullName(intptr, token, __objptr(cmd))
+    else
+        cmd = TclObj{Function}(__newobj(name))
     end
-    cmd = TclObj{Function}(__newobj(""))
-    Tcl_GetCommandFullName(intptr, token, __objptr(cmd))
-    return cmd
+    return Callback(intptr, cmd, func)
 end
+
+TclObj(func::Function) = Callback(func)
+
+atomictype(::Type{<:Union{Function,Callback}}) = Atomic
+
+__objptr(func::Function) = __objptr(__newobj(func))
+
+__newobj(func::Function) = __objptr(__newcallback(func))
+
+__objptr(func::Callback) = __objptr(func.obj)
+
 
 """
 ```julia
-Tcl.deletecommand([interp,] name)
+Tcl.deletecommand([interp,] cmd)
 ```
 
-deletes a command named `name` in Tcl interpreter `interp` (or in the initial
-Tcl interpreter if this argument is omitted).
+deletes a command named `cmd` in Tcl interpreter `interp` (or in the initial
+Tcl interpreter if this argument is omitted). `cmd` can also be a callback.
 
-See also: [`Tcl.createcommand`](@ref).
+See also: [`Tcl.Callback`](@ref).
 
 """
-deletecommand(name::StringOrSymbol) =
-    deletecommand(getinterp(), name)
+deletecommand(cmd::Union{StringOrSymbol,Callback}) =
+    # Since a callback just has a weak reference to the interpreter where it
+    # was created, we must not use it as a default.
+    deletecommand(getinterp(), cmd)
+
+deletecommand(interp::TclInterp, cmd::Callback) =
+    deletecommand(interp, cmd.name)
 
 function deletecommand(interp::TclInterp, name::StringOrSymbol)
     if Tcl_DeleteCommand(interp.ptr, name) != TCL_OK

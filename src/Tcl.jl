@@ -119,13 +119,14 @@ end
 # Import public methods, types and constants.  These will be available as
 # `Tcl.$name`.
 import .Impl:
+    Callback,
     WideInt,
+    atomictype,
     cget,
     colorize!,
     colorize,
     concat,
     configure,
-    createcommand,
     delete,
     deletecommand,
     exec,

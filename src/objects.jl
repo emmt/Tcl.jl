@@ -3,13 +3,16 @@
 #
 # Management of Tcl objects.
 #
-
+# Tcl memory management is such that Tcl_Panic is called whenever memory
+# allocation fails causing the program to abort.  It is therefore not necessary
+# to check for the reference returned by object creation functions as it can
+# never be NULL.  This simplifies the code (no needs to report such errors or
+# throw exceptions and then catch them, etc.).
+#
 
 # Extend base methods for objects.
 
-# FIXME: A slight optimization is possible here because we know that
-#        the object pointer cannot be NULL.
-Base.string(obj::TclObj) = __objptr_to(String, C_NULL, __objptr(obj))
+Base.string(obj::TclObj) = __objptr_to(String, __objptr(obj))
 
 Base.show(io::IO, ::MIME"text/plain", obj::T) where {T<:TclObj} =
     print(io, "$T($(string(obj)))")
@@ -38,7 +41,7 @@ yields the value of a Tcl object.  The type of the result corresponds to
 the internal representation of the object.
 
 """
-getvalue(obj::TclObj{T}) where {T} = __objptr_to(T, C_NULL, __objptr(obj))
+getvalue(obj::TclObj{T}) where {T} = __objptr_to(T, __objptr(obj))
 
 
 """
@@ -54,6 +57,32 @@ Tcl.  Tcl objects are used to efficiently build Tcl commands in the form of
 """
 TclObj(obj::TclObj) = obj
 
+"""
+```julia
+atomictype(T)
+```
+
+yields a sub-type of `AtomicType` indicating whether objects of type `T` are
+atomic (that is always interpreted as a single list element) or not.
+
+"""
+atomictype(::Type{<:Iterables}) = NonAtomic
+atomictype(::Type{TclObj{T}}) where T = atomictype(T)
+
+
+"""
+```julia
+__objptr(arg)
+```
+
+yields a pointer to a Tcl object corresponding to argument `arg`.  This may
+create a new (temporary) object so caller should make sure the reference count
+of the result is correctly managed.  An exception may be thrown if the argument
+cannot be converted into a Tcl object.
+
+"""
+__objptr(obj::TclObj) = obj.ptr
+
 
 """
 ```julia
@@ -61,7 +90,7 @@ __newobj(value)
 ```
 
 yields a pointer to a temporary Tcl object with given value.  This method may
-thrown an exception.
+throw an exception.
 
 """ __newobj
 
@@ -73,13 +102,11 @@ thrown an exception.
 
 TclObj(value::Bool) = TclObj{Bool}(__newobj(value))
 
-function __newobj(value::Bool)
-    objptr = Tcl_NewBooleanObj(value)
-    if objptr == C_NULL
-        Tcl.error("failed to create a Tcl boolean object")
-    end
-    return objptr
-end
+atomictype(::Type{Bool}) = Atomic
+
+__objptr(value::Bool) = __newobj(value)
+
+__newobj(value::Bool) = Tcl_NewBooleanObj(value)
 
 
 # Integers.
@@ -97,13 +124,11 @@ for Tj in (Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
 
         TclObj(value::$Tj) = TclObj{$Tc}(__newobj(value))
 
-        function __newobj(value::$Tj)
-            objptr = $f(value)
-            if objptr == C_NULL
-                Tcl.error("failed to create a Tcl integer object")
-            end
-            return objptr
-        end
+        atomictype(::Type{$Tj}) = Atomic
+
+        __objptr(value::$Tj) = __newobj(value)
+
+        __newobj(value::$Tj) = $f(value)
 
     end
 
@@ -117,21 +142,20 @@ end
 
 TclObj(value::FloatingPoint) = TclObj{Cdouble}(__newobj(value))
 
-__newobj(value::FloatingPoint) = __newobj(convert(Cdouble, value))
+atomictype(::Type{<:FloatingPoint}) = Atomic
 
-function __newobj(value::Cdouble)
-    objptr = Tcl_NewDoubleObj(value)
-    if objptr == C_NULL
-        Tcl.error("failed to create a Tcl floating-point object")
-    end
-    return objptr
-end
+__objptr(value::FloatingPoint) = __newobj(value)
+
+__newobj(value::Cdouble) = Tcl_NewDoubleObj(value)
+__newobj(value::FloatingPoint) = __newobj(convert(Cdouble, value))
 
 
 # Strings.
 #
 #     Julia strings and symbols are assumed to be Tcl strings.  Julia
-#     characters are assumed to Tcl strings of length 1.
+#     characters are assumed to Tcl strings of length 1.  Strings may be split
+#     in several arguments (hence they are non-atomic) while characters and
+#     symbols are atomic.
 #
 #     There are two alternatives to create Tcl string objects:
 #     `Tcl_NewStringObj` or `Tcl_NewUnicodeObj`.  After some testings (see my
@@ -140,74 +164,50 @@ end
 #     number of bytes with `sizeof(str)`.
 
 
-TclObj(value::StringOrSymbol) = TclObj{String}(__newobj(value))
-TclObj(c::Char) = TclObj{String}(__newobj(c))
+TclObj(x::Union{Char,Symbol,AbstractString}) = TclObj{String}(__newobj(x))
 
-__newobj(sym::Symbol) = __newobj(string(sym))
-__newobj(c::Char) = __newobj(string(c))
+atomictype(::Type{<:Union{Char,Symbol}}) = Atomic
+atomictype(::Type{<:AbstractString}) = NonAtomic
 
-function __newobj(str::AbstractString)
-    objptr = Tcl_NewStringObj(str)
-    if objptr == C_NULL
-        Tcl.error("failed to create a Tcl string object")
-    end
-    return objptr
-end
+__objptr(x::Union{Char,Symbol,AbstractString}) = __newobj(x)
 
-function __newstringobj(ptr::Ptr{T}, nbytes::Integer) where {T<:Byte}
-    objptr = Tcl_NewStringObj(ptr, nbytes)
-    if objptr == C_NULL
-        Tcl.error("failed to create a Tcl string object")
-    end
-    return objptr
-end
+__newobj(x::Union{Char,Symbol}) = __newobj(string(x))
+__newobj(str::AbstractString) = Tcl_NewStringObj(str)
+
+__newstringobj(ptr::Ptr{T}, nbytes::Integer) where {T<:Byte} =
+    Tcl_NewStringObj(ptr, nbytes)
+
 
 # Void and nothing.
 #
 #     Nothing is loosely aliased to "" in Tcl.  Could also be an empty list.
 
-TclObj(::Void) = TclObj{Void}(__newobj(nothing))
+TclObj(x::Void) = TclObj{Void}(__newobj(x))
+
+atomictype(::Type{Void}) = Atomic
+
+__objptr(x::Void) = __newobj(x)
 
 __newobj(::Void) = __newobj("")
 
 
-# Functions.
-#
-#     Functions are used for callbacks.
-
-TclObj(f::Function) = TclObj{Function}(__newobj(f))
-# FIXME: impose to specify the interpreter.
-__newobj(f::Function) =
-    __newobj(createcommand(__currentinterpreter[], f))
-
-
+@static if false
 # Unsupported objects.
 #
 #     These fallbacks are only meet for unsupported types.
 
 TclObj(::T) where T = __unsupported_object_type(T)
 
+atomictype(::Type{T}) where T = __unsupported_object_type(T)
+
+__objptr(::T) where T = __unsupported_object_type(T)
+
 __newobj(::T) where T = __unsupported_object_type(T)
 
 __unsupported_object_type(::Type{T}) where T =
     Tcl.error("making a Tcl object for type $T is not supported")
 
-
-"""
-```julia
-__objptr(arg)
-```
-
-yields a pointer to a Tcl object corresponding to argument `arg`.  This may
-create a new (temporary) object so caller should make sure the reference count
-of the result is correctly managed.  An exception may be thrown if the argument
-cannot be converted into a Tcl object.
-
-"""
-__objptr(obj::TclObj) = obj.ptr
-__objptr(value) = __newobj(value)
-__objptr() = __newobj()
-
+end
 
 #------------------------------------------------------------------------------
 
@@ -292,7 +292,7 @@ __ptr_to(::Type{<:Union{TclObj,TclObj{String}}}, strptr::Cstring) =
 """
 
 ```julia
-__objptr_to(T::DataType, intptr::TclInterpPtr, objptr::Ptr{Void})
+__objptr_to(T::DataType, objptr::Ptr{Void})
 ````
 
 converts the Tcl object at address `objptr` into a value of type `T`.
@@ -304,15 +304,13 @@ error message if the conversion fails.
 See also: [`Tcl.getvar`](@ref), [`Tcl.getvalue`](@ref).
 
 """
-__objptr_to(::Type{Any}, intptr::TclInterpPtr, objptr::Ptr{Void}) =
-    __objptr_to(__objtype(objptr), intptr, objptr)
+@inline __objptr_to(::Type{Any}, objptr::Ptr{Void}) =
+    __objptr_to(__objtype(objptr), objptr)
 
-__objptr_to(::Type{TclObj}, intptr::TclInterpPtr, objptr::Ptr{Void}) =
+@inline __objptr_to(::Type{TclObj}, objptr::Ptr{Void}) =
     TclObj{__objtype(objptr)}(objptr)
 
-function __objptr_to(::Type{String}, intptr::TclInterpPtr,
-                     objptr::TclObjPtr) :: String
-    objptr != C_NULL || __illegal_null_object_pointer()
+@inline function __objptr_to(::Type{String}, objptr::TclObjPtr) :: String
     ptr, len = Tcl_GetStringFromObj(objptr)
     if ptr == C_NULL
         Tcl.error("failed to retrieve string representation of Tcl object")
@@ -320,9 +318,7 @@ function __objptr_to(::Type{String}, intptr::TclInterpPtr,
     return unsafe_string(ptr, len)
 end
 
-function __objptr_to(::Type{Char}, intptr::TclInterpPtr,
-                     objptr::Ptr{Void}) :: Char
-    objptr != C_NULL || __illegal_null_object_pointer()
+@inline function __objptr_to(::Type{Char}, objptr::Ptr{Void}) :: Char
     ptr, len = Tcl_GetStringFromObj(objptr)
     if ptr == C_NULL
         Tcl.error("failed to retrieve string representation of Tcl object")
@@ -333,13 +329,10 @@ function __objptr_to(::Type{Char}, intptr::TclInterpPtr,
     return unsafe_string(ptr, 1)[1]
 end
 
-function __objptr_to(::Type{Bool}, intptr::TclInterpPtr,
-                     objptr::TclObjPtr) :: Bool
-    objptr != C_NULL || __illegal_null_object_pointer()
-    status, value = Tcl_GetBooleanFromObj(intptr, objptr)
+@inline function __objptr_to(::Type{Bool}, objptr::TclObjPtr) :: Bool
+    status, value = Tcl_GetBooleanFromObj(__intptr(), objptr)
     if status != TCL_OK
-        msg = __errmsg(intptr, "failed to convert Tcl object to a boolean")
-        Tcl.error(msg)
+        __contextual_error("failed to convert Tcl object to a boolean")
     end
     return value
 end
@@ -354,14 +347,10 @@ for Tj in (Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
         if (pass == 1 && Tj == Tc) || (pass == 2 && sizeof(Tj) ≤ sizeof(Tc))
             # Exact match found or size large enough.
             result = (Tj == Tc ? :value : :(convert(Tj, value)))
-            @eval function __objptr_to(::Type{$Tj}, intptr::TclInterpPtr,
-                                       objptr::TclObjPtr) :: $Tj
-                objptr != C_NULL || __illegal_null_object_pointer()
-                status, value = $f(intptr, objptr)
-                if status != TCL_OK
-                    msg = __errmsg(intptr, $msg)
-                    Tcl.error(msg)
-                end
+            @eval @inline function __objptr_to(::Type{$Tj},
+                                               objptr::TclObjPtr) :: $Tj
+                status, value = $f(__intptr(), objptr)
+                status == TCL_OK || __contextual_error($msg)
                 return $result
             end
             break
@@ -369,21 +358,17 @@ for Tj in (Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
     end
 end
 
-function __objptr_to(::Type{Cdouble}, intptr::TclInterpPtr,
-                     objptr::TclObjPtr) :: Cdouble
-    objptr != C_NULL || __illegal_null_object_pointer()
-    status, value = Tcl_GetDoubleFromObj(intptr, objptr)
+@inline function __objptr_to(::Type{Cdouble}, objptr::TclObjPtr) :: Cdouble
+    status, value = Tcl_GetDoubleFromObj(__intptr(), objptr)
     if status != TCL_OK
-        msg = __errmsg(intptr, "failed to convert Tcl object to a float")
-        Tcl.error(msg)
+        __contextual_error("failed to convert Tcl object to a float")
     end
-    status == TCL_OK || Tcl.error(interp)
     return value
 end
 
-function __objptr_to(::Type{T}, intptr::TclInterpPtr,
-                     objptr::TclObjPtr) :: T where {T<:AbstractFloat}
-    return convert(T, __objptr_to(Cdouble, intptr, objptr))
+@inline function __objptr_to(::Type{T},
+                             objptr::TclObjPtr) :: T where {T<:AbstractFloat}
+    return convert(T, __objptr_to(Cdouble, objptr))
 end
 
 """
@@ -398,25 +383,21 @@ This function should be considered as *private*.
 See also: [`Tcl.getvalue`](@ref), [`Tcl.getresult`](@ref).
 
 """
-function __objtype(objptr::Ptr{Void})
-    if objptr == C_NULL
-        return Void
+@inline function __objtype(objptr::Ptr{Void})
+    # `wideint` must be checked before `int` because they may be the same
+    # on some machines
+    typeptr = __getobjtype(objptr)
+    if typeptr == __wideint_type[]
+        return WideInt
+    elseif typeptr == __double_type[]
+        return Cdouble
+    elseif typeptr == __list_type[]
+        return List
+    elseif typeptr == __int_type[]
+        return Cint
+    elseif typeptr == __bool_type[]
+        return Cint
     else
-        # `wideint` must be checked before `int` because they may be the same
-        # on some machines
-        typeptr = __getobjtype(objptr)
-        if typeptr == __wideint_type[]
-            return WideInt
-        elseif typeptr == __double_type[]
-            return Cdouble
-        elseif typeptr == __list_type[]
-            return List
-        elseif typeptr == __int_type[]
-            return Cint
-        elseif typeptr == __bool_type[]
-            return Cint
-        else
-            return String
-        end
+        return String
     end
 end

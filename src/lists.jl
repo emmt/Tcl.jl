@@ -18,7 +18,7 @@ end
 function Base.next(iter::TclObj{List}, state)
     i, n, objv = state
     i += 1
-    item = __objptr_to(Any, C_NULL, __peek(objv, i))
+    item = __objptr_to(Any, __peek(objv, i))
     return item, (i, n, objv)
 end
 
@@ -28,9 +28,6 @@ end
 Base.length(list::TclObj{List}) = llength(list)
 
 Base.endof(list::TclObj{List}) = llength(list)
-
-Base.push!(list::TclObj{List}, args...; kwds...) =
-    lappend!(list, args...; kwds...)
 
 Base.getindex(list::TclObj{List}, i::Integer) = lindex(list, i)
 
@@ -85,9 +82,13 @@ end
 
 TclObj() = TclObj{List}(__newlistobj())
 
+__objptr() = __newobj()
+
 __newobj() = __newlistobj()
 
 TclObj(itr::Iterables) = TclObj{List}(__newobj(itr))
+
+__objptr(itr::Iterables) = __newobj(itr)
 
 function __newobj(itr::Iterables) ::TclObjPtr
     listptr = __newlistobj()
@@ -123,23 +124,12 @@ Beware that the returned object is not managed and has a zero reference count.
 The caller is reponsible of taking care of that.
 
 """
-function __newlistobj()
-    objptr = Tcl_NewListObj(0, Ptr{TclObjPtr}(0))
-    if objptr == C_NULL
-        Tcl.error("failed to create an empty Tcl list")
-    end
-    return objptr
-end
+__newlistobj() = Tcl_NewListObj(0, Ptr{TclObjPtr}(0))
 
 function __newlistobj(args...; kwds...) ::TclObjPtr
     listptr = __newlistobj()
     try
-        for arg in args
-            __lappend(listptr, arg)
-        end
-        for (key, val) in kwds
-            __lappendoption(listptr, key, val)
-        end
+        @__build_list listptr args kwds
     catch ex
         Tcl_DecrRefCount(listptr)
         rethrow(ex)
@@ -147,23 +137,19 @@ function __newlistobj(args...; kwds...) ::TclObjPtr
     return listptr
 end
 
-function __objptr_to(::Type{Vector}, intptr::TclInterpPtr,
-                     listptr::Ptr{Void}) :: Vector
-    listptr == C_NULL && return Array{Any}(0)
-    objc, objv = __getlistelements(intptr, listptr)
-    return buildvector(i -> __objptr_to(Any, intptr, __peek(objv, i)), objc)
-end
+@inline __objptr_to(::Type{Vector}, listptr::Ptr{Void}) =
+    __buildvector(__getlistelements(listptr)...)
+
+@inline __buildvector(objc::Integer, objv::Ptr{TclObjPtr}) =
+    buildvector(i -> __objptr_to(Any, __peek(objv, i)), objc)
+
 
 """
 ```julia
 buildvector(f, n)
 ```
-
-yields a vector of length `n` whose elements are `f(i)` for `i ∈ 1:n`.
-If possible the type of the elements is standardized.
-
 """
-function buildvector(f::Function, n::Integer)
+function buildvector(f::Function, n::Integer) :: Vector
     v = Array{Any}(n)
     if n ≥ 1
         for i in 1:n
@@ -236,7 +222,7 @@ __promote_elem_type(::Type{Vector{String}}, ::Type{Vector{String}}) =
 
 """
 ```julia
-list(args...; kwds...)
+list([interp,] args...; kwds...)
 ```
 
 yields a list of Tcl objects consisting of the one object per argument
@@ -245,11 +231,14 @@ per keyword, say `key=val`, in the form `-key`, `val` (note the hyphen in front
 of the keyword name).  To allow for option names that are Julia keywords, a
 leading underscore is stripped, if any, in `key`.
 
+Optional argument `interp` is the Tcl interpreter to use for error messages
+and callbacks.
+
 Lists are iterable and indexable, as illustrated by the following examples:
 
 ``julia
 lst = Tcl.list(π,1,"hello",2:6)
-lenght(lst) # -> the number of items in the list
+length(lst) # -> the number of items in the list
 lst[1]      # -> 3.1415...
 lst[end]    # -> [2,3,4,5,6]
 lst[2:3]    # -> Any[1,"hello"]
@@ -282,8 +271,36 @@ See also: [`Tcl.concat`](@ref), [`Tcl.lindex`](@ref), [`Tcl.lappend!`](@ref),
           [`Tcl.exec`](@ref), .
 
 """
-list(args...; kwds...) = TclObj{List}(__newlistobj(args...; kwds...))
+function list(interp::TclInterp, args...; kwds...)
+    listptr = C_NULL
+    __set_context(interp)
+    try
+        listptr = Tcl_IncrRefCount(__newlistobj())
+        @__build_list listptr args kwds
+        return TclObj{List}(listptr)
+    finally
+        listptr == C_NULL || Tcl_DecrRefCount(listptr)
+         __reset_context()
+    end
+end
 
+list(args...; kwds...) =
+    list(getinterp(), args...; kwds...)
+
+"""
+```julia
+Tcl.llength(lst)
+```
+or
+```julia
+length(lst)
+```
+
+yeild the number of element of the Tcl list `lst`.
+
+See also: [`Tcl.list`](@ref).
+
+"""
 function llength(lst::TclObj{List}) :: Int
     status, length = Tcl_ListObjLength(C_NULL, __objptr(lst))
     status == TCL_OK || Tcl.error("failed to query length of list")
@@ -311,22 +328,31 @@ Tcl.lappend!(lst, _in="something")
 
 appends `"-in"` and `something` to the list `lst`.
 
+Optional argument `interp` is the Tcl interpreter to use for error messages
+and callbacks.
+
 See also: [`Tcl.list`](@ref).
 
 """
 function lappend!(interp::TclInterp, list::TclObj{List}, args...; kwds...)
-    listptr = __objptr(list)
-    __set_interpreter(interp)
+    __set_context(interp)
     try
-        @__build_list interp listptr args kwds
+        listptr = __objptr(list)
+        @__build_list listptr args kwds
     finally
-        __reset_interpreter()
+        __reset_context()
     end
     return list
 end
 
 lappend!(list::TclObj{List}, args...; kwds...) =
     lappend!(getinterp(), list, args...; kwds...)
+
+Base.push!(list::TclObj{List}, args...; kwds...) =
+    lappend!(list, args...; kwds...)
+
+Base.push!(interp::TclInterp, list::TclObj{List}, args...; kwds...) =
+    lappend!(interp, list, args...; kwds...)
 
 # Appending a new item to a list with Tcl_ListObjAppendElement increments the
 # reference count of the item, this is the only side effect for the item.  That
@@ -335,50 +361,52 @@ lappend!(list::TclObj{List}, args...; kwds...) =
 # count before appending and decrement it after without effects on the
 # performances.  This is not necessary for a managed object.
 
-function __lappend(intptr::TclInterpPtr, listptr::TclObjPtr, item)
+function __lappend(listptr::TclObjPtr, item)
     objptr = Tcl_IncrRefCount(__newobj(item))
-    status = Tcl_ListObjAppendElement(intptr, listptr, objptr)
+    status = Tcl_ListObjAppendElement(__intptr(), listptr, objptr)
     Tcl_DecrRefCount(objptr)
-    if status != TCL_OK
-        __lappend_error(intptr)
-    end
-    nothing
+    status == TCL_OK || __lappend_error()
 end
 
-function __lappend(intptr::TclInterpPtr, listptr::TclObjPtr,
-                   obj::ManagedObject)
-    if Tcl_ListObjAppendElement(intptr, listptr, __objptr(obj)) != TCL_OK
-        __lappend_error(intptr)
+function __lappend(listptr::TclObjPtr, obj::ManagedObject)
+    if Tcl_ListObjAppendElement(__intptr(), listptr, __objptr(obj)) != TCL_OK
+        __lappend_error()
     end
-    nothing
 end
 
-function __lappend(intptr::TclInterpPtr, listptr::TclObjPtr, f::Function)
-    cmd = __createcommand(intptr, f)
-    status = Tcl_ListObjAppendElement(intptr, listptr, __objptr(cmd))
-    if status != TCL_OK
-        release(cmd)
-        __lappend_error(intptr)
+function __lappend(listptr::TclObjPtr, func::Function)
+    intptr = __intptr()
+    cmd = __createcallback(intptr, f)
+    if Tcl_ListObjAppendElement(intptr, listptr, __objptr(cmd)) != TCL_OK
+        __lappend_error()
     end
-    nothing
 end
 
-__lappend(listptr::TclObjPtr, item) = __lappend(C_NULL, listptr, item)
+function __lappend(listptr::TclObjPtr, cmd::Callback)
+    intptr = __intptr()
+    if intptr != C_NULL && cmd.intptr == intptr
+        # Create the command in the interpreter.
+        cmd = __createcallback(intptr, string(cmd.obj), cmd.func)
+    end
+    if Tcl_ListObjAppendElement(intptr, listptr, __objptr(cmd)) != TCL_OK
+        __lappend_error()
+    end
+end
 
-__lappend_error(intptr::TclInterpPtr) =
-    Tcl.error(__errmsg(intptr, "failed to append a new item to the Tcl list"))
+__lappend_error() =
+    __contextual_error("failed to append a new item to the Tcl list")
 
-function __lappendoption(intptr::TclInterpPtr, listptr::TclObjPtr,
-                         key::String, val)
+function __lappendoption(listptr::TclObjPtr, key::String, val)
     # First, append the key.
+    intptr = __intptr()
     option = "-"*(length(key) ≥ 1 && key[1] == '_' ? key[2:end] : key)
     objptr = Tcl_IncrRefCount(__newobj(option))
-    status = Tcl_ListObjAppendElement(C_NULL, listptr, objptr)
+    status = Tcl_ListObjAppendElement(intptr, listptr, objptr)
     Tcl_DecrRefCount(objptr)
     if status == TCL_OK
         # Second, append the value.
         objptr = Tcl_IncrRefCount(__objptr(val))
-        status = Tcl_ListObjAppendElement(C_NULL, listptr, objptr)
+        status = Tcl_ListObjAppendElement(intptr, listptr, objptr)
         Tcl_DecrRefCount(objptr)
     end
     if status != TCL_OK
@@ -387,11 +415,9 @@ function __lappendoption(intptr::TclInterpPtr, listptr::TclObjPtr,
     nothing
 end
 
-__lappendoption(intptr::TclInterpPtr, listptr::TclObjPtr, key::Symbol, val) =
-    __lappendoption(intptr, listptr, string(key), val)
+__lappendoption(listptr::TclObjPtr, key::Symbol, val) =
+    __lappendoption(listptr, string(key), val)
 
-__lappendoption(listptr::TclObjPtr, key, val) =
-    __lappendoption(C_NULL, listptr, string(key), val)
 
 """
 ```julia
@@ -409,10 +435,16 @@ See also: [`Tcl.list`](@ref), [`Tcl.eval`](@ref).
 
 """
 function concat(interp::TclInterp, args...)
-    list = TclObj{List}(__newlistobj())
-    listptr = __objptr(list)
-    @__concat_args interp listptr args
-    return list
+    listptr = C_NULL
+    __set_context(interp)
+    try
+        listptr = Tcl_IncrRefCount(__newlistobj())
+        @__concat_args listptr args
+        return TclObj{List}(listptr)
+    finally
+        listptr == C_NULL || Tcl_DecrRefCount(listptr)
+        __reset_context()
+    end
 end
 
 concat(args...) = concat(getinterp(), args...)
@@ -428,41 +460,35 @@ concat(args...) = concat(getinterp(), args...)
 
 # For atomic objects which are considered as single list element, __concat is
 # equivalent to __lappend.
-__concat(intptr::TclInterpPtr, listptr::TclObjPtr, item) =
-    __concat(intptr, listptr, atomictype(item), item)
+__concat(listptr::TclObjPtr, item::T) where T =
+    __concat(listptr, atomictype(T), item)
 
-__concat(intptr::TclInterpPtr, listptr::TclObjPtr, ::Type{Atomic}, item) =
-    __lappend(intptr, listptr, item)
+__concat(listptr::TclObjPtr, ::Type{Atomic}, item) =
+    __lappend(listptr, item)
 
 # Strings are iterables but we want that making a list out of string(s) yields
 # a single element per string (not per character) so we have to short-circuit
 # __concat(listptr, itr).  Note that `Number` are perfectly usable as iterables
 # but we add them to the union below in order to use a faster method for them.
-function __concat(intptr::TclInterpPtr, listptr::TclObjPtr,
-                  ::Type{NonAtomic}, str::AbstractString)
+function __concat(listptr::TclObjPtr, ::Type{NonAtomic}, str::AbstractString)
     objptr = Tcl_IncrRefCount(__newobj(str))
-    status = Tcl_ListObjAppendList(intptr, listptr, objptr)
+    status = Tcl_ListObjAppendList(__intptr(), listptr, objptr)
     Tcl_DecrRefCount(objptr)
     if status != TCL_OK
-        msg = __errmsg(intptr, "failed to concatenate a string to a Tcl list")
-        Tcl.error(msg)
+        __contextual_error("failed to concatenate a string to a Tcl list")
     end
 end
 
-function __concat(intptr::TclInterpPtr, listptr::TclObjPtr,
-                  ::Type{NonAtomic}, obj::ManagedObject)
-    status = Tcl_ListObjAppendList(intptr, listptr, __objptr(obj))
-    if status != TCL_OK
-        msg = __errmsg(intptr, "failed to concatenate Tcl lists")
-        Tcl.error(msg)
+function __concat(listptr::TclObjPtr, ::Type{NonAtomic}, obj::ManagedObject)
+    if Tcl_ListObjAppendList(__intptr(), listptr, __objptr(obj)) != TCL_OK
+        __contextual_error("failed to concatenate Tcl lists")
     end
 end
 
 # Everything else is assumed to be an iterable.
-function __concat(intptr::TclInterpPtr, listptr::TclObjPtr,
-                  ::Type{NonAtomic}, itr) ::TclObjPtr
+function __concat(listptr::TclObjPtr, ::Type{NonAtomic}, itr) ::TclObjPtr
     for val in itr
-        __concat(intptr, listptr, val)
+        __concat(listptr, val)
     end
 end
 
@@ -499,7 +525,7 @@ lindex(::Type{T}, interp::TclInterp, list::TclObj{List}, i::Integer) where {T} =
     __itemptr_to(T, interp.ptr, __lindex(interp, list, i))
 
 __itemptr_to(::Type{T}, intptr::TclInterpPtr, objptr::TclObjPtr) where {T} =
-    (objptr == C_NULL ? __missing_item(T) : __objptr_to(T, intptr, objptr))
+    (objptr == C_NULL ? __missing_item(T) : __objptr_to(T, objptr))
 
 """
 ```julia
@@ -539,11 +565,10 @@ function __lindex(interp::TclInterp, list::TclObj{List}, i::Integer)
 end
 
 # Yields (objc, objv) do not free this buffer (see Tcl doc.)
-function __getlistelements(intptr::TclInterpPtr, listptr::TclObjPtr)
-    status, objc, objv = Tcl_ListObjGetElements(intptr, listptr)
+function __getlistelements(listptr::TclObjPtr)
+    status, objc, objv = Tcl_ListObjGetElements(__intptr(), listptr)
     if status != TCL_OK
-        msg = __errmsg(intptr, "failed to convert Tcl object into a list")
-        Tcl.error(msg)
+        __contextual_error("failed to convert Tcl object into a list")
     end
     return objc, objv
 end
