@@ -126,7 +126,8 @@ function __createwidget(::Type{T}, interp::TclInterp,
     local objptr :: TclObjPtr
     if interp(Bool, "winfo exists", path)
         # If widget already exists, it will be simply re-used, so we just apply
-        # configuration options if any.
+        # configuration options if any.  FIXME: there must be a way to check
+        # the correctness of the widget class.
         if length(kwds) > 0
             exec(path, "configure"; kwds...)
         end
@@ -159,8 +160,8 @@ getpath(w::TkWidget) = w.path
 getparent(w::TkWidget) = w.parent
 getparent(::TkRootWidget) = nothing
 TclObj(w::TkWidget) = w.obj
+atomictype(::Type{<:TkWidget}) = Atomic
 __objptr(w::TkWidget) = __objptr(w.obj)
-atomictype(::TkWidget) = Atomic
 
 getpath(root::TkWidget, args::AbstractString...) =
     getpath(getpath(root), args...)
