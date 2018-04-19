@@ -441,7 +441,6 @@ end
 # Called in a properly set context, this method should produce consistent error
 # messages and result of given type T.
 function __eval(::Type{T}, interp::TclInterp, ::Type{S}, script) where {T,S}
-    status = __eval(TclStatus, interp, S, script)
     if __eval(TclStatus, interp, S, script) != TCL_OK
         Tcl.error(interp)
     end
