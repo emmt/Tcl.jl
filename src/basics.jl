@@ -510,8 +510,23 @@ geterrmsg(ex::Exception) = sprint(io -> showerror(io, ex))
 # Processing Tcl/Tk events.  The function `doevents` must be repeatedly
 # called too process events when Tk is loaded.
 
+const __timer = Ref{Timer}()
+
 """
-    Tcl.resume()
+```julia
+Tcl.isrunning()
+```
+
+yields whether the processing of Tcl/Tk events is running.
+
+"""
+isrunning() =
+    (isdefined(__timer, 1) && isopen(__timer[]); nothing)
+
+"""
+```julia
+Tcl.resume()
+```
 
 resumes or starts the processing of Tcl/Tk events.  This manages to repeatedly
 call function `Tcl.doevents`.  The method `Tcl.suspend` can be called to
@@ -519,39 +534,39 @@ suspend the processing of events.
 
 Calling `Tcl.resume` is mandatory when Tk extension is loaded.  Thus:
 
-    Tcl.eval(interp, "package require Tk")
-    Tcl.resume()
+```julia
+Tcl.eval(interp, "package require Tk")
+Tcl.resume()
+```
 
 is the recommended way to load Tk package.  Alternatively:
 
-    Tcl.tkstart(interp)
+```julia
+Tcl.tkstart(interp)
+```
 
 can be called to do that.
 
 """
-function resume()
-    global __timer
-    if ! (isdefined(:__timer) && isopen(__timer))
-        __timer = Timer(doevents, 0.1, 0.01)
-    end
-end
+resume() =
+    (isrunning() || (__timer[] = Timer(doevents, 0.1, 0.01)); nothing)
 
 """
-    Tcl.suspend()
+```julia
+Tcl.suspend()
+```
 
 suspends the processing of Tcl/Tk events for all interpreters.  The method
 `Tcl.resume` can be called to resume the processing of events.
 
 """
-function suspend()
-    global __timer
-    if isdefined(:__timer) && isopen(__timer)
-        close(__timer)
-    end
-end
+suspend() =
+    (isrunning() && close(__timer[]); nothing)
 
 """
-    Tcl.doevents(flags = TCL_DONT_WAIT|TCL_ALL_EVENTS)
+```julia
+Tcl.doevents(flags = TCL_DONT_WAIT|TCL_ALL_EVENTS)
+```
 
 processes Tcl/Tk events for all interpreters.  Normally this is automatically
 called by the timer set by `Tcl.resume`.
