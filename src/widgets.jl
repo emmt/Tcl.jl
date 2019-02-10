@@ -101,7 +101,7 @@ end
 
 # Private method called to check/build the path of a child widget.
 function __widgetpath(parent::TkWidget, child::String) :: String
-    if search(child, '.') != 0
+    if findfirst(isequal('.'), child) === nothing
         Tcl.error("illegal window name \"$(child)\"")
     end
     parentpath = getpath(parent)
@@ -113,7 +113,7 @@ function __widgetpath(path::String) :: String
     if path[1] != '.'
         Tcl.error("root window name must start with a dot")
     end
-    if search(path, '.', 2) != 0
+    if findnext(isequal('.'), child, 2) === nothing
         Tcl.error("illegal root window name \"$(path)\"")
     end
     return path
