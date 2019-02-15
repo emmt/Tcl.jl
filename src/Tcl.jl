@@ -1,5 +1,3 @@
-__precompile__(true)
-
 baremodule Tcl
 
 # Only export symbols which are prefixed with `Tcl`, `TCL_`, `Tk`, `Ttk` or
@@ -97,12 +95,10 @@ module Impl
 #import ...Tcl: TclInterp, TclInterpPtr, TclObj, TclObjPtr, TkImage, TclStatus
 import ...Tcl
 
-if isfile(joinpath(dirname(@__FILE__),"..","deps","deps.jl"))
-    include("../deps/deps.jl")
-else
-    error("Tcl not properly installed.  Please run `Pkg.build(\"Tcl\")` to create file \"",joinpath(dirname(@__FILE__),"..","deps","deps.jl"),"\"")
-end
+isfile(joinpath(@__DIR__,"..","deps","deps.jl")) ||
+    error("Tcl not properly installed.  Please run `Pkg.build(\"Tcl\")` to create file \"",joinpath(@__DIR__,"..","deps","deps.jl"),"\"")
 
+include("../deps/deps.jl")
 include("types.jl")
 include("macros.jl")
 include("calls.jl")
