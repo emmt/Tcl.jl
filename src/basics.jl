@@ -21,7 +21,7 @@ Base.convert(::Type{T}, status::TclStatus) where {T<:Integer} =
 Base.convert(::Type{Integer}, status::TclStatus) = status.code
 
 #------------------------------------------------------------------------------
-# Automatically named objects.
+# Automatically name objects.
 
 const __counter = Dict{String,Int}()
 
@@ -101,9 +101,7 @@ function TclInterp(permanent::Bool=false)
         Tcl.error("unable to initialize Tcl interpreter")
     end
     obj = TclInterp(ptr)
-    if ! permanent
-        finalizer(obj, __finalize)
-    end
+    permanent || finalizer(__finalize, obj)
     return obj
 end
 
@@ -601,13 +599,11 @@ function release(obj)
     nothing
 end
 
-const __releaseobject_proc = Ref{Ptr{Void}}() # will be set by __init__
+const __releaseobject_proc = Ref{Ptr{Cvoid}}() # will be set by __init__
 
-function __releaseobject(ptr::Ptr{Void}) :: Void
-    release(unsafe_pointer_to_objref(ptr))
-end
+__releaseobject(ptr::Ptr{Cvoid}) = release(unsafe_pointer_to_objref(ptr))
 
-const __evalcommand_proc = Ref{Ptr{Void}}() # will be set by __init__
+const __evalcommand_proc = Ref{Ptr{Cvoid}}() # will be set by __init__
 
 function __evalcommand(fptr::ClientData, iptr::TclInterpPtr,
                        objc::Cint, objv::Ptr{TclObjPtr}) :: Cint
@@ -646,13 +642,13 @@ __setcommandresult(interp::TclInterp, status::TclStatus, args...) =
     (Tcl_SetObjResult(interp.ptr, __newobj(args)); return status)
 
 # With precompilation, `__init__()` carries on initializations that must occur
-# at runtime like `cfunction` which returns a raw pointer.
+# at runtime like `@cfunction` which returns a raw pointer.
 function __init__()
     __initial_interpreter[] = TclInterp(true)
-    __releaseobject_proc[] = cfunction(__releaseobject, Void, (Ptr{Void},))
-    __evalcommand_proc[] = cfunction(__evalcommand, Cint,
-                                    (ClientData, TclInterpPtr,
-                                     Cint, Ptr{TclObjPtr}))
+    __releaseobject_proc[] = @cfunction(__releaseobject, Cvoid, (Ptr{Cvoid},))
+    __evalcommand_proc[] = @cfunction(__evalcommand, Cint,
+                                      (ClientData, TclInterpPtr,
+                                       Cint, Ptr{TclObjPtr}))
     __init_types()
 end
 

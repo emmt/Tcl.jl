@@ -22,40 +22,40 @@ const TCL_BREAK    = TclStatus(3)
 const TCL_CONTINUE = TclStatus(4)
 
 # Flags for settings the result.
-const TCL_VOLATILE = convert(Ptr{Void}, 1)
-const TCL_STATIC   = convert(Ptr{Void}, 0)
-const TCL_DYNAMIC  = convert(Ptr{Void}, 3)
+const TCL_VOLATILE = Ptr{Cvoid}(1)
+const TCL_STATIC   = Ptr{Cvoid}(0)
+const TCL_DYNAMIC  = Ptr{Cvoid}(3)
 
 # Flags for Tcl variables.
-const TCL_GLOBAL_ONLY    = convert(Cint, 1)
-const TCL_NAMESPACE_ONLY = convert(Cint, 2)
-const TCL_APPEND_VALUE   = convert(Cint, 4)
-const TCL_LIST_ELEMENT   = convert(Cint, 8)
-const TCL_LEAVE_ERR_MSG  = convert(Cint, 0x200)
+const TCL_GLOBAL_ONLY    = Cint(1)
+const TCL_NAMESPACE_ONLY = Cint(2)
+const TCL_APPEND_VALUE   = Cint(4)
+const TCL_LIST_ELEMENT   = Cint(8)
+const TCL_LEAVE_ERR_MSG  = Cint(0x200)
 
 # Flags for Tcl processing events.  Set TCL_DONT_WAIT to not sleep: process
 # only events that are ready at the time of the call.  Set TCL_ALL_EVENTS to
 # process all kinds of events: equivalent to OR-ing together all of the below
 # flags or specifying none of them.
-const TCL_DONT_WAIT     = convert(Cint, 1<<1)
-const TCL_WINDOW_EVENTS = convert(Cint, 1<<2) # Process window system events.
-const TCL_FILE_EVENTS   = convert(Cint, 1<<3) # Process file events.
-const TCL_TIMER_EVENTS  = convert(Cint, 1<<4) # Process timer events.
-const TCL_IDLE_EVENTS   = convert(Cint, 1<<5) # Process idle callbacks.
+const TCL_DONT_WAIT     = Cint(1<<1)
+const TCL_WINDOW_EVENTS = Cint(1<<2) # Process window system events.
+const TCL_FILE_EVENTS   = Cint(1<<3) # Process file events.
+const TCL_TIMER_EVENTS  = Cint(1<<4) # Process timer events.
+const TCL_IDLE_EVENTS   = Cint(1<<5) # Process idle callbacks.
 const TCL_ALL_EVENTS    = ~TCL_DONT_WAIT      # Process all kinds of events.
 
 # The following values control how blocks are combined into photo images when
 # the alpha component of a pixel is not 255, a.k.a. the compositing rule.
-const TK_PHOTO_COMPOSITE_OVERLAY = convert(Cint, 0)
-const TK_PHOTO_COMPOSITE_SET     = convert(Cint, 1)
+const TK_PHOTO_COMPOSITE_OVERLAY = Cint(0)
+const TK_PHOTO_COMPOSITE_SET     = Cint(1)
 
 # Flags for evaluating scripts/commands.
-const TCL_NO_EVAL       = convert(Cint, 0x010000)
-const TCL_EVAL_GLOBAL   = convert(Cint, 0x020000)
-const TCL_EVAL_DIRECT   = convert(Cint, 0x040000)
-const TCL_EVAL_INVOKE   = convert(Cint, 0x080000)
-const TCL_CANCEL_UNWIND = convert(Cint, 0x100000)
-const TCL_EVAL_NOERR    = convert(Cint, 0x200000)
+const TCL_NO_EVAL       = Cint(0x010000)
+const TCL_EVAL_GLOBAL   = Cint(0x020000)
+const TCL_EVAL_DIRECT   = Cint(0x040000)
+const TCL_EVAL_INVOKE   = Cint(0x080000)
+const TCL_CANCEL_UNWIND = Cint(0x100000)
+const TCL_EVAL_NOERR    = Cint(0x200000)
 
 struct TclError <: Exception
     msg::String
@@ -66,7 +66,7 @@ Base.showerror(io::IO, ex::TclError) = print(io, "Tcl/Tk error: ", ex.msg)
 # Structure to store a pointer to a Tcl interpreter. (Even though the address
 # should not be modified, it is mutable because immutable objects cannot be
 # finalized.)
-const TclInterpPtr = Ptr{Void}
+const TclInterpPtr = Ptr{Cvoid}
 mutable struct TclInterp
     ptr::TclInterpPtr
     TclInterp(ptr::TclInterpPtr) = new(ptr)
@@ -84,14 +84,13 @@ abstract type ManagedObject end
 # should not be modified, it is mutable because immutable objects cannot be
 # finalized.)  The constructor will refuse to build a managed Tcl object with
 # a NULL address.
-const TclObjPtr = Ptr{Void}
+const TclObjPtr = Ptr{Cvoid}
 mutable struct TclObj{T} <: ManagedObject
     ptr::TclObjPtr
     function TclObj{T}(ptr::TclObjPtr) where {T}
         ptr != C_NULL || __illegal_null_object_pointer()
         obj = new{T}(Tcl_IncrRefCount(ptr))
-        finalizer(obj, __finalize)
-        return obj
+        return finalizer(__finalize, obj)
     end
 end
 
@@ -108,7 +107,7 @@ const WideInt = Int64
 const List = Vector
 
 # Token used by Tcl to identify an object command.
-const TclCommand = Ptr{Void}
+const TclCommand = Ptr{Cvoid}
 
 # Floating-point types.
 const FloatingPoint = Union{Irrational,Rational,AbstractFloat}
@@ -144,7 +143,7 @@ for T in (:NonAtomic, :Atomic)
 end
 
 # Client data used by commands and callbacks.
-const ClientData = Ptr{Void}
+const ClientData = Ptr{Cvoid}
 
 const TclObjList    = TclObj{List}
 const TclObjCommand = TclObj{Function}
@@ -161,7 +160,7 @@ const Byte = Union{UInt8,Int8}
 
 # Objects of type `Iterables` are considered as iterators, making an object out
 # of them yield a Tcl list.
-const Iterables = Union{AbstractVector,Tuple,Set,IntSet}
+const Iterables = Union{AbstractVector,Tuple,Set,BitSet}
 
 #------------------------------------------------------------------------------
 # Tk widgets and other Tk objects.
@@ -180,7 +179,7 @@ end
 # only the object path with the `string` method or for string interpolation.
 # Note that: "$w" calls `string(w)` while "anything $w" calls `show(io, w)`.
 
-Base.show{T<:TkObject}(io::IO, ::MIME"text/plain", w::T) =
+Base.show(io::IO, ::MIME"text/plain", w::T) where {T<:TkObject} =
     print(io, "$T(\"$(string(w))\")")
 
 Base.show(io::IO, w::TkObject) = print(io, string(w))

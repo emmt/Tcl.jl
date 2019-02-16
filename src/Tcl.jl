@@ -1,3 +1,11 @@
+#
+# Tcl.jl -
+#
+# Tcl interface for Julia.
+#
+
+# Mist be a bare module because it implements its own `eval` method available
+# as `Tcl.eval`.
 baremodule Tcl
 
 # Only export symbols which are prefixed with `Tcl`, `TCL_`, `Tk`, `Ttk` or
@@ -94,6 +102,8 @@ module Impl
 #using ...Tcl # for public symbols
 #import ...Tcl: TclInterp, TclInterpPtr, TclObj, TclObjPtr, TkImage, TclStatus
 import ...Tcl
+
+using Printf
 
 isfile(joinpath(@__DIR__,"..","deps","deps.jl")) ||
     error("Tcl not properly installed.  Please run `Pkg.build(\"Tcl\")` to create file \"",joinpath(@__DIR__,"..","deps","deps.jl"),"\"")

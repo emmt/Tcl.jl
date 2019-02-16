@@ -43,7 +43,7 @@ struct __TclObj
     # Object's type.  Always corresponds to the type of the object's internal
     # representation.  NULL indicates the object has no specific type and no
     # internal representation.
-    typePtr::Ptr{Void}
+    typePtr::Ptr{Cvoid}
 
     # Object's internal representation.  The value here is only valid for a
     # double precision floating-point object.  For other object types, this
@@ -91,10 +91,10 @@ end
 # REFERENCE COUNTING
 
 @inline Tcl_Preserve(ptr::Ptr{T}) where {T} =
-    ccall((:Tcl_Preserve, libtcl), Void, (Ptr{T},), ptr)
+    ccall((:Tcl_Preserve, libtcl), Cvoid, (Ptr{T},), ptr)
 
 @inline Tcl_Release(ptr::Ptr{T}) where {T} =
-    ccall((:Tcl_Release, libtcl), Void, (Ptr{T},), ptr)
+    ccall((:Tcl_Release, libtcl), Cvoid, (Ptr{T},), ptr)
 
 """
 ```julia
@@ -126,7 +126,7 @@ it if the number of references is then smaller or equal 0.
     if newrefcount ≥ 1
         __poke!(ptr, newrefcount)
     else
-        ccall((:TclFreeObj, libtcl), Void, (TclObjPtr,), objptr)
+        ccall((:TclFreeObj, libtcl), Cvoid, (TclObjPtr,), objptr)
     end
 end
 
@@ -248,7 +248,7 @@ end
 # INTERPRETERS AND EVALUATION OF SCRIPTS
 
 @inline Tcl_CreateInterp() =
-    ccall((:Tcl_CreateInterp, libtcl), Ptr{Void}, ())
+    ccall((:Tcl_CreateInterp, libtcl), Ptr{Cvoid}, ())
 
 @inline Tcl_Init(intptr::TclInterpPtr) =
     ccall((:Tcl_Init, libtcl), TclStatus, (TclInterpPtr,), intptr)
@@ -262,16 +262,16 @@ end
                          (TclInterpPtr,), intptr))
 
 @inline Tcl_DeleteInterp(intptr::TclInterpPtr) =
-    ccall((:Tcl_DeleteInterp, libtcl), Void, (TclInterpPtr,), intptr)
+    ccall((:Tcl_DeleteInterp, libtcl), Cvoid, (TclInterpPtr,), intptr)
 
 @inline Tcl_SetObjResult(intptr::TclInterpPtr, objptr::TclObjPtr) =
-    ccall((:Tcl_SetObjResult, libtcl), Void, (TclInterpPtr, TclObjPtr),
+    ccall((:Tcl_SetObjResult, libtcl), Cvoid, (TclInterpPtr, TclObjPtr),
           intptr, objptr)
 
 @inline function Tcl_SetResult(intptr::TclInterpPtr, strptr::Ptr{Cchar},
-                               freeproc::Ptr{Void})
-    ccall((:Tcl_SetResult, libtcl), Void,
-          (TclInterpPtr, Ptr{Cchar}, Ptr{Void}),
+                               freeproc::Ptr{Cvoid})
+    ccall((:Tcl_SetResult, libtcl), Cvoid,
+          (TclInterpPtr, Ptr{Cchar}, Ptr{Cvoid}),
           intptr, strptr, freeproc)
 end
 
@@ -310,21 +310,21 @@ Tcl_DoOneEvent(flags) -> boolean
 
 @inline function Tcl_CreateCommand(intptr::TclInterpPtr,
                                    name::StringOrSymbol,
-                                   evalproc::Ptr{Void},
-                                   data::Ptr{Void},
-                                   freeproc::Ptr{Void})
-    return ccall((:Tcl_CreateCommand, libtcl), Ptr{Void},
-                 (TclInterpPtr, Cstring, Ptr{Void}, Ptr{Void}, Ptr{Void}),
+                                   evalproc::Ptr{Cvoid},
+                                   data::Ptr{Cvoid},
+                                   freeproc::Ptr{Cvoid})
+    return ccall((:Tcl_CreateCommand, libtcl), Ptr{Cvoid},
+                 (TclInterpPtr, Cstring, Ptr{Cvoid}, Ptr{Cvoid}, Ptr{Cvoid}),
                  intptr, name, evalproc, data, freeproc)
 end
 
 @inline function Tcl_CreateObjCommand(intptr::TclInterpPtr,
                                       name::StringOrSymbol,
-                                      evalproc::Ptr{Void},
-                                      data::Ptr{Void},
-                                      freeproc::Ptr{Void})
+                                      evalproc::Ptr{Cvoid},
+                                      data::Ptr{Cvoid},
+                                      freeproc::Ptr{Cvoid})
     return ccall((:Tcl_CreateObjCommand, libtcl), TclCommand,
-                 (TclInterpPtr, Cstring, Ptr{Void}, Ptr{Void}, Ptr{Void}),
+                 (TclInterpPtr, Cstring, Ptr{Cvoid}, Ptr{Cvoid}, Ptr{Cvoid}),
                  intptr, name, evalproc, data, freeproc)
 end
 
@@ -343,7 +343,7 @@ end
 @inline function Tcl_GetCommandFullName(intptr::TclInterpPtr,
                                         token::TclCommand,
                                         objptr::TclObjPtr)
-    return ccall((:Tcl_GetCommandFullName, libtcl), Void,
+    return ccall((:Tcl_GetCommandFullName, libtcl), Cvoid,
                  (TclInterpPtr, TclCommand, TclObjPtr),
                  intptr, token, objptr)
 end
@@ -403,7 +403,7 @@ end
 
 @inline function Tcl_SetListObj(objptr::TclObjPtr, objc::Integer,
                                 objv::Ptr{TclObjPtr})
-    return ccall((:Tcl_SetListObj, libtcl), Void,
+    return ccall((:Tcl_SetListObj, libtcl), Cvoid,
                  (TclObjPtr, Cint, Ptr{TclObjPtr}), objptr, objc, objv)
 end
 

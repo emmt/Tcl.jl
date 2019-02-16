@@ -83,26 +83,26 @@ end
 # Apply a "color" map to an array of gray levels.
 
 colorize(arr::Array{T,N}, lut::AbstractVector{C}; kwds...) where {T<:Real,N,C} =
-    colorize!(Array{C}(size(arr)), arr, lut; kwds...)
+    colorize!(Array{C,N}(undef, size(arr)), arr, lut; kwds...)
 
 function colorize!(dst::Array{C,N}, arr::Array{T,N},
                    lut::AbstractVector{C};
-                   cmin::Union{Real,Void} = nothing,
-                   cmax::Union{Real,Void} = nothing) where {T<:Real,N,C}
+                   cmin::Union{Real,Nothing} = nothing,
+                   cmax::Union{Real,Nothing} = nothing) where {T<:Real,N,C}
     # Get the clipping values (not needed if number of color levels smaller
     # than 2).
     local _cmin::T, _cmax::T
     if length(lut) < 2
         @assert length(arr) ≥ 1
         _cmin = _cmax = arr[1]
-    elseif isa(cmin, Void)
-        if isa(cmax, Void)
+    elseif cmin === nothing
+        if cmax === nothing
             _cmin, _cmax = extrema(arr)
         else
             _cmin, _cmax = minimum(arr), cmax
         end
     else
-        if isa(cmax, Void)
+        if cmax === nothing
             _cmin, _cmax = cmin, maximum(arr)
         else
             _cmin, _cmax = cmin, cmax
@@ -142,10 +142,10 @@ function colorize!(dst::Array{C,N},
     else
         # Use at least Float32 for the computations.
         R = promote_type(Float32, T)
-        const kmin = 1
-        const kmax = n
-        const scl = R(kmax - kmin)/(R(cmax) - R(cmin))
-        const off = R(cmin*kmax - cmax*kmin)/R(kmax - kmin)
+        kmin = 1
+        kmax = n
+        scl = R(kmax - kmin)/(R(cmax) - R(cmin))
+        off = R(cmin*kmax - cmax*kmin)/R(kmax - kmin)
         # FIXME: adjust cmin and cmax to speedup
         # adj = (cmax - cmin)/(2*(kmax - kmin))
         # cmin += zadj
@@ -203,7 +203,7 @@ end
 findphoto(img::TkImage) = findphoto(getinterp(img), getpath(img))
 
 function findphoto(interp::TclInterp, name::AbstractString)
-    imgptr = ccall((:Tk_FindPhoto, libtk), Ptr{Void},
+    imgptr = ccall((:Tk_FindPhoto, libtk), Ptr{Cvoid},
                    (TclInterpPtr, Ptr{UInt8}), interp.ptr, name)
     if imgptr == C_NULL
         Tcl.error("invalid image name")
@@ -226,8 +226,8 @@ function getpixels(interp::TclInterp, name::AbstractString,
     imgptr = findphoto(interp, name)
     block = TkPhotoImageBlock()
     code = ccall((:Tk_PhotoGetImage, libtk), Cint,
-                 (Ptr{Void}, Ptr{TkPhotoImageBlock}),
-                 imgptr, &block)
+                 (Ptr{Cvoid}, Ref{TkPhotoImageBlock}),
+                 imgptr, block)
     if code != 1
         error("unexpected returned code")
     end
@@ -252,11 +252,11 @@ function __getpixels(::Type{Val{:gray}}, src::Array{UInt8,3},
     # Below is an approximation to:
     #	GRAY = 0.30*RED + 0.59*GREEN + 0.11*BLUE
     # rounded to nearest integer.
-    const cr = UInt16( 77)
-    const cg = UInt16(151)
-    const cb = UInt16( 28)
-    const c0 = UInt16(128)
-    dst = Array{UInt8}(width, height)
+    cr = UInt16( 77)
+    cg = UInt16(151)
+    cb = UInt16( 28)
+    c0 = UInt16(128)
+    dst = Array{UInt8,2}(undef, width, height)
     @inbounds for y in 1:height
         @simd for x in 1:width
             dst[x,y] = ((cr*src[r,x,y] + cg*src[g,x,y] +
@@ -287,7 +287,7 @@ function __getpixels(::Type{Val{:alpha}}, src::Array{UInt8,3},
 end
 
 function __getpixels(src::Array{UInt8,3}, width::Int, height::Int, c::Int)
-    dst = Array{UInt8}(width, height)
+    dst = Array{UInt8,3}(undef, width, height)
     @inbounds for y in 1:height
         @simd for x in 1:width
             dst[x,y] = src[c,x,y]
@@ -298,7 +298,7 @@ end
 
 function __getpixels(::Type{Val{:rgb}}, src::Array{UInt8,3},
                      width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
-    dst = Array{UInt8}(3, width, height)
+    dst = Array{UInt8,3}(undef, 3, width, height)
     @inbounds for y in 1:height
         @simd for x in 1:width
             dst[1,x,y] = src[r,x,y]
@@ -311,7 +311,7 @@ end
 
 function __getpixels(::Type{Val{:rgba}}, src::Array{UInt8,3},
                      width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
-    dst = Array{UInt8}(4, width, height)
+    dst = Array{UInt8,3}(undef, 4, width, height)
     @inbounds for y in 1:height
         @simd for x in 1:width
             dst[1,x,y] = src[r,x,y]
@@ -341,29 +341,29 @@ function setphotosize!(interp::TclInterp, name::AbstractString,
     __setphotosize(interp, findphoto(interp, name), Cint(width), Cint(height))
 end
 
-function __getphotosize(imgptr::Ptr{Void})
+function __getphotosize(imgptr::Ptr{Cvoid})
     width, height = Ref{Cint}(0), Ref{Cint}(0)
     if imgptr != C_NULL
-        ccall((:Tk_PhotoGetSize, libtk), Void,
-              (Ptr{Void}, Ref{Cint}, Ref{Cint}),
+        ccall((:Tk_PhotoGetSize, libtk), Cvoid,
+              (Ptr{Cvoid}, Ref{Cint}, Ref{Cint}),
               imgptr, width, height)
     end
     return (width[], height[])
 end
 
-function __setphotosize(interp::TclInterp, imgptr::Ptr{Void},
+function __setphotosize(interp::TclInterp, imgptr::Ptr{Cvoid},
                         width::Cint, height::Cint)
     code = ccall((:Tk_PhotoSetSize, libtk), Cint,
-                 (TclInterpPtr, Ptr{Void}, Cint, Cint),
+                 (TclInterpPtr, Ptr{Cvoid}, Cint, Cint),
                  interp.ptr, imgptr, width, height)
     code == TCL_OK || Tcl.error(tclresult(interp))
     return nothing
 end
 
-function __expandphotosize(interp::TclInterp, imgptr::Ptr{Void},
+function __expandphotosize(interp::TclInterp, imgptr::Ptr{Cvoid},
                            width::Cint, height::Cint)
     code = ccall((:Tk_PhotoExpand, libtk), Cint,
-                 (TclInterpPtr, Ptr{Void}, Cint, Cint),
+                 (TclInterpPtr, Ptr{Cvoid}, Cint, Cint),
                  interp.ptr, imgptr, width, height)
     code == TCL_OK || Tcl.error(tclresult(interp))
     return nothing
@@ -397,17 +397,17 @@ function __setpixels(interp::TclInterp, name::AbstractString,
     # Assume (TCL_MAJOR_VERSION == 8) && (TCL_MINOR_VERSION >= 5), for older
     # versions, the interpreter argument is missing in Tk_PhotoPutBlock.
     code = ccall((:Tk_PhotoPutBlock, libtk), Cint,
-                 (TclInterpPtr, Ptr{Void}, Ptr{TkPhotoImageBlock},
+                 (TclInterpPtr, Ptr{Cvoid}, Ref{TkPhotoImageBlock},
                   Cint, Cint, Cint, Cint, Cint),
-                 interp.ptr, imgptr, &block, x, y,
+                 interp.ptr, imgptr, block, x, y,
                  block.width, block.height, composite)
     code == TCL_OK || Tcl.error(tclresult(interp))
 
     if false
         # Notify that image has changed (FIXME: not needed as it is done by
         # Tk_PhotoPutBlock).
-        ccall((:Tk_ImageChanged, libtk), Void,
-              (Ptr{Void}, Cint, Cint, Cint, Cint, Cint, Cint),
+        ccall((:Tk_ImageChanged, libtk), Cvoid,
+              (Ptr{Cvoid}, Cint, Cint, Cint, Cint, Cint, Cint),
               imgptr, x, y, block.width, block.height,
               width, height)
     end

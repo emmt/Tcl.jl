@@ -178,17 +178,17 @@ __newstringobj(ptr::Ptr{T}, nbytes::Integer) where {T<:Byte} =
     Tcl_NewStringObj(ptr, nbytes)
 
 
-# Void and nothing.
+# Nothing and nothing.
 #
 #     Nothing is loosely aliased to "" in Tcl.  Could also be an empty list.
 
-TclObj(x::Void) = TclObj{Void}(__newobj(x))
+TclObj(x::Nothing) = TclObj{Nothing}(__newobj(x))
 
-atomictype(::Type{Void}) = Atomic
+atomictype(::Type{Nothing}) = Atomic
 
-__objptr(x::Void) = __newobj(x)
+__objptr(x::Nothing) = __newobj(x)
 
-__newobj(::Void) = __newobj("")
+__newobj(::Nothing) = __newobj("")
 
 
 @static if false
@@ -225,13 +225,13 @@ __getobjtype(obj::TclObj) = __getobjtype(__objptr(obj))
 __getobjtype(objptr::TclObjPtr) =
     __peek(TclObjTypePtr, objptr + __offset_of_type)
 
-const __bool_type    = Ref{Ptr{Void}}(0)
-const __int_type     = Ref{Ptr{Void}}(0)
-const __wideint_type = Ref{Ptr{Void}}(0)
-const __double_type  = Ref{Ptr{Void}}(0)
-const __list_type    = Ref{Ptr{Void}}(0)
-const __string_type  = Ref{Ptr{Void}}(0)
-const KnownTypes = Union{Void,Bool,Cint,WideInt,Cdouble,String,List}
+const __bool_type    = Ref{Ptr{Cvoid}}(0)
+const __int_type     = Ref{Ptr{Cvoid}}(0)
+const __wideint_type = Ref{Ptr{Cvoid}}(0)
+const __double_type  = Ref{Ptr{Cvoid}}(0)
+const __list_type    = Ref{Ptr{Cvoid}}(0)
+const __string_type  = Ref{Ptr{Cvoid}}(0)
+const KnownTypes = Union{Nothing,Bool,Cint,WideInt,Cdouble,String,List}
 function __init_types(bynames::Bool = false)
     if bynames
         __int_type[]     = Tcl_GetObjType("int")
@@ -292,7 +292,7 @@ __ptr_to(::Type{<:Union{TclObj,TclObj{String}}}, strptr::Cstring) =
 """
 
 ```julia
-__objptr_to(T::DataType, objptr::Ptr{Void})
+__objptr_to(T::DataType, objptr::Ptr{Cvoid})
 ````
 
 converts the Tcl object at address `objptr` into a value of type `T`.
@@ -304,10 +304,10 @@ error message if the conversion fails.
 See also: [`Tcl.getvar`](@ref), [`Tcl.getvalue`](@ref).
 
 """
-@inline __objptr_to(::Type{Any}, objptr::Ptr{Void}) =
+@inline __objptr_to(::Type{Any}, objptr::Ptr{Cvoid}) =
     __objptr_to(__objtype(objptr), objptr)
 
-@inline __objptr_to(::Type{TclObj}, objptr::Ptr{Void}) =
+@inline __objptr_to(::Type{TclObj}, objptr::Ptr{Cvoid}) =
     TclObj{__objtype(objptr)}(objptr)
 
 @inline function __objptr_to(::Type{String}, objptr::TclObjPtr) :: String
@@ -318,7 +318,7 @@ See also: [`Tcl.getvar`](@ref), [`Tcl.getvalue`](@ref).
     return unsafe_string(ptr, len)
 end
 
-@inline function __objptr_to(::Type{Char}, objptr::Ptr{Void}) :: Char
+@inline function __objptr_to(::Type{Char}, objptr::Ptr{Cvoid}) :: Char
     ptr, len = Tcl_GetStringFromObj(objptr)
     if ptr == C_NULL
         Tcl.error("failed to retrieve string representation of Tcl object")
@@ -373,7 +373,7 @@ end
 
 """
 ```julia
-__objtype(objptr::Ptr{Void})
+__objtype(objptr::Ptr{Cvoid})
 ````
 
 yields the equivalent Julia type of the Tcl object at address `objptr`.
@@ -383,7 +383,7 @@ This function should be considered as *private*.
 See also: [`Tcl.getvalue`](@ref), [`Tcl.getresult`](@ref).
 
 """
-@inline function __objtype(objptr::Ptr{Void})
+@inline function __objtype(objptr::Ptr{Cvoid})
     # `wideint` must be checked before `int` because they may be the same
     # on some machines
     typeptr = __getobjtype(objptr)

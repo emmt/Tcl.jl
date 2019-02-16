@@ -5,21 +5,42 @@
 #
 
 # Let Tcl list be iterable.
+@static if VERSION < v"0.7"
 
-function Base.start(iter::TclObj{List})
-    objc, objv = __getlistelements(__objptr(iter))
-    return (0, objc, objv)
-end
+    function Base.start(iter::TclObj{List})
+        objc, objv = __getlistelements(__objptr(iter))
+        return (0, objc, objv)
+    end
 
-function Base.done(iter::TclObj{List}, state)
-    state[1] ≥ state[2]
-end
+    function Base.done(iter::TclObj{List}, state)
+        state[1] ≥ state[2]
+    end
 
-function Base.next(iter::TclObj{List}, state)
-    i, n, objv = state
-    i += 1
-    item = __objptr_to(Any, __peek(objv, i))
-    return item, (i, n, objv)
+    function Base.next(iter::TclObj{List}, state)
+        i, n, objv = state
+        i += 1
+        item = __objptr_to(Any, __peek(objv, i))
+        return item, (i, n, objv)
+    end
+
+else
+
+    function Base.iterate(iter::TclObj{List})
+        objc, objv = __getlistelements(__objptr(iter))
+        return iterate(iter, (0, objc, objv))
+    end
+
+    function Base.iterate(iter::TclObj{List}, state)
+        i, objc, objv = state
+        if i < objc
+            i += 1
+            item = __objptr_to(Any, __peek(objv, i))
+            return item, (i, objc, objv)
+        else
+            return nothing
+        end
+    end
+
 end
 
 
@@ -27,13 +48,13 @@ end
 
 Base.length(list::TclObj{List}) = llength(list)
 
-Base.endof(list::TclObj{List}) = llength(list)
+Base.lastindex(list::TclObj{List}) = llength(list)
 
 Base.getindex(list::TclObj{List}, i::Integer) = lindex(list, i)
 
 function Base.getindex(list::TclObj{List}, msk::AbstractVector{Bool})
-    n = countnz(msk)
-    v = Array{Any}(n)
+    n = count(!iszero, msk)
+    v = Array{Any,1}(undef, n)
     if n < 1
         return v
     end
@@ -137,7 +158,7 @@ function __newlistobj(args...; kwds...) ::TclObjPtr
     return listptr
 end
 
-@inline __objptr_to(::Type{Vector}, listptr::Ptr{Void}) =
+@inline __objptr_to(::Type{Vector}, listptr::Ptr{Cvoid}) =
     __buildvector(__getlistelements(listptr)...)
 
 @inline __buildvector(objc::Integer, objv::Ptr{TclObjPtr}) =
@@ -150,7 +171,7 @@ buildvector(f, n)
 ```
 """
 function buildvector(f::Function, n::Integer) :: Vector
-    v = Array{Any}(n)
+    v = Vector{Any}(undef, n)
     if n ≥ 1
         for i in 1:n
             v[i] = f(i)
@@ -539,7 +560,7 @@ missing items of such type are not allowed.
 __missing_item(::Type{String}) = ""
 __missing_item(::Type{Any}) = nothing
 __itemptr_item(::Type{TclObj}) = TclObj()
-__itemptr_item(::Type{Vector}) = Array{Any}(0)
+__itemptr_item(::Type{Vector}) = Any[]
 __missing_item(::Type{T}) where {T<:Union{Integer,AbstractFloat}} = zero(T)
 __missing_item(::Type{Char}) = '\0'
 

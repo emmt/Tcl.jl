@@ -14,9 +14,9 @@ Base.setindex!(interp::TclInterp, value, name) = setvar(interp, name, value)
 Base.setindex!(interp::TclInterp, value, name1, name2) =
     setvar(interp, name1, name2, value)
 
-Base.setindex!(interp::TclInterp, ::Void, name) =
+Base.setindex!(interp::TclInterp, ::Nothing, name) =
     unsetvar(interp, name; nocomplain=true)
-Base.setindex!(interp::TclInterp, ::Void, name1, name2) =
+Base.setindex!(interp::TclInterp, ::Nothing, name1, name2) =
     unsetvar(interp, name1, name2; nocomplain=true)
 
 Base.haskey(interp::TclInterp, name) = exists(interp, name)
