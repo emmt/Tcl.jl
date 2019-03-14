@@ -522,12 +522,12 @@ isrunning() = (isdefined(__timer, 1) && isopen(__timer[]))
 
 """
 ```julia
-Tcl.resume()
+Tcl.resume(sec=0.05)
 ```
 
-resumes or starts the processing of Tcl/Tk events.  This manages to repeatedly
-call function `Tcl.doevents`.  The method `Tcl.suspend` can be called to
-suspend the processing of events.
+resumes or starts the processing of Tcl/Tk events with an interval of `sec`
+seconds.  This manages to repeatedly call function `Tcl.doevents`.  The method
+`Tcl.suspend` can be called to suspend the processing of events.
 
 Calling `Tcl.resume` is mandatory when Tk extension is loaded.  Thus:
 
@@ -545,8 +545,8 @@ Tcl.tkstart(interp)
 can be called to do that.
 
 """
-resume() =
-    (isrunning() || (__timer[] = Timer(doevents, 0.1; interval=0.05)); nothing)
+resume(sec::Real=0.05) =
+    (isrunning() || (__timer[] = Timer(doevents, 0.1; interval=sec)); nothing)
 
 """
 ```julia
