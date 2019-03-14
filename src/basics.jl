@@ -518,8 +518,7 @@ Tcl.isrunning()
 yields whether the processing of Tcl/Tk events is running.
 
 """
-isrunning() =
-    (isdefined(__timer, 1) && isopen(__timer[]); nothing)
+isrunning() = (isdefined(__timer, 1) && isopen(__timer[]))
 
 """
 ```julia
@@ -547,7 +546,7 @@ can be called to do that.
 
 """
 resume() =
-    (isrunning() || (__timer[] = Timer(doevents, 0.1, 0.01)); nothing)
+    (isrunning() || (__timer[] = Timer(doevents, 0.1; interval=0.05)); nothing)
 
 """
 ```julia
