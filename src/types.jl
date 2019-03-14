@@ -240,17 +240,16 @@ Base.show(io::IO, ::MIME"text/plain", c::T) where {T<:Union{TkRGBA,TkABGR}} =
 Base.show(io::IO, c::TkColor) = print(io, string(c))
 
 Base.string(c::Union{TkRGB{UInt8},TkBGR{UInt8}}) =
-    @sprintf("#%02x%02x%02x", red(c), green(c), blue(c))
+    string("#", _hex2(red(c)), _hex2(green(c)), _hex2(blue(c)))
 
 Base.string(c::Union{TkRGB{UInt16},TkBGR{UInt16}}) =
-    @sprintf("#%04x%04x%04x", red(c), green(c), blue(c))
+    string("#", _hex4(red(c)), _hex4(green(c)), _hex4(blue(c)))
 
-function Base.string(c::TkGray{UInt8})
-    s = @sprintf("%02x", gray(c))
-    string('#', s, s, s)
-end
+Base.string(c::TkGray{UInt8}) =
+    (s = _hex2(gray(c)); string("#", s, s, s))
 
-function Base.string(c::TkGray{UInt16})
-    s = @sprintf("%04x", gray(c))
-    string('#', s, s, s)
-end
+Base.string(c::TkGray{UInt16}) =
+    (s = _hex4(gray(c)); string("#", s, s, s))
+
+_hex2(x::Integer) = string(x; base=16, pad=2)
+_hex4(x::Integer) = string(x; base=16, pad=4)
