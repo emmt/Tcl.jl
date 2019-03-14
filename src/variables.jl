@@ -69,11 +69,13 @@ object stored by the variable may be needed.
 See also: [`Tcl.exists`](@ref), [`Tcl.setvar`](@ref), [`Tcl.unsetvar`](@ref).
 
 """
-getvar(args...) = getvar(getinterp(), args...)
+getvar(name::Name, args...) = getvar(getinterp(), name, args...)
 
-getvar(::Type{T}, args...) where {T} = getvar(T, getinterp(), args...)
+getvar(::Type{T}, name::Name, args...) where {T} =
+    getvar(T, getinterp(), name, args...)
 
-getvar(interp::TclInterp, args...) = getvar(Any, interp, args...)
+getvar(interp::TclInterp, name::Name, args...) =
+    getvar(Any, interp, name, args...)
 
 function getvar(::Type{T}, interp::TclInterp, name::Name) where {T}
     ptr = __getvar(interp, name, VARIABLE_FLAGS)
@@ -134,7 +136,7 @@ See [`Tcl.getvar`](@ref) for details about allowed variable names.
 See also: [`Tcl.getvar`](@ref), [`Tcl.exists`](@ref), [`Tcl.unsetvar`](@ref).
 
 """
-setvar(args...) = setvar(getinterp(), args...)
+setvar(name::Name, args...) = setvar(getinterp(), name, args...)
 
 function setvar(interp::TclInterp, name::Name, value)
     if __setvar(interp, name, value, VARIABLE_FLAGS) == C_NULL
