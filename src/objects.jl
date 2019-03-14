@@ -59,16 +59,37 @@ TclObj(obj::TclObj) = obj
 
 """
 ```julia
-atomictype(T)
+AtomicType(x)
+AtomicType(typeof(x))
 ```
 
-yields a sub-type of `AtomicType` indicating whether objects of type `T` are
-atomic (that is always interpreted as a single list element) or not.
+yields either `Atomic()` of `NonAtomic()` indicating whether object `x` or
+objects of type `typeof(x)` are atomic (that is always interpreted as a single
+list element) or not.
+
+If you decide to implement the *atomic* trait, then you must extend
+the `AtomicType` method for your type as follows:
+
+```julia
+Tcl.AtomicType(::Type{<:MyType}) = Atomic() # or NonAtomic()
+```
+
+Atomic types are those of values that are considered as single list element.
+The *atomic* trait indicates whether a value or an object is atomic or not;
+Abstract type `AtomicType` has two concrete singleton sub-types: `Atomic` for
+atomic objects and `NonAtomic` for other objects/values.  This trait is used
+when concatenating objects or values in lists: atomic objects will be seen as a
+single item while non atomic ones will be split in zero, one or several items.
+
+See also [`Tcl.Trait`](@ref).
 
 """
-atomictype(::Type{<:Iterables}) = NonAtomic
-atomictype(::Type{TclObj{T}}) where T = atomictype(T)
+AtomicType(::T) where {T} = AtomicType(T) # same as AtomicType(typeof(x))
+AtomicType(::DataType) = error("unknown atomic type") # to break recursion
 
+# Atomic types of generic objects.
+AtomicType(::Type{<:Iterables}) = NonAtomic()
+AtomicType(::Type{TclObj{T}}) where {T} = AtomicType(T)
 
 """
 ```julia
@@ -102,7 +123,7 @@ throw an exception.
 
 TclObj(value::Bool) = TclObj{Bool}(__newobj(value))
 
-atomictype(::Type{Bool}) = Atomic
+AtomicType(::Type{Bool}) = Atomic()
 
 __objptr(value::Bool) = __newobj(value)
 
@@ -124,7 +145,7 @@ for Tj in (Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
 
         TclObj(value::$Tj) = TclObj{$Tc}(__newobj(value))
 
-        atomictype(::Type{$Tj}) = Atomic
+        AtomicType(::Type{$Tj}) = Atomic()
 
         __objptr(value::$Tj) = __newobj(value)
 
@@ -142,7 +163,7 @@ end
 
 TclObj(value::FloatingPoint) = TclObj{Cdouble}(__newobj(value))
 
-atomictype(::Type{<:FloatingPoint}) = Atomic
+AtomicType(::Type{<:FloatingPoint}) = Atomic()
 
 __objptr(value::FloatingPoint) = __newobj(value)
 
@@ -166,8 +187,8 @@ __newobj(value::FloatingPoint) = __newobj(convert(Cdouble, value))
 
 TclObj(x::Union{Char,Symbol,AbstractString}) = TclObj{String}(__newobj(x))
 
-atomictype(::Type{<:Union{Char,Symbol}}) = Atomic
-atomictype(::Type{<:AbstractString}) = NonAtomic
+AtomicType(::Type{<:Union{Char,Symbol}}) = Atomic()
+AtomicType(::Type{<:AbstractString}) = NonAtomic()
 
 __objptr(x::Union{Char,Symbol,AbstractString}) = __newobj(x)
 
@@ -184,7 +205,7 @@ __newstringobj(ptr::Ptr{T}, nbytes::Integer) where {T<:Byte} =
 
 TclObj(x::Nothing) = TclObj{Nothing}(__newobj(x))
 
-atomictype(::Type{Nothing}) = Atomic
+AtomicType(::Type{Nothing}) = Atomic()
 
 __objptr(x::Nothing) = __newobj(x)
 
@@ -198,13 +219,13 @@ __newobj(::Nothing) = __newobj("")
 
 TclObj(::T) where T = __unsupported_object_type(T)
 
-atomictype(::Type{T}) where T = __unsupported_object_type(T)
+AtomicType(::Type{T}) where T = __unsupported_object_type(T)
 
 __objptr(::T) where T = __unsupported_object_type(T)
 
 __newobj(::T) where T = __unsupported_object_type(T)
 
-__unsupported_object_type(::Type{T}) where T =
+@noinline __unsupported_object_type(::Type{T}) where T =
     Tcl.error("making a Tcl object for type $T is not supported")
 
 end

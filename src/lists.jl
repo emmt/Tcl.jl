@@ -482,16 +482,16 @@ concat(args...) = concat(getinterp(), args...)
 # For atomic objects which are considered as single list element, __concat is
 # equivalent to __lappend.
 __concat(listptr::TclObjPtr, item::T) where T =
-    __concat(listptr, atomictype(T), item)
+    __concat(listptr, AtomicType(T), item)
 
-__concat(listptr::TclObjPtr, ::Type{Atomic}, item) =
+__concat(listptr::TclObjPtr, ::Atomic, item) =
     __lappend(listptr, item)
 
 # Strings are iterables but we want that making a list out of string(s) yields
 # a single element per string (not per character) so we have to short-circuit
 # __concat(listptr, itr).  Note that `Number` are perfectly usable as iterables
 # but we add them to the union below in order to use a faster method for them.
-function __concat(listptr::TclObjPtr, ::Type{NonAtomic}, str::AbstractString)
+function __concat(listptr::TclObjPtr, ::NonAtomic, str::AbstractString)
     objptr = Tcl_IncrRefCount(__newobj(str))
     status = Tcl_ListObjAppendList(__intptr(), listptr, objptr)
     Tcl_DecrRefCount(objptr)
@@ -500,14 +500,14 @@ function __concat(listptr::TclObjPtr, ::Type{NonAtomic}, str::AbstractString)
     end
 end
 
-function __concat(listptr::TclObjPtr, ::Type{NonAtomic}, obj::ManagedObject)
+function __concat(listptr::TclObjPtr, ::NonAtomic, obj::ManagedObject)
     if Tcl_ListObjAppendList(__intptr(), listptr, __objptr(obj)) != TCL_OK
         __contextual_error("failed to concatenate Tcl lists")
     end
 end
 
 # Everything else is assumed to be an iterable.
-function __concat(listptr::TclObjPtr, ::Type{NonAtomic}, itr) ::TclObjPtr
+function __concat(listptr::TclObjPtr, ::NonAtomic, itr) ::TclObjPtr
     for val in itr
         __concat(listptr, val)
     end

@@ -127,7 +127,7 @@ end
 import .Impl:
     Callback,
     WideInt,
-    atomictype,
+    AtomicType,
     cget,
     colorize!,
     colorize,

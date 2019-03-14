@@ -725,7 +725,7 @@ end
 
 TclObj(func::Function) = Callback(func)
 
-atomictype(::Type{<:Union{Function,Callback}}) = Atomic
+AtomicType(::Type{<:Union{Function,Callback}}) = Atomic()
 
 __objptr(func::Function) = __objptr(__newobj(func))
 

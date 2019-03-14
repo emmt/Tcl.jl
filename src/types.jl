@@ -124,25 +124,14 @@ const FloatingPoint = Union{Irrational,Rational,AbstractFloat}
 
 The abstract type `Trait` is inherited by types indicating specific traits.
 
-See also: [`atomictype`](@ref).
+See also: [`Tcl.AtomicType`](@ref).
 
 """
 abstract type Trait end
 
-"""
-
-Atomic types are those of values that are considered as single list element.
-The *atomic* trait indicates whether a value or an object is atomic or not;
-Abstract type `AtomicType` has two concrete singleton sub-types: `Atomic` for
-atomic objects and `NonAtomic` for other objects/values.  This trait is used
-when concatenating objects or values in lists: atomic objects will be seen as a
-single item while non atomic ones will be split in zero, one or several items.
-
-See also: [`atomictype`](@ref), [`Trait`](@ref).
-
-"""
+# Defaint the `AtomicType` trait and its 2 singleton sub-types `Atomic` and
+# `NonAtomic`.
 abstract type AtomicType <: Trait end
-
 for T in (:NonAtomic, :Atomic)
     @eval begin
         struct $T <: AtomicType end
