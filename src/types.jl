@@ -182,9 +182,7 @@ end
 Base.show(io::IO, ::MIME"text/plain", w::T) where {T<:TkObject} =
     print(io, "$T(\"$(string(w))\")")
 
-Base.show(io::IO, w::TkObject) = print(io, string(w))
-
-Base.string(w::TkObject) = getpath(w)
+Base.show(io::IO, w::TkObject) = print(io, getpath(w))
 
 #------------------------------------------------------------------------------
 # Colors
@@ -228,28 +226,39 @@ green(c::TkColors{T}) where T = c.g
 blue(c::TkColors{T}) where T = c.b
 alpha(c::TkColorsWithAlpha{T}) where T = c.a
 
-Base.show(io::IO, ::MIME"text/plain", c::T) where {T<:TkGray} =
-    print(io, "$T(gray: $(string(gray(c))))")
+Base.show(io::IO, ::MIME"text/plain", c::TkGray{T}) where {T} =
+    print(io,"TkGray{",T,"}(",gray(c),")")
 
-Base.show(io::IO, ::MIME"text/plain", c::T) where {T<:Union{TkRGB,TkBGR}} =
-    print(io, "$T(red: $(string(red(c))), $(string(green(c))), $(string(blue(c))))")
+Base.show(io::IO, ::MIME"text/plain", c::TkRGB{T}) where {T} =
+    print(io,"TkRGB{",T,"}(",red(c),",",green(c),",",blue(c),")")
 
-Base.show(io::IO, ::MIME"text/plain", c::T) where {T<:Union{TkRGBA,TkABGR}} =
-    print(io, "$T(red: $(string(red(c))), $(string(green(c))), $(string(blue(c))), $(string(alpha(c))))")
+Base.show(io::IO, ::MIME"text/plain", c::TkBGR{T}) where {T} =
+    print(io,"TkRGB{",T,"}(",blue(c),",",green(c),",",red(c),")")
 
-Base.show(io::IO, c::TkColor) = print(io, string(c))
+Base.show(io::IO, ::MIME"text/plain", c::TkRGBA{T}) where {T} =
+    print(io,"TkRGBA{",T,"}(",red(c),",",green(c),",",blue(c),",",alpha(c),")")
 
-Base.string(c::Union{TkRGB{UInt8},TkBGR{UInt8}}) =
-    string("#", _hex2(red(c)), _hex2(green(c)), _hex2(blue(c)))
+Base.show(io::IO, ::MIME"text/plain", c::TkBGRA{T}) where {T} =
+    print(io,"TkRGBA{",T,"}(",blue(c),",",green(c),",",red(c),",",alpha(c),")")
 
-Base.string(c::Union{TkRGB{UInt16},TkBGR{UInt16}}) =
-    string("#", _hex4(red(c)), _hex4(green(c)), _hex4(blue(c)))
+Base.show(io::IO, ::MIME"text/plain", c::TkARGB{T}) where {T} =
+    print(io,"TkARGB{",T,"}(",alpha(c),",",red(c),",",green(c),",",blue(c),")")
 
-Base.string(c::TkGray{UInt8}) =
-    (s = _hex2(gray(c)); string("#", s, s, s))
+Base.show(io::IO, ::MIME"text/plain", c::TkABGR{T}) where {T} =
+    print(io,"TkARGB{",T,"}(",alpha(c),",",blue(c),",",green(c),",",red(c),")")
 
-Base.string(c::TkGray{UInt16}) =
-    (s = _hex4(gray(c)); string("#", s, s, s))
+# Extend Base.show for passing colors to Tk (the alpha component, if any, is
+# ignored).
+Base.show(io::IO, c::TkGray{T}) where {T<:Union{UInt8,UInt16}} =
+    (s = _hex(gray(c)); print(io, "#", s, s, s))
+Base.show(io::IO, c::TkColors{T}) where {T<:Union{UInt8,UInt16}} =
+    print(io, "#", _hex(red(c)), _hex(green(c)), _hex(blue(c)))
+Base.show(io::IO, c::TkColors{T}) where {T<:Union{UInt32,UInt64}} =
+    print(io, "#", _hex16(red(c)), _hex16(green(c)), _hex16(blue(c)))
 
-_hex2(x::Integer) = string(x; base=16, pad=2)
-_hex4(x::Integer) = string(x; base=16, pad=4)
+_hex(x::UInt8)  = string(x; base=16, pad=2)
+_hex(x::UInt16) = string(x; base=16, pad=4)
+_hex(x::UInt32) = string(x; base=16, pad=8)
+_hex(x::UInt64) = string(x; base=16, pad=16)
+_hex16(x::UInt32) = _hex((x >> 16)%UInt16)
+_hex16(x::UInt64) = _hex((x >> 48)%UInt16)
