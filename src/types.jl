@@ -21,6 +21,14 @@ const TCL_RETURN   = TclStatus(2)
 const TCL_BREAK    = TclStatus(3)
 const TCL_CONTINUE = TclStatus(4)
 
+Base.show(io::IO, ::MIME"text/plain", x::TclStatus) =
+    print(io, (x == TCL_OK       ? "TCL_OK" :
+               x == TCL_ERROR    ? "TCL_ERROR" :
+               x == TCL_RETURN   ? "TCL_RETURN" :
+               x == TCL_BREAK    ? "TCL_BREAK" :
+               x == TCL_CONTINUE ? "TCL_CONTINUE" :
+               "TclStatus("*string(x.code)*")"))
+
 # Flags for settings the result.
 const TCL_VOLATILE = Ptr{Cvoid}(1)
 const TCL_STATIC   = Ptr{Cvoid}(0)
