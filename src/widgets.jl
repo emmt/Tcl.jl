@@ -179,7 +179,9 @@ exec(w::TkWidget, args...; kwds...) =
 If Tk package is not yet loaded in interpreter `interp` (or in the initial
 interpreter if this argument is missing), then:
 
-    tkstart([interp]) -> interp
+```julia
+tkstart([interp]) -> interp
+```
 
 will load Tk package and start the event loop.  The returned value is the
 interpreter into which Tk has been started.  Note that this method also takes
@@ -189,11 +191,10 @@ terminate the Tcl application.
 """
 function tkstart(interp::TclInterp = getinterp()) :: TclInterp
     if ! interp(Bool, "info exists tk_version")
+        local status::TclStatus
         status = interp(TclStatus, "package require Tk")
-        if status == TCL_OK
-            status = interp(TclStatus, "package require Ttk")
-            status = interp(TclStatus, "wm withdraw .")
-        end
+        status == TCL_OK && (status = interp(TclStatus, "package require Ttk"))
+        status == TCL_OK && (status = interp(TclStatus, "wm withdraw ."))
         status == TCL_OK || Tcl.error(interp)
         resume()
     end
