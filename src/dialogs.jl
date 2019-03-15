@@ -92,18 +92,14 @@ function messagebox(interp::TclInterp = getinterp();
 
     # Build-up command.
     cmd = list("tk_messageBox")
-    for (opt, val) in (("-parent", parent),
-                       ("-title", title),
-                       ("-message", message),
-                       ("-detail", detail),
-                       ("-icon", icon),
-                       ("-type", type),
-                       ("-default", default),
-                       ("-command", command))
-        if length(val) > 0
-            lappend!(cmd, opt, val)
-        end
-    end
+    _push_dialog_option!(cmd, "-parent",  parent)
+    _push_dialog_option!(cmd, "-title",   title)
+    _push_dialog_option!(cmd, "-message", message)
+    _push_dialog_option!(cmd, "-detail",  detail)
+    _push_dialog_option!(cmd, "-icon",    icon)
+    _push_dialog_option!(cmd, "-type",    type)
+    _push_dialog_option!(cmd, "-default", default)
+    _push_dialog_option!(cmd, "-command", command)
 
     # Evaluate command and return the result as a string.
     interp(String, cmd)
@@ -164,17 +160,13 @@ function choosedirectory(interp::TclInterp = getinterp();
 
     # Build-up command.
     cmd = list("tk_chooseDirectory")
-    for (opt, val) in (("-parent", parent),
-                       ("-title", title),
-                       ("-initialdir", initialdir))
-        if length(val) > 0
-            lappend!(cmd, opt, val)
-        end
-    end
-    mustexist && lappend!(cmd, "-mustexist", "true")
+    _push_dialog_option!(cmd, "-parent",     parent)
+    _push_dialog_option!(cmd, "-title",      title)
+    _push_dialog_option!(cmd, "-initialdir", initialdir)
+    _push_dialog_option!(cmd, "-mustexist",  mustexist)
     if Sys.isapple()
-        length(message) > 0 && lappend!(cmd, "-message", message)
-        length(command) > 0 && lappend!(cmd, "-command", command)
+        _push_dialog_option!(cmd, "-message", message)
+        _push_dialog_option!(cmd, "-command", command)
     end
 
     # Evaluate command and return the result as a string.
@@ -282,20 +274,16 @@ function getopenfile(interp::TclInterp = getinterp();
 
     # Build-up command.
     cmd = list("tk_getOpenFile", "-multiple", multiple)
-    for (opt, val) in (("-parent", parent),
-                       ("-title", title),
-                       ("-initialdir", initialdir),
-                       ("-initialfile", initialfile),
-                       ("-defaultextension", defaultextension),
-                       ("-filetypes", filetypes),
-                       ("-typevariable", typevariable))
-        if length(val) > 0
-            lappend!(cmd, opt, val)
-        end
-    end
+    _push_dialog_option!(cmd, "-parent",           parent)
+    _push_dialog_option!(cmd, "-title",            title)
+    _push_dialog_option!(cmd, "-initialdir",       initialdir)
+    _push_dialog_option!(cmd, "-initialfile",      initialfile)
+    _push_dialog_option!(cmd, "-defaultextension", defaultextension)
+    _push_dialog_option!(cmd, "-filetypes",        filetypes)
+    _push_dialog_option!(cmd, "-typevariable",     typevariable)
     if Sys.isapple()
-        length(message) > 0 && lappend!(cmd, "-message", message)
-        length(command) > 0 && lappend!(cmd, "-command", command)
+        _push_dialog_option!(cmd, "-message", message)
+        _push_dialog_option!(cmd, "-command", command)
     end
 
     # Evaluate command and return the result as a string.
@@ -318,20 +306,16 @@ function getsavefile(interp::TclInterp = getinterp();
 
     # Build-up command.
     cmd = list("tk_getSaveFile", "-confirmoverwrite", confirmoverwrite)
-    for (opt, val) in (("-parent", parent),
-                       ("-title", title),
-                       ("-initialdir", initialdir),
-                       ("-initialfile", initialfile),
-                       ("-defaultextension", defaultextension),
-                       ("-filetypes", filetypes),
-                       ("-typevariable", typevariable))
-        if length(val) > 0
-            lappend!(cmd, opt, val)
-        end
-    end
+    _push_dialog_option!(cmd, "-parent",           parent)
+    _push_dialog_option!(cmd, "-title",            title)
+    _push_dialog_option!(cmd, "-initialdir",       initialdir)
+    _push_dialog_option!(cmd, "-initialfile",      initialfile)
+    _push_dialog_option!(cmd, "-defaultextension", defaultextension)
+    _push_dialog_option!(cmd, "-filetypes",        filetypes)
+    _push_dialog_option!(cmd, "-typevariable",     typevariable)
     if Sys.isapple()
-        length(message) > 0 && lappend!(cmd, "-message", message)
-        length(command) > 0 && lappend!(cmd, "-command", command)
+        _push_dialog_option!(cmd, "-message", message)
+        _push_dialog_option!(cmd, "-command", command)
     end
 
     # Evaluate command and return the result as a string.
@@ -339,3 +323,11 @@ function getsavefile(interp::TclInterp = getinterp();
 end
 
 @doc @doc(getopenfile) getsavefile
+
+# Append a string-valued option (nothing if the value is an empty string).
+_push_dialog_option!(cmd::TclObj{<:Vector}, opt::AbstractString, val::String) =
+    length(val) > 0 && lappend!(cmd, opt, val)
+
+# Append a boolean-valued option.
+_push_dialog_option!(cmd::TclObj{<:Vector}, opt::AbstractString, val::Bool) =
+    lappend!(cmd, opt, (val ? "true" : "false"))
