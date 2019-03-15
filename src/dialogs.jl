@@ -86,7 +86,7 @@ function messagebox(interp::TclInterp = getinterp();
                     icon::AbstractString = "",
                     type::AbstractString = "",
                     default::AbstractString = "",
-                    command::AbstractString = "")
+                    command::AbstractString = "") :: String
     # Make sure Tk is loaded.
     tkstart(interp)
 
@@ -154,7 +154,7 @@ function choosedirectory(interp::TclInterp = getinterp();
                          message::AbstractString = "",
                          initialdir::AbstractString = "",
                          mustexist::Bool = false,
-                         command::AbstractString = "")
+                         command::AbstractString = "") :: String
     # Make sure Tk is loaded.
     tkstart(interp)
 
@@ -218,7 +218,8 @@ returns the name of the chosen file (an empty string if none).  Tcl interpreter
   it pops up.
 
 - Keyword `multiple` specifies whether the user can choose multiple files from
-  the Open dialog.
+  the Open dialog.  If multiple files are chosen, a vector of strings is
+  returned.
 
 - Keyword `confirmoverwrite` configures how the Save dialog reacts when the
   selected file already exists, and saving would overwrite it.  A true value
@@ -268,7 +269,7 @@ function getopenfile(interp::TclInterp = getinterp();
                      defaultextension::AbstractString = "",
                      filetypes::AbstractString = "",
                      typevariable::AbstractString = "",
-                     command::AbstractString = "")
+                     command::AbstractString = "") :: Union{String,Vector{String}}
     # Make sure Tk is loaded.
     tkstart(interp)
 
@@ -286,8 +287,8 @@ function getopenfile(interp::TclInterp = getinterp();
         _push_dialog_option!(cmd, "-command", command)
     end
 
-    # Evaluate command and return the result as a string.
-    interp(String, cmd)
+    # Evaluate command and return the result as a string or a vector of string.
+    interp(cmd)
 end
 
 function getsavefile(interp::TclInterp = getinterp();
@@ -300,7 +301,7 @@ function getsavefile(interp::TclInterp = getinterp();
                      defaultextension::AbstractString = "",
                      filetypes::AbstractString = "",
                      typevariable::AbstractString = "",
-                     command::AbstractString = "")
+                     command::AbstractString = "") :: String
     # Make sure Tk is loaded.
     tkstart(interp)
 
