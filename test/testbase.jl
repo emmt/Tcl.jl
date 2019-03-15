@@ -1,9 +1,13 @@
-isdefined(:Tcl) || include("../src/Tcl.jl")
+#isdefined(:Tcl) || include("../src/Tcl.jl")
 
 module TclBaseTests
 
 using Tcl
-using Base.Test
+using Test
+
+# We need some irrational constants.
+const π = MathConstants.π
+const φ = MathConstants.φ
 
 @testset "Basic Interface" begin
 
