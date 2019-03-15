@@ -89,7 +89,7 @@ interp("package require Tk")
 ```
 
 should load Tk extension and create the "." toplevel Tk window.  But see
-`tkstart` method to load Tk.
+[`tkstart`](@ref) method to load Tk.
 
 """
 function TclInterp(permanent::Bool=false)
@@ -319,16 +319,17 @@ To allow for option names that are Julia keywords, a leading underscore is
 stripped, if any, in `key`.  All keywords appear at the end of the list in
 unspecific order.
 
-Apart from the accounting of keywords, the main difference with `Tcl.eval` is
-that each input argument is interpreted as a different "word" of the Tcl
-script.  Using `Tcl.eval`, `Tcl.exec` is equivalent to:
+Apart from the accounting of keywords, the main difference with
+[`Tcl.eval`](@ref) is that each input argument is interpreted as a different
+*word* of the Tcl script.  Using [`Tcl.eval`](@ref), [`Tcl.exec`](@ref) is
+equivalent to:
 
 ```julia
 Tcl.eval([T,][interp,], Tcl.list(args...; kwds...))
 ```
 
-Specify `T` as `TclStatus`, if you want to avoid throwing errors and call
-`Tcl.getresult` to retrieve the result.
+Specify `T` as [`TclStatus`](@ref), if you want to avoid throwing errors and
+call [`Tcl.getresult`](@ref) to retrieve the result.
 
 See also: [`Tcl.eval`](@ref), [`Tcl.list`](@ref), [`Tcl.getresult`](@ref).
 
@@ -486,18 +487,22 @@ end
 # Exceptions
 
 """
-    Tcl.error(arg)
+```julia
+Tcl.error(arg)
+```
 
-throws a `TclError` exception, argument `arg` can be the error message as a
-string or a Tcl interpreter (in which case the error message is assumed to be
-the current result of the Tcl interpreter).
+throws a [`TclError`](@ref) exception, argument `arg` can be the error message
+as a string or a Tcl interpreter (in which case the error message is assumed to
+be the current result of the Tcl interpreter).
 
 """
 Tcl.error(msg::AbstractString) = throw(TclError(string(msg)))
 Tcl.error(interp::TclInterp) = Tcl.error(getresult(String, interp))
 
 """
-    geterrmsg(ex)
+```julia
+geterrmsg(ex)
+```
 
 yields the error message associated with exception `ex`.
 
@@ -539,7 +544,7 @@ Tcl.resume()
 is the recommended way to load Tk package.  Alternatively:
 
 ```julia
-Tcl.tkstart(interp)
+Tcl.tkstart()
 ```
 
 can be called to do that.
@@ -554,7 +559,7 @@ Tcl.suspend()
 ```
 
 suspends the processing of Tcl/Tk events for all interpreters.  The method
-`Tcl.resume` can be called to resume the processing of events.
+[`Tcl.resume`](@ref) can be called to resume the processing of events.
 
 """
 suspend() =
@@ -566,7 +571,7 @@ Tcl.doevents(flags = TCL_DONT_WAIT|TCL_ALL_EVENTS)
 ```
 
 processes Tcl/Tk events for all interpreters.  Normally this is automatically
-called by the timer set by `Tcl.resume`.
+called by the timer set by [`Tcl.resume`](@ref).
 
 """
 doevents(::Timer) = doevents()
