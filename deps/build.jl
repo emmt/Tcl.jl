@@ -1,6 +1,6 @@
 # This file is more or less a copy of deps/build.jl in Tk package available at
 # http://github.com/JuliaGraphics/Tk.jl
-using BinDeps
+using Libdl, BinDeps
 
 @BinDeps.setup
 
