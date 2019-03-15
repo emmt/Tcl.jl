@@ -74,8 +74,8 @@ elseif answer == "no"
 end
 ```
 
-See also [`Tcl.choosedirectory`](@ref), [`Tcl.getopenfile`](@ref) and
-[`Tcl.getsavefile`](@ref).
+See also [`Tcl.choosecolor`](@ref), [`Tcl.choosedirectory`](@ref),
+[`Tcl.getopenfile`](@ref) and [`Tcl.getsavefile`](@ref).
 
 """
 function messagebox(interp::TclInterp = getinterp();
@@ -107,6 +107,57 @@ end
 
 """
 
+```julia
+Tcl.choosecolor(interp=Tcl.getinterp(); parent="", title="",
+                initialcolor=nothing)
+```
+
+pops up a Tk dialog box for the user to select a color and returns the chosen
+color as an instance of `TkRGB{UInt8}` or `nothing` if the user cancels the
+dialog.  Tcl interpreter `interp` is used to run the dialog.  Available
+keywords are:
+
+- Keyword `parent` specifies the logical parent of the message box.  The color
+  dialog box is displayed on top of its parent window.
+
+- Keyword `title` specifies the title of the message box.
+
+- Keyword `initialcolor` specifies the color to display in the color dialog
+  when it pops up.  The value of this option can be a string like `"orange"` or
+  `"#ff03ae"` or an instance of a sub-type of `TkColor`.
+
+See also [`Tcl.choosedirectory`](@ref), [`Tcl.getopenfile`](@ref),
+[`Tcl.getsavefile`](@ref) and [`Tcl.messagebox`](@ref).
+
+"""
+function choosecolor(interp::TclInterp = getinterp();
+                     parent::AbstractString = "",
+                     title::AbstractString = "",
+                     initialcolor::Union{TkColor,AbstractString,Nothing} = nothing
+                     ) :: Union{TkRGB{UInt8},Nothing}
+    # Make sure Tk is loaded.
+    tkstart(interp)
+
+    # Build-up command.
+    cmd = list("tk_chooseColor")
+    _push_dialog_option!(cmd, "-parent",       parent)
+    _push_dialog_option!(cmd, "-title",        title)
+    _push_dialog_option!(cmd, "-initialcolor", initialcolor)
+
+    # Evaluate command and return the result as a string.
+    color = interp(String, cmd)
+    if length(color) == 0
+        return nothing
+    elseif length(color) == 7 && color[1] == '#'
+        return TkRGB{UInt8}(parse(UInt8, color[2:3], base=16),
+                            parse(UInt8, color[4:4], base=16),
+                            parse(UInt8, color[6:7], base=16))
+    else
+        error("unexpected color \"$color\"")
+    end
+end
+
+"""
 
 ```julia
 Tcl.choosedirectory(interp=Tcl.getinterp(); parent="", title="", message="",
@@ -144,8 +195,8 @@ used to run the dialog.  Available keywords are:
   space and the name of the button clicked by the user to close the dialog.
   This is only available on Mac OS X.
 
-See also [`Tcl.getopenfile`](@ref), [`Tcl.getsavefile`](@ref) and
-[`Tcl.messagebox`](@ref).
+See also [`Tcl.choosecolor`](@ref), [`Tcl.getopenfile`](@ref),
+[`Tcl.getsavefile`](@ref) and [`Tcl.messagebox`](@ref).
 
 """
 function choosedirectory(interp::TclInterp = getinterp();
@@ -172,7 +223,6 @@ function choosedirectory(interp::TclInterp = getinterp();
     # Evaluate command and return the result as a string.
     interp(String, cmd)
 end
-
 
 """
 
@@ -256,7 +306,8 @@ returns the name of the chosen file (an empty string if none).  Tcl interpreter
   `command` string followed by a space and the value selected by the user in
   the dialog.  This is only available on Mac OS X.
 
-See also [`Tcl.choosedirectory`](@ref) and [`Tcl.messagebox`](@ref).
+See also [`Tcl.choosecolor`](@ref), [`Tcl.choosedirectory`](@ref) and
+[`Tcl.messagebox`](@ref).
 
 """
 function getopenfile(interp::TclInterp = getinterp();
@@ -332,3 +383,11 @@ _push_dialog_option!(cmd::TclObj{<:Vector}, opt::AbstractString, val::String) =
 # Append a boolean-valued option.
 _push_dialog_option!(cmd::TclObj{<:Vector}, opt::AbstractString, val::Bool) =
     lappend!(cmd, opt, (val ? "true" : "false"))
+
+# Append an unspecified option.
+_push_dialog_option!(cmd::TclObj{<:Vector}, opt::AbstractString, val::Nothing) =
+    nothing
+
+# Append a color.
+_push_dialog_option!(cmd::TclObj{<:Vector}, opt::AbstractString, val::TkColor) =
+    lappend!(cmd, opt, repr(val))
