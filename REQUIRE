@@ -1,5 +1,6 @@
-julia 0.6
+julia 0.7
 FixedPointNumbers
 ColorTypes
-BinDeps 0.2.2-
+Libdl
+BinDeps
 @windows WinRPM
