@@ -244,7 +244,7 @@ a managed Tcl object or the address of a Tcl object (must not be `C_NULL`).
 """
 __getobjtype(obj::TclObj) = __getobjtype(__objptr(obj))
 __getobjtype(objptr::TclObjPtr) =
-    __peek(TclObjTypePtr, objptr + __offset_of_type)
+    unsafe_load(Ptr{TclObjTypePtr}(objptr + __offset_of_type))
 
 const __bool_type    = Ref{Ptr{Cvoid}}(0)
 const __int_type     = Ref{Ptr{Cvoid}}(0)

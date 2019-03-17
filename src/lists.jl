@@ -19,7 +19,7 @@
     function Base.next(iter::TclObj{List}, state)
         i, n, objv = state
         i += 1
-        item = __objptr_to(Any, __peek(objv, i))
+        item = __objptr_to(Any, unsafe_load(objv, i))
         return item, (i, n, objv)
     end
 
@@ -34,7 +34,7 @@ else
         i, objc, objv = state
         if i < objc
             i += 1
-            item = __objptr_to(Any, __peek(objv, i))
+            item = __objptr_to(Any, unsafe_load(objv, i))
             return item, (i, objc, objv)
         else
             return nothing
@@ -162,7 +162,7 @@ end
     __buildvector(__getlistelements(listptr)...)
 
 @inline __buildvector(objc::Integer, objv::Ptr{TclObjPtr}) =
-    buildvector(i -> __objptr_to(Any, __peek(objv, i)), objc)
+    buildvector(i -> __objptr_to(Any, unsafe_load(objv, i)), objc)
 
 
 """

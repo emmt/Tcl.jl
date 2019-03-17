@@ -75,18 +75,6 @@ const TclObjTypePtr = fieldtype(__TclObj, :typePtr)
     error("it is assumed that refCount comes first in Tcl_Obj structure")
 end
 
-# These functions are to avoid overloading unsafe_load and unsafe_store.
-@inline __peek(ptr::Ptr{T}, i::Integer) where {T} =
-    unsafe_load(ptr + (i - 1)*sizeof(T))
-@inline __peek(ptr::Ptr) = unsafe_load(ptr)
-@inline __peek(::Type{T}, ptr::Ptr) where {T} = __peek(Ptr{T}(ptr))
-@inline __peek(::Type{T}, ptr::Ptr, i::Integer) where {T} =
-    __peek(Ptr{T}(ptr), i)
-
-@inline __poke!(ptr::Ptr, args...) = unsafe_store!(ptr, args...)
-@inline __poke!(::Type{T}, ptr::Ptr, args...) where {T} =
-    __poke!(Ptr{T}(ptr), args...)
-
 #------------------------------------------------------------------------------
 # REFERENCE COUNTING
 
@@ -107,13 +95,13 @@ this address.
 """
 @inline function Tcl_IncrRefCount(objptr::TclObjPtr)
     ptr = Ptr{Cint}(objptr)
-    __poke!(ptr, __peek(ptr) + one(Cint))
+    unsafe_store!(ptr, unsafe_load(ptr) + one(Cint))
     return objptr
 end
 
 """
 ```julia
-Tcl_DecrRefCount(objptr)
+Tcl_DecrRefCount(objptr) -> nothing
 ```
 
 decrements the reference count of the object referenced by `objptr` and delete
@@ -122,12 +110,13 @@ it if the number of references is then smaller or equal 0.
 """
 @inline function Tcl_DecrRefCount(objptr::TclObjPtr)
     ptr = Ptr{Cint}(objptr)
-    newrefcount = __peek(ptr) - one(Cint)
+    newrefcount = unsafe_load(ptr) - one(Cint)
     if newrefcount ≥ 1
-        __poke!(ptr, newrefcount)
+        unsafe_store!(ptr, newrefcount)
     else
         ccall((:TclFreeObj, libtcl), Cvoid, (TclObjPtr,), objptr)
     end
+    return nothing
 end
 
 """
@@ -138,7 +127,7 @@ Tcl_GetRefCount(objptr)
 yields the reference count of the object referenced by `objptr`.
 
 """
-@inline Tcl_GetRefCount(objptr::TclObjPtr) = __peek(Cint, objptr)
+@inline Tcl_GetRefCount(objptr::TclObjPtr) = unsafe_load(Ptr{Cint}(objptr))
 
 
 """
