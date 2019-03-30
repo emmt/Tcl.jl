@@ -66,33 +66,49 @@ two projects merge.
 
 # Installation
 
-[**Tcl**](https://github.com/emmt/Tcl.jl) is not yet an
-[offical Julia package](https://pkg.julialang.org/) but it is easy to install
-from the [julia REPL](https://docs.julialang.org/en/stable/manual/interacting-with-julia/) as follows:
+Tcl.jl is not yet an [offical Julia package](https://pkg.julialang.org/) but it
+is easy to install from the REPL of Julia's package
+manager<sup>[[pkg]](#pkg)</sup> as follows:
 
 ```julia
-Pkg.clone("https://github.com/emmt/Tcl.jl.git")
-Pkg.build("Tcl")
+pkg> add https://github.com/emmt/Tcl.jl.git
 ```
 
-which uses `https` protocol; if `ssh` is more suitable for you, then type:
+where `pkg>` represents the package manager prompt and `https` protocol has
+been assumed; if `ssh` is more suitable for you, then:
 
 ```julia
-Pkg.clone("git@github.com:emmt/Tcl.jl.git")
-Pkg.build("Tcl")
+pkg> add git@github.com:emmt/Tcl.jl.git
 ```
 
 To check whether Tcl package works correctly:
 
 ```julia
-Pkg.test("Tcl")
+pkg> test Tcl
 ```
 
-To update to the last version, just type:
+To update to the last version:
 
 ```julia
-Pkg.update()
-Pkg.build("Tcl")
+pkg> update Tcl
+pkg> build Tcl
 ```
 
 and perhaps test again...
+
+If something goes wrong, it may be because you already have an old
+version of Tcl.jl.  Uninstall Tcl.jl as follows:
+
+```julia
+pkg> rm Tcl
+pkg> gc
+pkg> add https://github.com/emmt/Tcl.jl.git
+```
+
+before re-installing.
+
+<a name="pkg">[pkg]</a> To switch from [julia
+REPL](https://docs.julialang.org/en/stable/manual/interacting-with-julia/) to
+the package manager REPL, just hit the `]` key and you should get a `... pkg>`
+prompt.  To revert to Julia's REPL, hit the `Backspace` key at the `... pkg>`
+prompt.
