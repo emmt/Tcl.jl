@@ -1,0 +1,19 @@
+name = "Tcl"
+uuid = "0c1a82aa-b54c-42d3-8054-cbad0e6b9f76"
+version = "0.1.0"
+
+[deps]
+ColorTypes = "3da002f7-5984-5a60-b8a6-cbb66c0b333f"
+FixedPointNumbers = "53c48c17-4a7d-5ca2-90c5-79b7896eea93"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+Tcl_jll = "9fc9b8dd-f768-5d0d-bb0b-e65961e00eb6"
+Tk_jll = "056b5f69-f28f-5060-ad8a-df43647a2b5c"
+
+[compat]
+julia = "1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
