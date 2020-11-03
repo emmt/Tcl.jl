@@ -1,7 +1,7 @@
 # Julia interface to Tcl/Tk
 
 [![License](http://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat)](LICENSE.md)
-[![Build Status](https://travis-ci.org/emmt/Tcl.jl.svg?branch=master)](https://travis-ci.org/emmt/Tcl.jl)
+[![Build Status](https://travis-ci.com/emmt/Tcl.jl.svg?branch=master)](https://travis-ci.com/emmt/Tcl.jl)
 
 This package provides an optimized Julia interface to
 [Tcl/Tk](http://www.tcl.tk/).
@@ -107,8 +107,10 @@ pkg> add https://github.com/emmt/Tcl.jl.git
 
 before re-installing.
 
-<a name="pkg">[pkg]</a> To switch from [julia
-REPL](https://docs.julialang.org/en/stable/manual/interacting-with-julia/) to
-the package manager REPL, just hit the `]` key and you should get a `... pkg>`
-prompt.  To revert to Julia's REPL, hit the `Backspace` key at the `... pkg>`
-prompt.
+<hr>
+
+- <a name="pkg"><sup>[pkg]</sup></a> To switch from [julia
+  REPL](https://docs.julialang.org/en/stable/manual/interacting-with-julia/) to
+  the package manager REPL, just hit the `]` key and you should get a
+  `... pkg>` prompt.  To revert to Julia's REPL, hit the `Backspace` key at the
+  `... pkg>` prompt.
