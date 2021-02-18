@@ -8,20 +8,32 @@
 # respect to its global variables.
 
 Base.getindex(interp::TclInterp, name) = getvar(interp, name)
+
 Base.getindex(interp::TclInterp, name1, name2) = getvar(interp, name1, name2)
 
-Base.setindex!(interp::TclInterp, value, name) = setvar(interp, name, value)
-Base.setindex!(interp::TclInterp, value, name1, name2) =
-    setvar(interp, name1, name2, value)
+Base.setindex!(interp::TclInterp, value, name) = begin
+    setvar(interp, name, value)
+    interp
+end
 
-Base.setindex!(interp::TclInterp, ::Nothing, name) =
+Base.setindex!(interp::TclInterp, value, name1, name2) = begin
+    setvar(interp, name1, name2, value)
+    interp
+end
+
+Base.setindex!(interp::TclInterp, ::Nothing, name) = begin
     unsetvar(interp, name; nocomplain=true)
-Base.setindex!(interp::TclInterp, ::Nothing, name1, name2) =
+    interp
+end
+
+Base.setindex!(interp::TclInterp, ::Nothing, name1, name2) = begin
     unsetvar(interp, name1, name2; nocomplain=true)
+    interp
+end
 
 Base.haskey(interp::TclInterp, name) = exists(interp, name)
-Base.haskey(interp::TclInterp, name1, name2) = exists(interp, name1, name2)
 
+Base.haskey(interp::TclInterp, name1, name2) = exists(interp, name1, name2)
 
 const VARIABLE_FLAGS = TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG
 

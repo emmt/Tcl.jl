@@ -231,8 +231,10 @@ value is:
 cget(w::TkWidget, opt::Name) = exec(w, "cget", "-"*string(opt))
 
 Base.getindex(w::TkWidget, key::Name) = cget(w, key)
-Base.setindex!(w::TkWidget, value, key::Name) =
+Base.setindex!(w::TkWidget, value, key::Name) = begin
     exec(w, "configure", "-"*string(key), value)
+    w
+end
 
 """
     Tcl.grid(args...; kwds...)
