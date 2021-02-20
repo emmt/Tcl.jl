@@ -115,10 +115,9 @@ import ...Tcl
 
 using Printf
 
-isfile(joinpath(@__DIR__,"..","deps","deps.jl")) ||
-    error("Tcl not properly installed.  Please run `Pkg.build(\"Tcl\")` to create file \"",joinpath(@__DIR__,"..","deps","deps.jl"),"\"")
+using Tcl_jll
+using Tk_jll
 
-include("../deps/deps.jl")
 include("types.jl")
 include("macros.jl")
 include("calls.jl")
