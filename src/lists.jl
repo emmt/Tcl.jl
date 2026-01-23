@@ -317,7 +317,7 @@ or
 length(lst)
 ```
 
-yeild the number of element of the Tcl list `lst`.
+yield the number of element of the Tcl list `lst`.
 
 See also: [`Tcl.list`](@ref).
 
