@@ -10,7 +10,11 @@ Tcl_jll = "9fc9b8dd-f768-5d0d-bb0b-e65961e00eb6"
 Tk_jll = "056b5f69-f28f-5060-ad8a-df43647a2b5c"
 
 [compat]
-julia = "1"
+CEnum = "0.5.0"
+Tcl_jll = "8.6.14"
+Test = "<0.0.1, 1"
+Tk_jll = "8.6.12"
+julia = "1.5"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
