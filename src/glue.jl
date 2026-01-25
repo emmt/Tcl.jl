@@ -206,11 +206,13 @@ end
 #------------------------------------------------------------------------------
 # REFERENCE COUNTING
 
-@inline Tcl_Preserve(ptr::Ptr{T}) where {T} =
-    ccall((:Tcl_Preserve, libtcl), Cvoid, (Ptr{T},), ptr)
+function Tcl_Preserve(data)
+    @ccall libtcl.Tcl_Preserve(data::ClientData)::Cvoid
+end
 
-@inline Tcl_Release(ptr::Ptr{T}) where {T} =
-    ccall((:Tcl_Release, libtcl), Cvoid, (Ptr{T},), ptr)
+function Tcl_Release(data)
+    @ccall libtcl.Tcl_Release(data::ClientData)::Cvoid
+end
 
 """
 ```julia
