@@ -123,7 +123,7 @@ end
 function __createwidget(::Type{T}, interp::TclInterp,
                         cmd::String, path::String;
                         kwds...) where {T<:Union{TkWidget,TkRootWidget}}
-    local objptr :: TclObjPtr
+    local objptr :: Ptr{Tcl_Obj}
     if interp(Bool, "winfo exists", path)
         # If widget already exists, it will be simply re-used, so we just apply
         # configuration options if any.  FIXME: there must be a way to check

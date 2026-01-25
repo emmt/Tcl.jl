@@ -136,7 +136,7 @@ yields the Tcl interpreter for widget (or image) `w`.
 getinterp() = __initial_interpreter[]
 
 # This constant wraps a NULL pointer in a TclInterp structure.
-const __NO_INTERP = TclInterp(TclInterpPtr(0))
+const __NO_INTERP = TclInterp(Ptr{Tcl_Interp}(0))
 
 # Many things do not work properly (e.g., freeing a Tcl object yield a
 # segmentation fault) if no interpreter has been created, so we always create
@@ -449,7 +449,7 @@ end
 # For a not well defined Tcl object type, we peek the real object type to
 # decide which of `Tcl_EvalObjEx` or `Tcl_EvalObjv` to call.
 function __eval(::Type{TclStatus}, interp::TclInterp,
-                ::Type{TclObj}, objptr::TclObjPtr)
+                ::Type{TclObj}, objptr::Ptr{Tcl_Obj})
     return __eval(TclStatus, interp, TclObj{__objtype(objptr)}, objptr)
 end
 
@@ -464,7 +464,7 @@ __eval(::Type{TclStatus}, interp::TclInterp, ::Type{String}, script::String) =
 # script.  `Tcl_EvalObjEx` does manage the reference count of its object
 # argument.
 function __eval(::Type{TclStatus}, interp::TclInterp,
-                ::Type{TclObj{S}}, objptr::TclObjPtr) where S
+                ::Type{TclObj{S}}, objptr::Ptr{Tcl_Obj}) where S
     flags = TCL_EVAL_GLOBAL
     if Tcl_GetRefCount(objptr) < 1
         # For a temporary object there is no needs to compile the script.
@@ -474,7 +474,7 @@ function __eval(::Type{TclStatus}, interp::TclInterp,
 end
 
 function __eval(::Type{TclStatus}, interp::TclInterp,
-                ::Type{TclObj{List}}, listptr::TclObjPtr)
+                ::Type{TclObj{List}}, listptr::Ptr{Tcl_Obj})
     flags = TCL_EVAL_GLOBAL
     status, objc, objv = Tcl_ListObjGetElements(interp.ptr, listptr)
     if status == TCL_OK
@@ -609,8 +609,8 @@ __releaseobject(ptr::Ptr{Cvoid}) = release(unsafe_pointer_to_objref(ptr))
 
 const __evalcommand_proc = Ref{Ptr{Cvoid}}() # will be set by __init__
 
-function __evalcommand(fptr::ClientData, iptr::TclInterpPtr,
-                       objc::Cint, objv::Ptr{TclObjPtr}) :: Cint
+function __evalcommand(fptr::ClientData, iptr::Ptr{Tcl_Interp},
+                       objc::Cint, objv::Ptr{Ptr{Tcl_Obj}}) :: Cint
     func = unsafe_pointer_to_objref(fptr)
     interp = TclInterp(iptr) # weak reference
     __set_context(interp) # FIXME: not needed?
@@ -651,8 +651,8 @@ function __init__()
     __initial_interpreter[] = TclInterp(true)
     __releaseobject_proc[] = @cfunction(__releaseobject, Cvoid, (Ptr{Cvoid},))
     __evalcommand_proc[] = @cfunction(__evalcommand, Cint,
-                                      (ClientData, TclInterpPtr,
-                                       Cint, Ptr{TclObjPtr}))
+                                      (ClientData, Ptr{Tcl_Interp},
+                                       Cint, Ptr{Ptr{Tcl_Obj}}))
     __init_types()
 end
 
@@ -702,13 +702,13 @@ Callback(interp::TclInterp, name::StringOrSymbol, func::Function) =
 __newcallback(func::Function) =
     __newcallback(__intptr(), func)
 
-__newcallback(intptr::TclInterpPtr, func::Function) =
+__newcallback(intptr::Ptr{Tcl_Interp}, func::Function) =
     __newcallback(intptr, autoname("jl_callback"), func)
 
-__newcallback(intptr::TclInterpPtr, name::Symbol, func::Function) =
+__newcallback(intptr::Ptr{Tcl_Interp}, name::Symbol, func::Function) =
     __newcallback(intptr, string(name), func)
 
-function __newcallback(intptr::TclInterpPtr, name::String, func::Function)
+function __newcallback(intptr::Ptr{Tcl_Interp}, name::String, func::Function)
     local cmd :: TclObj{Function}
     if intptr != C_NULL
         preserve(func)

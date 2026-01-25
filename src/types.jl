@@ -4,67 +4,6 @@
 # Definitions of Tcl constants and types.
 #
 
-"""
-
-`TclStatus` is used to represent a status like `TCL_OK` or `TCL_ERROR` returned
-by Tcl functions.
-
-"""
-struct TclStatus
-    code::Cint
-end
-
-# Status codes returned by Tcl functions.
-const TCL_OK       = TclStatus(0)
-const TCL_ERROR    = TclStatus(1)
-const TCL_RETURN   = TclStatus(2)
-const TCL_BREAK    = TclStatus(3)
-const TCL_CONTINUE = TclStatus(4)
-
-Base.show(io::IO, ::MIME"text/plain", x::TclStatus) =
-    print(io, (x == TCL_OK       ? "TCL_OK" :
-               x == TCL_ERROR    ? "TCL_ERROR" :
-               x == TCL_RETURN   ? "TCL_RETURN" :
-               x == TCL_BREAK    ? "TCL_BREAK" :
-               x == TCL_CONTINUE ? "TCL_CONTINUE" :
-               "TclStatus("*string(x.code)*")"))
-
-# Flags for settings the result.
-const TCL_VOLATILE = Ptr{Cvoid}(1)
-const TCL_STATIC   = Ptr{Cvoid}(0)
-const TCL_DYNAMIC  = Ptr{Cvoid}(3)
-
-# Flags for Tcl variables.
-const TCL_GLOBAL_ONLY    = Cint(1)
-const TCL_NAMESPACE_ONLY = Cint(2)
-const TCL_APPEND_VALUE   = Cint(4)
-const TCL_LIST_ELEMENT   = Cint(8)
-const TCL_LEAVE_ERR_MSG  = Cint(0x200)
-
-# Flags for Tcl processing events.  Set TCL_DONT_WAIT to not sleep: process
-# only events that are ready at the time of the call.  Set TCL_ALL_EVENTS to
-# process all kinds of events: equivalent to OR-ing together all of the below
-# flags or specifying none of them.
-const TCL_DONT_WAIT     = Cint(1<<1)
-const TCL_WINDOW_EVENTS = Cint(1<<2) # Process window system events.
-const TCL_FILE_EVENTS   = Cint(1<<3) # Process file events.
-const TCL_TIMER_EVENTS  = Cint(1<<4) # Process timer events.
-const TCL_IDLE_EVENTS   = Cint(1<<5) # Process idle callbacks.
-const TCL_ALL_EVENTS    = ~TCL_DONT_WAIT      # Process all kinds of events.
-
-# The following values control how blocks are combined into photo images when
-# the alpha component of a pixel is not 255, a.k.a. the compositing rule.
-const TK_PHOTO_COMPOSITE_OVERLAY = Cint(0)
-const TK_PHOTO_COMPOSITE_SET     = Cint(1)
-
-# Flags for evaluating scripts/commands.
-const TCL_NO_EVAL       = Cint(0x010000)
-const TCL_EVAL_GLOBAL   = Cint(0x020000)
-const TCL_EVAL_DIRECT   = Cint(0x040000)
-const TCL_EVAL_INVOKE   = Cint(0x080000)
-const TCL_CANCEL_UNWIND = Cint(0x100000)
-const TCL_EVAL_NOERR    = Cint(0x200000)
-
 struct TclError <: Exception
     msg::String
 end
@@ -74,10 +13,10 @@ Base.showerror(io::IO, ex::TclError) = print(io, "Tcl/Tk error: ", ex.msg)
 # Structure to store a pointer to a Tcl interpreter. (Even though the address
 # should not be modified, it is mutable because immutable objects cannot be
 # finalized.)
-const TclInterpPtr = Ptr{Cvoid}
+const Ptr{Tcl_Interp} = Ptr{Cvoid}
 mutable struct TclInterp
-    ptr::TclInterpPtr
-    TclInterp(ptr::TclInterpPtr) = new(ptr)
+    ptr::Ptr{Tcl_Interp}
+    TclInterp(ptr::Ptr{Tcl_Interp}) = new(ptr)
 end
 
 """
@@ -92,10 +31,9 @@ abstract type ManagedObject end
 # should not be modified, it is mutable because immutable objects cannot be
 # finalized.)  The constructor will refuse to build a managed Tcl object with
 # a NULL address.
-const TclObjPtr = Ptr{Cvoid}
 mutable struct TclObj{T} <: ManagedObject
-    ptr::TclObjPtr
-    function TclObj{T}(ptr::TclObjPtr) where {T}
+    ptr::Ptr{Tcl_Obj}
+    function TclObj{T}(ptr::Ptr{Tcl_Obj}) where {T}
         ptr != C_NULL || __illegal_null_object_pointer()
         obj = new{T}(Tcl_IncrRefCount(ptr))
         return finalizer(__finalize, obj)
@@ -103,19 +41,13 @@ mutable struct TclObj{T} <: ManagedObject
 end
 
 struct Callback <: ManagedObject
-    intptr::TclInterpPtr # weak reference to interpreter
+    intptr::Ptr{Tcl_Interp} # weak reference to interpreter
     obj::TclObj{Function} # command name (possibly fully-qualified)
     func::Function
 end
 
-# Tcl wide integer is 64-bit integer.
-const WideInt = Int64
-
 # Type used in the signature of a Tcl list object (a.k.a. vector in Julia).
 const List = Vector
-
-# Token used by Tcl to identify an object command.
-const TclCommand = Ptr{Cvoid}
 
 # Floating-point types.
 const FloatingPoint = Union{Irrational,Rational,AbstractFloat}
@@ -138,9 +70,6 @@ for T in (:NonAtomic, :Atomic)
         @doc @doc(AtomicType) $T
     end
 end
-
-# Client data used by commands and callbacks.
-const ClientData = Ptr{Cvoid}
 
 const TclObjList    = TclObj{List}
 const TclObjCommand = TclObj{Function}

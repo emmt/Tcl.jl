@@ -204,7 +204,7 @@ findphoto(img::TkImage) = findphoto(getinterp(img), getpath(img))
 
 function findphoto(interp::TclInterp, name::AbstractString)
     imgptr = ccall((:Tk_FindPhoto, libtk), Ptr{Cvoid},
-                   (TclInterpPtr, Ptr{UInt8}), interp.ptr, name)
+                   (Ptr{Tcl_Interp}, Ptr{UInt8}), interp.ptr, name)
     if imgptr == C_NULL
         Tcl.error("invalid image name")
     end
@@ -354,7 +354,7 @@ end
 function __setphotosize(interp::TclInterp, imgptr::Ptr{Cvoid},
                         width::Cint, height::Cint)
     code = ccall((:Tk_PhotoSetSize, libtk), Cint,
-                 (TclInterpPtr, Ptr{Cvoid}, Cint, Cint),
+                 (Ptr{Tcl_Interp}, Ptr{Cvoid}, Cint, Cint),
                  interp.ptr, imgptr, width, height)
     code == TCL_OK || Tcl.error(tclresult(interp))
     return nothing
@@ -363,7 +363,7 @@ end
 function __expandphotosize(interp::TclInterp, imgptr::Ptr{Cvoid},
                            width::Cint, height::Cint)
     code = ccall((:Tk_PhotoExpand, libtk), Cint,
-                 (TclInterpPtr, Ptr{Cvoid}, Cint, Cint),
+                 (Ptr{Tcl_Interp}, Ptr{Cvoid}, Cint, Cint),
                  interp.ptr, imgptr, width, height)
     code == TCL_OK || Tcl.error(tclresult(interp))
     return nothing
@@ -397,7 +397,7 @@ function __setpixels(interp::TclInterp, name::AbstractString,
     # Assume (TCL_MAJOR_VERSION == 8) && (TCL_MINOR_VERSION >= 5), for older
     # versions, the interpreter argument is missing in Tk_PhotoPutBlock.
     code = ccall((:Tk_PhotoPutBlock, libtk), Cint,
-                 (TclInterpPtr, Ptr{Cvoid}, Ref{TkPhotoImageBlock},
+                 (Ptr{Tcl_Interp}, Ptr{Cvoid}, Ref{TkPhotoImageBlock},
                   Cint, Cint, Cint, Cint, Cint),
                  interp.ptr, imgptr, block, x, y,
                  block.width, block.height, composite)

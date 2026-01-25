@@ -243,8 +243,8 @@ a managed Tcl object or the address of a Tcl object (must not be `C_NULL`).
 
 """
 __getobjtype(obj::TclObj) = __getobjtype(__objptr(obj))
-__getobjtype(objptr::TclObjPtr) =
-    unsafe_load(Ptr{TclObjTypePtr}(objptr + __offset_of_type))
+__getobjtype(objptr::Ptr{Tcl_Obj}) =
+    unsafe_load(Ptr{Ptr{Glue.Tcl_ObjType}}(objptr + Glue.Tcl_Obj_typePtr_offset))
 
 const __bool_type    = Ref{Ptr{Cvoid}}(0)
 const __int_type     = Ref{Ptr{Cvoid}}(0)
@@ -331,7 +331,7 @@ See also: [`Tcl.getvar`](@ref), [`Tcl.getvalue`](@ref).
 @inline __objptr_to(::Type{TclObj}, objptr::Ptr{Cvoid}) =
     TclObj{__objtype(objptr)}(objptr)
 
-@inline function __objptr_to(::Type{String}, objptr::TclObjPtr) :: String
+@inline function __objptr_to(::Type{String}, objptr::Ptr{Tcl_Obj}) :: String
     ptr, len = Tcl_GetStringFromObj(objptr)
     if ptr == C_NULL
         Tcl.error("failed to retrieve string representation of Tcl object")
@@ -350,7 +350,7 @@ end
     return unsafe_string(ptr, 1)[1]
 end
 
-@inline function __objptr_to(::Type{Bool}, objptr::TclObjPtr) :: Bool
+@inline function __objptr_to(::Type{Bool}, objptr::Ptr{Tcl_Obj}) :: Bool
     status, value = Tcl_GetBooleanFromObj(__intptr(), objptr)
     if status != TCL_OK
         __contextual_error("failed to convert Tcl object to a boolean")
@@ -369,7 +369,7 @@ for Tj in (Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
             # Exact match found or size large enough.
             result = (Tj == Tc ? :value : :(convert(Tj, value)))
             @eval @inline function __objptr_to(::Type{$Tj},
-                                               objptr::TclObjPtr) :: $Tj
+                                               objptr::Ptr{Tcl_Obj}) :: $Tj
                 status, value = $f(__intptr(), objptr)
                 status == TCL_OK || __contextual_error($msg)
                 return $result
@@ -379,7 +379,7 @@ for Tj in (Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64)
     end
 end
 
-@inline function __objptr_to(::Type{Cdouble}, objptr::TclObjPtr) :: Cdouble
+@inline function __objptr_to(::Type{Cdouble}, objptr::Ptr{Tcl_Obj}) :: Cdouble
     status, value = Tcl_GetDoubleFromObj(__intptr(), objptr)
     if status != TCL_OK
         __contextual_error("failed to convert Tcl object to a float")
@@ -388,7 +388,7 @@ end
 end
 
 @inline function __objptr_to(::Type{T},
-                             objptr::TclObjPtr) :: T where {T<:AbstractFloat}
+                             objptr::Ptr{Tcl_Obj}) :: T where {T<:AbstractFloat}
     return convert(T, __objptr_to(Cdouble, objptr))
 end
 
