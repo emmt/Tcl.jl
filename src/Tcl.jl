@@ -118,9 +118,9 @@ using Printf
 using Tcl_jll
 using Tk_jll
 
+include("glue.jl")
 include("types.jl")
 include("macros.jl")
-include("calls.jl")
 include("basics.jl")
 include("objects.jl")
 include("lists.jl")
