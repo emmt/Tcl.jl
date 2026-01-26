@@ -416,13 +416,13 @@ end
                  intptr, objc, objv, flags)
 end
 
-"""
-```julia
-Tcl_DoOneEvent(flags) -> boolean
-```
-"""
-@inline Tcl_DoOneEvent(flags::Integer) =
-    (zero(Cint) != ccall((:Tcl_DoOneEvent, libtcl), Cint, (Cint,), flags))
+function Tcl_DoOneEvent(flags)
+    @ccall libtcl.Tcl_DoOneEvent(flags::Cint)::Cint
+end
+
+function Tcl_DoWhenIdle(proc, clientData)
+    @ccall libtcl.Tcl_DoWhenIdle(proc::Ptr{Tcl_IdleProc}, clientData::ClientData)::Cvoid
+end
 
 #------------------------------------------------------------------------------
 # COMMANDS

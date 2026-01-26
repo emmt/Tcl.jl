@@ -510,7 +510,7 @@ yields the error message associated with exception `ex`.
 geterrmsg(ex::Exception) = sprint(io -> showerror(io, ex))
 
 #------------------------------------------------------------------------------
-# Processing Tcl/Tk events.  The function `doevents` must be repeatedly
+# Processing Tcl/Tk events.  The function `do_events` must be repeatedly
 # called too process events when Tk is loaded.
 
 const __timer = Ref{Timer}()
@@ -531,7 +531,7 @@ Tcl.resume(sec=0.05)
 ```
 
 resumes or starts the processing of Tcl/Tk events with an interval of `sec`
-seconds.  This manages to repeatedly call function `Tcl.doevents`.  The method
+seconds.  This manages to repeatedly call function `Tcl.do_events`.  The method
 `Tcl.suspend` can be called to suspend the processing of events.
 
 Calling `Tcl.resume` is mandatory when Tk extension is loaded.  Thus:
@@ -551,7 +551,7 @@ can be called to do that.
 
 """
 resume(sec::Real=0.05) =
-    (isrunning() || (__timer[] = Timer(doevents, 0.1; interval=sec)); nothing)
+    (isrunning() || (__timer[] = Timer(do_events, 0.1; interval=sec)); nothing)
 
 """
 ```julia
@@ -566,20 +566,37 @@ suspend() =
     (isrunning() && close(__timer[]); nothing)
 
 """
-```julia
-Tcl.doevents(flags = TCL_DONT_WAIT|TCL_ALL_EVENTS)
-```
+    Tcl.do_events(flags = TCL_DONT_WAIT|TCL_ALL_EVENTS) -> nevents
 
-processes Tcl/Tk events for all interpreters.  Normally this is automatically
-called by the timer set by [`Tcl.resume`](@ref).
+Process Tcl/Tk events for all interpreters by calling [`Tcl.do_one_event(flags)`](@ref)
+until there are no events matching `flags` and return the number of processed events.
+Normally this is automatically called by the timer set by [`Tcl.resume`](@ref).
 
 """
-doevents(::Timer) = doevents()
+do_events(::Timer) = do_events()
 
-function doevents(flags::Integer = TCL_DONT_WAIT|TCL_ALL_EVENTS)
-    while Tcl_DoOneEvent(flags)
+function do_events(flags::Integer = default_event_flags)
+    nevents = 0
+    while do_one_event(flags)
+        nevents += 1
     end
+    return nevents
 end
+
+@deprecate doevents(args...; kwds...) do_events(args...; kwds...)
+
+const default_event_flags = TCL_DONT_WAIT|TCL_ALL_EVENTS
+
+"""
+    Tcl.do_one_event(flags = TCL_DONT_WAIT|TCL_ALL_EVENTS) -> bool
+
+Process at most one Tcl/Tk event for all interpreters matching `flags` and return whether
+one such event was processed. This function is called by [`Tcl.do_events`](@ref).
+
+"""
+do_one_event(flags::Integer = default_event_flags) =
+    !iszero(Glue.Tcl_DoOneEvent(flags))
+
 
 #------------------------------------------------------------------------------
 # Implement callbacks.
