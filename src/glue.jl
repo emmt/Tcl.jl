@@ -100,6 +100,7 @@ abstract type Tcl_ObjType end
 abstract type Tcl_Obj end
 abstract type Tcl_Interp end
 abstract type Tcl_Command_ end
+abstract type mp_int end
 
 # Token used by Tcl to identify an object command.
 const Tcl_Command = Ptr{Tcl_Command_}
@@ -201,6 +202,24 @@ end
 
 function Tcl_GetStringFromObj(obj, lenptr)
     @ccall libtcl.Tcl_GetStringFromObj(obj::Ptr{Tcl_Obj}, lenptr::Ptr{Cint})::Ptr{UInt8}
+end
+
+# Multi-precision integers. TODO "Bignum" => :BigInt
+
+function Tcl_NewBignumObj(value)
+    @ccall libtcl.Tcl_NewBignumObj(value::Ptr{mp_int})::Ptr{Tcl_Obj}
+end
+
+function Tcl_SetBignumObj(obj, value)
+    @ccall libtcl.Tcl_SetBignumObj(obj::Ptr{Tcl_Obj}, value::Ptr{mp_int})::Cvoid
+end
+
+function Tcl_GetBignumFromObj(interp, obj, value)
+    @ccall libtcl.Tcl_GetBignumFromObj(interp::Ptr{Tcl_Interp}, obj::Ptr{Tcl_Obj}, value::Ptr{mp_int})::Cint
+end
+
+function Tcl_TakeBignumFromObj(interp, obj, value)
+    @ccall libtcl.Tcl_TakeBignumFromObj(interp::Ptr{Tcl_Interp}, obj::Ptr{Tcl_Obj}, value::Ptr{mp_int})::Cint
 end
 
 # Julia takes care of managing its objects so we just need to add a single
