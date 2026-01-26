@@ -192,9 +192,12 @@ AtomicType(::Type{<:AbstractString}) = NonAtomic()
 
 __objptr(x::Union{Char,Symbol,AbstractString}) = __newobj(x)
 
-__newobj(x::Union{Char,Symbol}) = __newobj(string(x))
-__newobj(str::AbstractString) = Tcl_NewStringObj(str)
+__newobj(c::AbstractChar) = __newobj(string(c))
+__newobj(sym::Symbol) = __newobj(String(sym))
+__newobj(str::AbstractString) = __newobj(string(str))
+__newobj(str::String) = Tcl_NewStringObj(str, ncodeunits(str)) # FIXME check nulls
 
+# TODO suppress this
 __newstringobj(ptr::Ptr{T}, nbytes::Integer) where {T<:Byte} =
     Tcl_NewStringObj(ptr, nbytes)
 
@@ -331,23 +334,27 @@ See also: [`Tcl.getvar`](@ref), [`Tcl.getvalue`](@ref).
 @inline __objptr_to(::Type{TclObj}, objptr::Ptr{Cvoid}) =
     TclObj{__objtype(objptr)}(objptr)
 
-@inline function __objptr_to(::Type{String}, objptr::Ptr{Tcl_Obj}) :: String
-    ptr, len = Tcl_GetStringFromObj(objptr)
-    if ptr == C_NULL
-        Tcl.error("failed to retrieve string representation of Tcl object")
+function string_from_obj(obj)
+    lenref = ref{Cint}()
+    GC.@preserve obj begin
+        ptr = Tcl_GetStringFromObj(obj, lenref)
+        ptr == C_NULL && Tcl.error("failed to retrieve string representation of Tcl object")
+        len = Int(lenref[])::Int
+        str = unsafe_string(ptr, len)
+        return str, len
     end
-    return unsafe_string(ptr, len)
 end
 
-@inline function __objptr_to(::Type{Char}, objptr::Ptr{Cvoid}) :: Char
-    ptr, len = Tcl_GetStringFromObj(objptr)
-    if ptr == C_NULL
-        Tcl.error("failed to retrieve string representation of Tcl object")
-    end
-    if len != 1
-        Tcl.error("failed to convert Tcl object to a single character")
-    end
-    return unsafe_string(ptr, 1)[1]
+function __objptr_to(::Type{String}, objptr::Ptr{Tcl_Obj}) :: String
+    str, len = string_from_obj(obj)
+    return str
+end
+
+function __objptr_to(::Type{Char}, objptr::Ptr{Cvoid}) :: Char
+    # TODO optimize this code to avoid allocating a string
+    str, len = string_from_obj(obj)
+    isone(len) || Tcl.error("failed to convert Tcl object to a single character")
+    return first(str)
 end
 
 @inline function __objptr_to(::Type{Bool}, objptr::Ptr{Tcl_Obj}) :: Bool

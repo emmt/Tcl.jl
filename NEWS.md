@@ -12,6 +12,8 @@ Versioning](https://semver.org).
 - Raw pointers in C calls are protected by having their owner object preserved from being
   garbage collected.
 
+- Getting a single char from a Tcl object works for multi-byte sequences.
+
 ## Changed
 
 - Artifacts `Tcl_jll` and `Tk_jll` are used instead of system libraries.

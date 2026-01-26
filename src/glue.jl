@@ -188,6 +188,21 @@ function TclFreeObj(obj)
     @ccall libtcl.TclFreeObj(ptr::Ptr{Tcl_Obj})::Cvoid
 end
 
+
+# Strings.
+
+function Tcl_NewStringObj(str, len)
+    @ccall libtcl.Tcl_NewStringObj(str::Ptr{UInt8}, len::Cint)::Ptr{Tcl_Obj}
+end
+
+function Tcl_SetStringObj(obj, str, len)
+    @ccall libtcl.Tcl_SetStringObj(obj::Ptr{Tcl_Obj}, str::Ptr{UInt8}, len::Cint)::Cvoid
+end
+
+function Tcl_GetStringFromObj(obj, lenptr)
+    @ccall libtcl.Tcl_GetStringFromObj(obj::Ptr{Tcl_Obj}, lenptr::Ptr{Cint})::Ptr{UInt8}
+end
+
 # Julia takes care of managing its objects so we just need to add a single
 # reference for Julia for any Tcl object returned by Tcl library and make sure
 # that the reference count is decremented when the Julia object is finalized.
@@ -297,15 +312,6 @@ for (f, Tj, Tc) in ((:Tcl_NewIntObj,     Integer, Cint),
     @eval @inline $f(value::$Tj) = ccall($tup, Ptr{Tcl_Obj}, ($Tc,), value)
 end
 
-@inline Tcl_NewStringObj(str::AbstractString) =
-    # Use sizeof() not length() because there may be multi-byte characters
-    # and use Ptr{Cchar} not Cstring because there may be embedded nulls.
-    ccall((:Tcl_NewStringObj, libtcl), Ptr{Tcl_Obj},
-          (Ptr{Cchar}, Cint), str, sizeof(str))
-
-@inline Tcl_NewStringObj(ptr::Ptr{T}, nbytes::Integer) where {T<:UInt8} =
-    ccall((:Tcl_NewStringObj, libtcl), Ptr{Tcl_Obj}, (Ptr{T}, Cint), ptr, nbytes)
-
 @inline Tcl_NewByteArrayObj(arr::DenseArray{T}) where {T<:UInt8} =
     Tcl_NewByteArrayObj(pointer(arr), sizeof(arr))
 
@@ -344,17 +350,7 @@ for (f, T) in ((:Tcl_GetIntFromObj,     Cint),
     end
 end
 
-"""
-```julia
-Tcl_GetStringFromObj(objptr) -> ptr::Ptr{Cchar}, len::Int
-```
 
-"""
-@inline function Tcl_GetStringFromObj(objptr::Ptr{Tcl_Obj})
-    lenref = Ref{Cint}()
-    return (ccall((:Tcl_GetStringFromObj, libtcl), Ptr{Cchar},
-                  (Ptr{Tcl_Obj}, Ptr{Cint}), objptr, lenref),
-            convert(Int, lenref[]))
 end
 
 @inline Tcl_DuplicateObj(objptr::Ptr{Tcl_Obj}) =
