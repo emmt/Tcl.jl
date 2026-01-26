@@ -114,8 +114,9 @@ end
 
 (interp::TclInterp)(args...; kwds...) = Tcl.eval(interp, args...; kwds...)
 
-isdeleted(interp::TclInterp) = Tcl_InterpDeleted(interp.ptr)
-isactive(interp::TclInterp) = Tcl_InterpActive(interp.ptr)
+# TODO rename and doc
+isdeleted(interp::TclInterp) = !iszero(Tcl_InterpDeleted(interp))
+isactive(interp::TclInterp) = !iszero(Tcl_InterpActive(interp))
 
 
 """
