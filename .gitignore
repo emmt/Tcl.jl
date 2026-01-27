@@ -1,6 +1,11 @@
 # Specific files/directories
 work/
 deps/
+gen/
+
+# Manifest files.
+Manifest.toml
+/.Manifest*.toml
 
 # Backup files
 *~
