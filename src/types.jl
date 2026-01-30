@@ -4,25 +4,32 @@
 # Definitions of Tcl constants and types.
 #
 
+const InterpPtr = Ptr{Glue.Tcl_Interp}
+const ObjTypePtr = Ptr{Glue.Tcl_ObjType}
+const ObjPtr = Ptr{Glue.Tcl_Obj}
+
+#@assert Glue.Tcl_Obj_typePtr_type === Glue.Tcl_ObjType
+
 struct TclError <: Exception
     msg::String
 end
 
-Base.showerror(io::IO, ex::TclError) = print(io, "Tcl/Tk error: ", ex.msg)
-
-# Structure to store a pointer to a Tcl interpreter. (Even though the address
-# should not be modified, it is mutable because immutable objects cannot be
-# finalized.)
-const Ptr{Tcl_Interp} = Ptr{Cvoid}
+# Structure to store a pointer to a Tcl interpreter. (Even though the address should not be
+# modified, it is mutable because immutable objects cannot be finalized.)
 mutable struct TclInterp
-    ptr::Ptr{Tcl_Interp}
-    TclInterp(ptr::Ptr{Tcl_Interp}) = new(ptr)
+    ptr::InterpPtr
+    threadid::Int
+    global _new_interpreter
+    function _new_interpreter(ptr::InterpPtr)
+        interp = new(ptr, Threads.threadid())
+        return finalizer(finalize, interp)
+    end
 end
 
 """
+    ManagedObject
 
-A `ManagedObject` is a Tcl or Tk object which manages its reference count and
-of which a pointer to a Tcl object can be retrieved by the `__objptr` method.
+Abstract super-type of Tcl or Tk objects which manage their reference count.
 
 """
 abstract type ManagedObject end
@@ -31,26 +38,32 @@ abstract type ManagedObject end
 # should not be modified, it is mutable because immutable objects cannot be
 # finalized.)  The constructor will refuse to build a managed Tcl object with
 # a NULL address.
-mutable struct TclObj{T} <: ManagedObject
-    ptr::Ptr{Tcl_Obj}
-    function TclObj{T}(ptr::Ptr{Tcl_Obj}) where {T}
-        ptr != C_NULL || __illegal_null_object_pointer()
-        obj = new{T}(Tcl_IncrRefCount(ptr))
-        return finalizer(__finalize, obj)
+mutable struct TclObj <: ManagedObject
+    ptr::ObjPtr
+    global _TclObj
+    function _TclObj(ptr::ObjPtr)
+        if !isnull(ptr)
+            _ = unsafe_get_typename(ptr) # register object's type
+            unsafe_incr_refcnt(ptr)
+        end
+        return finalizer(finalize, new(ptr))
     end
 end
 
 struct Callback <: ManagedObject
-    intptr::Ptr{Tcl_Interp} # weak reference to interpreter
-    obj::TclObj{Function} # command name (possibly fully-qualified)
+    intptr::InterpPtr # weak reference to interpreter
+    obj::TclObj # command name (possibly fully-qualified)
     func::Function
 end
 
-# Type used in the signature of a Tcl list object (a.k.a. vector in Julia).
-const List = Vector
-
 # Floating-point types.
 const FloatingPoint = Union{Irrational,Rational,AbstractFloat}
+
+struct PrefixedFunction{F,T}
+    func::F
+    arg1::T
+end
+(f::PrefixedFunction)(args...; kwds...) = f.func(f.arg1, args...; kwds...)
 
 """
 
@@ -61,7 +74,7 @@ See also: [`Tcl.AtomicType`](@ref).
 """
 abstract type Trait end
 
-# Defaint the `AtomicType` trait and its 2 singleton sub-types `Atomic` and
+# Define the `AtomicType` trait and its 2 singleton sub-types `Atomic` and
 # `NonAtomic`.
 abstract type AtomicType <: Trait end
 for T in (:NonAtomic, :Atomic)
@@ -71,22 +84,21 @@ for T in (:NonAtomic, :Atomic)
     end
 end
 
-const TclObjList    = TclObj{List}
-const TclObjCommand = TclObj{Function}
+# FIXME const TclObjCommand = TclObj{Function}
 
 # `Name` is anything that can be understood as the name of a variable or of a
 # command.
-const Name = Union{AbstractString,Symbol,TclObj{String}}
+const Name = Union{AbstractString,Symbol,TclObj}
 
-# `StringOrSymbol` can be automatically converted into a `Cstring` by `ccall`.
-const StringOrSymbol = Union{AbstractString,Symbol}
+# Union of types that can be converted into a `Cstring` by `ccall` without overheads.
+const FastString = Union{AbstractString,Symbol}
 
-# A `Byte` is any bits type that is exactly 8 bits.
-const Byte = Union{UInt8,Int8}
+# FIXME # A `Byte` is any bits type that is exactly 8 bits.
+# FIXME const Byte = Union{UInt8,Int8}
 
-# Objects of type `Iterables` are considered as iterators, making an object out
-# of them yield a Tcl list.
-const Iterables = Union{AbstractVector,Tuple,Set,BitSet}
+# FIXME # Objects of type `Iterables` are considered as iterators, making an object out
+# FIXME # of them yield a Tcl list.
+# FIXME const Iterables = Union{AbstractVector,Tuple,Set,BitSet}
 
 #------------------------------------------------------------------------------
 # Tk widgets and other Tk objects.

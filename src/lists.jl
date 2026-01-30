@@ -1,595 +1,406 @@
-#
-# lists.jl -
-#
-# Management of Tcl lists of objects.
-#
+"""
+     Tcl.list(args...) -> lst
+     interp.list(args...) -> lst
 
-# Let Tcl list be iterable.
-@static if VERSION < v"0.7"
+Build a list `lst` of Tcl objects such that each of `args...` is a single element of `lst`.
+This mimics the behavior of the Tcl `list` command.
 
-    function Base.start(iter::TclObj{List})
-        objc, objv = __getlistelements(__objptr(iter))
-        return (0, objc, objv)
-    end
+In the second above example, `interp` is a Tcl interpreter used to retrieve an error message
+in case of failure.
 
-    function Base.done(iter::TclObj{List}, state)
-        state[1] ≥ state[2]
-    end
+# See also
 
-    function Base.next(iter::TclObj{List}, state)
-        i, n, objv = state
-        i += 1
-        item = __objptr_to(Any, unsafe_load(objv, i))
-        return item, (i, n, objv)
-    end
-
-else
-
-    function Base.iterate(iter::TclObj{List})
-        objc, objv = __getlistelements(__objptr(iter))
-        return iterate(iter, (0, objc, objv))
-    end
-
-    function Base.iterate(iter::TclObj{List}, state)
-        i, objc, objv = state
-        if i < objc
-            i += 1
-            item = __objptr_to(Any, unsafe_load(objv, i))
-            return item, (i, objc, objv)
-        else
-            return nothing
-        end
-    end
-
-end
-
-
-# Let Tcl list be indexable.
-
-Base.length(list::TclObj{List}) = llength(list)
-
-Base.lastindex(list::TclObj{List}) = llength(list)
-
-Base.getindex(list::TclObj{List}, i::Integer) = lindex(list, i)
-
-function Base.getindex(list::TclObj{List}, msk::AbstractVector{Bool})
-    n = count(!iszero, msk)
-    v = Array{Any,1}(undef, n)
-    if n < 1
-        return v
-    end
-    len = length(list)
-    i = 0
-    for j in 1:length(msk)
-        if msk[j]
-            i += 1
-            v[i] = (j ≤ len ? list[j] : nothing)
-        end
-    end
-    return standardizetype(v)
-end
-
-Base.getindex(list::TclObj{List}, msk::AbstractArray{Bool}) =
-    error("indexing a list by a multi-dimensional array of booleans is not possible")
-
-function Base.getindex(list::TclObj{List}, J::AbstractArray{<:Integer})
-    A = similar(J, Any)
-    if length(J) < 1
-        return A
-    end
-    len = length(list)
-    for i in eachindex(A, J)
-        j = J[i]
-        A[i] = (1 ≤ j ≤ len ? list[j] : nothing)
-    end
-    return standardizetype(A)
-end
-
-# FIXME: call Tcl_ListObjReplace to implement Base.setindex!
-#
-# function Base.setindex!(list::TclObj{List}, value, i::Integer)
-# end
-#
-# function Base.setindex!(list::TclObj{List}, value, r::UnitRange)
-# end
-
-
-#
-# Implement lists objects (see objects.jl).
-#
-#     Iterables like vectors and tuples yield lists.  No arguments, yield empty
-#     lists.
-#
-
-TclObj() = TclObj{List}(__newlistobj())
-
-__objptr() = __newobj()
-
-__newobj() = __newlistobj()
-
-TclObj(itr::Iterables) = TclObj{List}(__newobj(itr))
-
-__objptr(itr::Iterables) = __newobj(itr)
-
-function __newobj(itr::Iterables) ::Ptr{Tcl_Obj}
-    listptr = __newlistobj()
-    try
-        for val in itr
-            __lappend(listptr, val)
-        end
-    catch ex
-        Tcl_DecrRefCount(listptr)
-        rethrow(ex)
-    end
-    return listptr
-end
-
+[`Tcl.concat`](@ref), [`Tcl.eval`](@ref), [`TclObj`](@ref), and [`TclInterp`](@ref).
 
 """
-```julia
-__newlistobj(itr)
-```
-
-yields a pointer to a new Tcl list object whose items are taken from
-the iterable collection `itr`.
-
-```julia
-__newlistobj(args...; kwds...)
-```
-
-yields a pointer to a new Tcl list object whose leading items are taken from
-`args...` and to which are appended the `(key,val)` pairs from `kwds...` so as
-to mimic Tk options.
-
-Beware that the returned object is not managed and has a zero reference count.
-The caller is reponsible of taking care of that.
+function list end
 
 """
-__newlistobj() = Tcl_NewListObj(0, Ptr{Ptr{Tcl_Obj}}(0))
+    Tcl.concat(args...) -> lst
+    interp.concat(args...) -> lst
 
-function __newlistobj(args...; kwds...) ::Ptr{Tcl_Obj}
-    listptr = __newlistobj()
-    try
-        @__build_list listptr args kwds
-    catch ex
-        Tcl_DecrRefCount(listptr)
-        rethrow(ex)
-    end
-    return listptr
-end
+Build a list of Tcl objects obtained by concatenating the elements of the arguments
+`arg...` each being considered as a list. This mimics the behavior of the Tcl `concat`
+command.
 
-@inline __objptr_to(::Type{Vector}, listptr::Ptr{Cvoid}) =
-    __buildvector(__getlistelements(listptr)...)
+In the second above example, `interp` is a Tcl interpreter used to retrieve a more
+informative error message in case of error.
 
-@inline __buildvector(objc::Integer, objv::Ptr{Ptr{Tcl_Obj}}) =
-    buildvector(i -> __objptr_to(Any, unsafe_load(objv, i)), objc)
+# Pairs
 
+In `args...`, `key => val` pairs where `key` is a symbol or a string are treated specially
+by `Tcl.concat`: they give the two elements `\"-\$(key)\"` and `val` in the output list.
+This is intended for specifying Tk widget options in a readable Julia style.
 
-"""
-```julia
-buildvector(f, n)
-```
-"""
-function buildvector(f::Function, n::Integer) :: Vector
-    v = Vector{Any}(undef, n)
-    if n ≥ 1
-        for i in 1:n
-            v[i] = f(i)
-        end
-        return standardizetype(v)
-    end
-    return v
-end
+# See also
+
+[`Tcl.list`](@ref), [`Tcl.eval`](@ref), [`TclObj`](@ref), and [`TclInterp`](@ref).
 
 """
-```julia
-standardizetype(A)
-```
+function concat end
 
-if all elements of array `A` can be promoted to the same type `T`, returns `A`
-converted as a `Array{T}`; otherwise, returns `A` unchanged.  Promotions rules
-are a bit different than the ones in Julia, in the sense that the family type
-of elements is preserved.  Families are: strings, integers and floats.
-
-"""
-function standardizetype(A::AbstractArray{Any,N}) where N
-    if length(A) ≥ 1
-        T = Ref{DataType}()
-        first = true
-        for i in eachindex(A)
-            T[] = (first ? typeof(A[i]) :
-                   __promote_elem_type(T[], typeof(A[i])))
-            first = false
-        end
-        if T[] != Any
-            # A common type has been found, promote the vector to this common
-            # type.
-            return convert(Array{T[],N}, A)
-        end
-    end
-    return A
-end
-
-# Rules for combining list element types and find a more precise common type
-# than just `Any`.  Combinations of integers are promoted to the largest
-# integer type and similarly for floats but mixture of floats and integers
-# yield `Any`.
-
-__promote_elem_type(::DataType, ::DataType) = Any
-
-for T in (Integer, AbstractFloat)
+for (func, append) in (:list   => :unsafe_append_element,
+                       :concat => :unsafe_append_list,
+                       )
     @eval begin
-
-        function __promote_elem_type(::Type{T1},
-                                     ::Type{T2}) where {T1<:$T,T2<:$T}
-            return promote_type(T1, T2)
+        $func(args...) = _TclObj(new_list($append, args...))
+        function $func(interp::TclInterp, args...)
+            GC.@preserve interp begin
+                return _TclObj(new_list($append, checked_pointer(interp), args...))
+            end
         end
-
-        function __promote_elem_type(::Type{Vector{T1}},
-                                     ::Type{Vector{T2}}) where {T1<:$T,
-                                                                T2<:$T}
-            return Vector{promote_type(T1, T2)}
-        end
-
     end
 end
 
-__promote_elem_type(::Type{String}, ::Type{String}) = String
+_getproperty(interp::TclInterp, ::Val{:list}) = PrefixedFunction(list, interp)
+_getproperty(interp::TclInterp, ::Val{:concat}) = PrefixedFunction(concat, interp)
 
-__promote_elem_type(::Type{Vector{String}}, ::Type{Vector{String}}) =
-    Vector{String}
+@noinline invalid_list() =
+    throw(TclError("Tcl object is not a valid list"))
 
-#------------------------------------------------------------------------------
-
-"""
-```julia
-list([interp,] args...; kwds...)
-```
-
-yields a list of Tcl objects consisting of the one object per argument
-`args...` (in the same order as they appear) and then followed by two objects
-per keyword, say `key=val`, in the form `-key`, `val` (note the hyphen in front
-of the keyword name).  To allow for option names that are Julia keywords, a
-leading underscore is stripped, if any, in `key`.
-
-Optional argument `interp` is the Tcl interpreter to use for error messages
-and callbacks.
-
-Lists are iterable and indexable, as illustrated by the following examples:
-
-``julia
-lst = Tcl.list(π,1,"hello",2:6)
-length(lst) # -> the number of items in the list
-lst[1]      # -> 3.1415...
-lst[end]    # -> [2,3,4,5,6]
-lst[2:3]    # -> Any[1,"hello"]
-lst[0]      # -> nothing
-lst[end+1]  # -> nothing
-for itm in lst
-    println(itm)
+Base.IteratorSize(::Type{TclObj}) = Base.HasLength()
+function Base.length(list::TclObj)
+    len = Ref{Cint}()
+    status = Glue.Tcl_ListObjLength(null(InterpPtr), list, len)
+    status == TCL_OK || invalid_list()
+    return Int(len[])::Int
 end
-sel = map(i -> isa(i, Number), lst) # -> [true,true,false,false]
-lst[sel] # -> Any[3.14159,1]
-```
 
-You may note that, (i) like Tcl lists, getting an out of bound list item just
-yields nothing; (ii) lists are retrieved as Julia arrays with, if possible,
-homogeneous element type (otherwise `Any`).
+# When iterated or indexed, a Tcl object yield Tcl objects.
+Base.IteratorEltype(::Type{TclObj}) = Base.HasEltype()
+Base.eltype(::Type{TclObj}) = TclObj
 
-You may sub-select list elements.  For instance to extract the numbers of a
-list:
+Base.firstindex(list::TclObj) = 1
+Base.lastindex(list::TclObj) = length(list)
 
-``julia
-lst = Tcl.list(π,1,"hello",2:6)
-sel = map(i -> isa(i, Number), lst) # -> [true,true,false,false]
-lst[sel] # -> Any[3.14159,1]
-```
+Base.first(list::TclObj) = list[firstindex(list)]
+Base.last(list::TclObj) = list[lastindex(list)]
 
-Use `push!` (or [`Tcl.lappend!`](@ref]) to append elements to a list.  Use
-[`Tcl.concat`](@ref) to concatenate lists.
+function Base.getindex(list::TclObj, index::Integer)
+    if index ≥ 𝟙
+        objref = Ref{ObjPtr}()
+        status = Glue.Tcl_ListObjIndex(null(InterpPtr), list, index - 𝟙, objref)
+        status == TCL_OK || invalid_list()
+        objptr = objref[]
+        isnull(objptr) || return _TclObj(objptr)
+    end
+    return missing
+end
 
-See also: [`Tcl.concat`](@ref), [`Tcl.lindex`](@ref), [`Tcl.lappend!`](@ref),
-          [`Tcl.exec`](@ref), .
-
-"""
-function list(interp::TclInterp, args...; kwds...)
-    listptr = C_NULL
-    __set_context(interp)
-    try
-        listptr = Tcl_IncrRefCount(__newlistobj())
-        @__build_list listptr args kwds
-        return TclObj{List}(listptr)
-    finally
-        listptr == C_NULL || Tcl_DecrRefCount(listptr)
-         __reset_context()
+function Base.getindex(list::TclObj, indices::AbstractVector{<:Integer})
+    GC.@preserve list begin
+        objc, objv = unsafe_get_list_elements(checked_pointer(list))
+        result = new_list()
+        try
+            for index in indices
+                𝟙 ≤ index ≤ objc || error(
+                    "attempt to index $(objc)-element Tcl list at index $i")
+                unsafe_append_element(result, unsafe_load(objv, index))
+            end
+        catch
+            unsafe_decr_refcnt(result)
+            rethrow()
+        end
+        return _TclObj(result)
     end
 end
 
-list(args...; kwds...) =
-    list(getinterp(), args...; kwds...)
-
-"""
-```julia
-Tcl.llength(lst)
-```
-or
-```julia
-length(lst)
-```
-
-yield the number of element of the Tcl list `lst`.
-
-See also: [`Tcl.list`](@ref).
-
-"""
-function llength(lst::TclObj{List}) :: Int
-    status, length = Tcl_ListObjLength(C_NULL, __objptr(lst))
-    status == TCL_OK || Tcl.error("failed to query length of list")
-    return length
+function Base.getindex(list::TclObj, flags::AbstractVector{Bool})
+    GC.@preserve list begin
+        objc, objv = unsafe_get_list_elements(checked_pointer(list))
+        len = length(flags)
+        len == objc || throw(DimensionMismatch(
+            "attempt to index $(objc)-element Tcl list by $(len)-element vector of `Bool`"))
+        result = new_list()
+        offset = firstindex(flag) - 1
+        try
+            for index in 𝟙:objc
+                if flags[index + offset]
+                    unsafe_append_element(result, unsafe_load(objv, index))
+                end
+            end
+        catch
+            unsafe_decr_refcnt(result)
+            rethrow()
+        end
+        return _TclObj(result)
+    end
 end
 
-"""
-```julia
-Tcl.lappend!([interp,] lst, args...; kwds...)
-```
-or
-```julia
-push!(lst, args...; kwds...)
-```
-
-append to the list `lst` of Tcl objects one object per argument `args...` (in
-the same order as they appear) and then followed by two objects per keyword,
-say `key=val`, in the form `-key`, `val` (note the hyphen in front of the
-keyword name).  To allow for option names that are Julia keywords, a leading
-underscore is stripped, if any, in `key`; for instance:
-
-```julia
-Tcl.lappend!(lst, _in="something")
-```
-
-appends `"-in"` and `something` to the list `lst`.
-
-Optional argument `interp` is the Tcl interpreter to use for error messages
-and callbacks.
-
-See also: [`Tcl.list`](@ref).
-
-"""
-function lappend!(interp::TclInterp, list::TclObj{List}, args...; kwds...)
-    __set_context(interp)
-    try
-        listptr = __objptr(list)
-        @__build_list listptr args kwds
-    finally
-        __reset_context()
+# NOTE Julia `push!` is similar to Tcl `lappend` command.
+function Base.push!(list::TclObj, args...)
+    GC.@preserve list begin
+        listptr = pointer(list)
+        for arg in args
+            unsafe_append_element(listptr, arg)
+        end
     end
     return list
 end
 
-lappend!(list::TclObj{List}, args...; kwds...) =
-    lappend!(getinterp(), list, args...; kwds...)
-
-Base.push!(list::TclObj{List}, args...; kwds...) =
-    lappend!(list, args...; kwds...)
-
-Base.push!(interp::TclInterp, list::TclObj{List}, args...; kwds...) =
-    lappend!(interp, list, args...; kwds...)
-
-# Appending a new item to a list with Tcl_ListObjAppendElement increments the
-# reference count of the item, this is the only side effect for the item.  That
-# is to say, the appended item is not be duplicated, just shared.  So, to
-# manage the memory associated with the item, we can increment its reference
-# count before appending and decrement it after without effects on the
-# performances.  This is not necessary for a managed object.
-
-function __lappend(listptr::Ptr{Tcl_Obj}, item)
-    objptr = Tcl_IncrRefCount(__newobj(item))
-    status = Tcl_ListObjAppendElement(__intptr(), listptr, objptr)
-    Tcl_DecrRefCount(objptr)
-    status == TCL_OK || __lappend_error()
+# NOTE Julia `append!` is similar to Tcl `concat` command.
+function Base.append!(list::TclObj, args...)
+    GC.@preserve list begin
+        listptr = pointer(list)
+        for arg in args
+            unsafe_append_list(listptr, arg)
+        end
+    end
+    return list
 end
 
-function __lappend(listptr::Ptr{Tcl_Obj}, obj::ManagedObject)
-    if Tcl_ListObjAppendElement(__intptr(), listptr, __objptr(obj)) != TCL_OK
-        __lappend_error()
+struct ListIterator
+    parent::TclObj # to hold a reference on the parent list and make it non-writable
+    objc::Int
+    objv::Ptr{ObjPtr}
+    function ListIterator(list::TclObj)
+        GC.@preserve list begin
+            objc, objv = unsafe_get_list_elements(checked_pointer(list))
+            return new(list, objc, objv)
+        end
     end
 end
 
-function __lappend(listptr::Ptr{Tcl_Obj}, func::Function)
-    intptr = __intptr()
-    cmd = __createcallback(intptr, f)
-    if Tcl_ListObjAppendElement(intptr, listptr, __objptr(cmd)) != TCL_OK
-        __lappend_error()
+function Base.iterate(list::TclObj,
+                      (iter, index)::Tuple{ListIterator,Int} = (ListIterator(list), 1))
+    1 ≤ index ≤ iter.objc || return nothing
+    parent = iter.parent
+    GC.@preserve parent begin
+        item = _TclObj(unsafe_load(iter.objv, index))
+        return item, (iter, index + 1)
     end
 end
 
-function __lappend(listptr::Ptr{Tcl_Obj}, cmd::Callback)
-    intptr = __intptr()
-    if intptr != C_NULL && cmd.intptr == intptr
-        # Create the command in the interpreter.
-        cmd = __createcallback(intptr, string(cmd.obj), cmd.func)
-    end
-    if Tcl_ListObjAppendElement(intptr, listptr, __objptr(cmd)) != TCL_OK
-        __lappend_error()
-    end
+unsafe_get_list_elements(list::ObjPtr) = unsafe_get_list_elements(null(InterpPtr), list)
+function unsafe_get_list_elements(interp::InterpPtr, list::ObjPtr)
+    objc = Ref{Cint}()
+    objv = Ref{Ptr{ObjPtr}}()
+    status = Glue.Tcl_ListObjGetElements(interp, list, objc, objv)
+    status == TCL_OK || unsafe_error(interp, "failed to retrieve Tcl list elements")
+    return Int(objc[])::Int, objv[]
 end
 
-__lappend_error() =
-    __contextual_error("failed to append a new item to the Tcl list")
-
-function __lappendoption(listptr::Ptr{Tcl_Obj}, key::String, val)
-    # First, append the key.
-    intptr = __intptr()
-    option = "-"*(length(key) ≥ 1 && key[1] == '_' ? key[2:end] : key)
-    objptr = Tcl_IncrRefCount(__newobj(option))
-    status = Tcl_ListObjAppendElement(intptr, listptr, objptr)
-    Tcl_DecrRefCount(objptr)
-    if status == TCL_OK
-        # Second, append the value.
-        objptr = Tcl_IncrRefCount(__objptr(val))
-        status = Tcl_ListObjAppendElement(intptr, listptr, objptr)
-        Tcl_DecrRefCount(objptr)
+# NOTE With `index ≤ 0`, value is inserted at the beginning of the list. With `index >
+# length(list)`, `value` is appended to the end of the list.
+function Base.setindex!(list::TclObj, value, index::Integer)
+    GC.@preserve list value begin
+        obj = unsafe_incr_refcnt(
+            if value isa TclObj
+                checked_pointer(value)
+            else
+                new_object(value)
+            end)
+        try
+            unsafe_replace_list(pointer(list), index - 1, 1, 1, Ref(obj))
+        finally
+            unsafe_decr_refcnt(obj)
+        end
     end
-    if status != TCL_OK
-        Tcl.error("failed to append a new option to the Tcl list")
-    end
-    nothing
+    return list
 end
 
-__lappendoption(listptr::Ptr{Tcl_Obj}, key::Symbol, val) =
-    __lappendoption(listptr, string(key), val)
+function Base.delete!(list::TclObj, index::Integer)
+    if index ≥ 𝟙
+        GC.@preserve list begin
+            unsafe_replace_list(pointer(list), index - 𝟙, 1, 0, C_NULL)
+        end
+    end
+    return list
+end
 
+# NOTE In `Tcl_ListObjReplace`:
+#
+# * If `first ≥ length(list)`, no elements are deleted and the objects in `objv` are
+#   appended to the list.
+#
+# * If `first ≤ 0` it is assumed to be `0`, that is the index of the first list element.
+#
+# * If `count ≤ 0` or `first ≥ length(list)`, no elements are deleted.
+#
+# * The objects in `objv` are inserted before index `first` replacing the `count` elements
+#   of the list initially stored at and after index `first`.
+#
+# Thus, `Tcl_ListObjReplace` can be used to append, prepend, or insert elements and, at the
+# same time, possibly delete elements.
+#
+function unsafe_replace_list(list::ObjPtr, first::Integer,
+                             count::Integer, objc::Integer, objv)
+    unsafe_replace_list(null(InterpPtr), list, first, count, objc, objv)
+end
+
+function unsafe_replace_list(interp::InterpPtr, list::ObjPtr, first::Integer,
+                             count::Integer, objc::Integer, objv)
+    assert_writable(list) # required by copy-on-write policy
+    status = Glue.Tcl_ListObjReplace(interp, list, first, count, objc, objv)
+    status == TCL_OK || unsafe_error(interp, "failed to replace Tcl list element(s)")
+    return nothing
+end
 
 """
-```julia
-Tcl.concat([interp,]args...)
-```
+    Tcl.new_list() -> lstptr
 
-concatenates the specified arguments and yields a Tcl list.  Compared to
-`Tcl.list` which considers that each argument correspond to a single item,
-`Tcl.concat` flatten its arguments and does not accept keyword arguments.
+Return a pointer to a Tcl object storing an empty list.
 
-Optional argument `interp` is the Tcl interpreter to use for error reporting
-or to create callbacks.
+    Tcl.new_list(f, [interp,] args...) -> lstptr
 
-See also: [`Tcl.list`](@ref), [`Tcl.eval`](@ref).
+Return a pointer to a Tcl object storing a list built by calling `f(interp, list, arg)` for
+each `arg` in `args...`. Typically, `f` is [`Tcl.unsafe_append_element`](@ref) or
+[`Tcl.unsafe_append_list`](@ref).
+
+Optional argument `interp` is a Tcl interpreter that can be used to retrieve the error
+message in case of failure.
+
+!!! warning
+    The returned object is not managed and has a zero reference count. The caller is
+    responsible of taking care of that.
 
 """
-function concat(interp::TclInterp, args...)
-    listptr = C_NULL
-    __set_context(interp)
+new_list() = Glue.Tcl_NewListObj(0, C_NULL)
+
+new_list(f::Function, args...) = unsafe_new_list(f, null(InterpPtr), args...)
+
+function new_list(f::Function, interp::TclInterp, args...)
+    GC.@preserve interp begin
+        return unsafe_new_list(f, checked_pointer(interp), args...)
+    end
+end
+
+"""
+    Tcl.unsafe_new_list(f, interp, args...) -> lstptr
+
+Unsafe method called by [`Tcl.new_list`](@ref) to build its result. Argument `interp` is a
+pointer to a Tcl interpreter. If `interp` is non-null, it is used to retrieve the error
+message in case of failure.
+
+!!! warning
+    Unsafe: If `interp` is specified and non-null, it must be valid during the call of the
+    `unsafe_new_list` method.
+
+"""
+function unsafe_new_list(f::Function, interp::InterpPtr, args...)
+    list = new_list()
     try
-        listptr = Tcl_IncrRefCount(__newlistobj())
-        @__concat_args listptr args
-        return TclObj{List}(listptr)
-    finally
-        listptr == C_NULL || Tcl_DecrRefCount(listptr)
-        __reset_context()
+        for arg in args
+            f(interp, list, arg)
+        end
+    catch
+        unsafe_decr_refcnt(list) # free list object
+        rethrow()
     end
+    return list
 end
 
-concat(args...) = concat(getinterp(), args...)
-
-# The basic functions used by most Tcl list manipulation functions are
-# Tcl_ListObjGetElements, Tcl_ListObjReplace and Tcl_ListObjAppendElement.
-# Tcl_ListObjReplace does not call Tcl_ListObjAppendElement.
-#
-# As a general rule, modifying a shared list is not allowed.  Thus
-# Tcl_ListObjReplace and Tcl_ListObjAppendElement must not be applied to a
-# shared list object.  This limits the risk of building circular lists.
-#
-
-# For atomic objects which are considered as single list element, __concat is
-# equivalent to __lappend.
-__concat(listptr::Ptr{Tcl_Obj}, item::T) where T =
-    __concat(listptr, AtomicType(T), item)
-
-__concat(listptr::Ptr{Tcl_Obj}, ::Atomic, item) =
-    __lappend(listptr, item)
-
-# Strings are iterables but we want that making a list out of string(s) yields
-# a single element per string (not per character) so we have to short-circuit
-# __concat(listptr, itr).  Note that `Number` are perfectly usable as iterables
-# but we add them to the union below in order to use a faster method for them.
-function __concat(listptr::Ptr{Tcl_Obj}, ::NonAtomic, str::AbstractString)
-    objptr = Tcl_IncrRefCount(__newobj(str))
-    status = Tcl_ListObjAppendList(__intptr(), listptr, objptr)
-    Tcl_DecrRefCount(objptr)
-    if status != TCL_OK
-        __contextual_error("failed to concatenate a string to a Tcl list")
-    end
-end
-
-function __concat(listptr::Ptr{Tcl_Obj}, ::NonAtomic, obj::ManagedObject)
-    if Tcl_ListObjAppendList(__intptr(), listptr, __objptr(obj)) != TCL_OK
-        __contextual_error("failed to concatenate Tcl lists")
-    end
-end
-
-# Everything else is assumed to be an iterable.
-function __concat(listptr::Ptr{Tcl_Obj}, ::NonAtomic, itr) ::Ptr{Tcl_Obj}
-    for val in itr
-        __concat(listptr, val)
-    end
-end
+# Appending a new item to a list with `Tcl_ListObjAppendElement` or `Tcl_ListObjAppendList`
+# increments the reference count of the item, this is the only side effect for the item.
+# That is to say, the appended item is not duplicated, just shared. So, to manage the memory
+# associated with the item, we can increment its reference count before appending and
+# decrement it after with no measurable effects on the performances (but useful to free
+# object in case of errors). Incrementing and decrementing the reference count is not
+# necessary for a managed object but such an object must be preserved from being garbage
+# collected.
 
 """
-```julia
-Tcl.lindex([T,] [interp,] list, i)
-```
+    Tcl.unsafe_append_element([interp,] list, item) -> nothing
 
-yields the element at index `i` in Tcl list `list`.  An *empty* result is
-returned if index is out of range.
+Private method to append `item` as a single element to the Tcl object `list`.
 
-If optional argument `T` is omitted, the type of the returned value reflects
-that of the Tcl variable; otherwise, `T` can be `String` to get the string
-representation of the value or `TclObj` to get a managed Tcl object.  The
-latter type is more efficient if the returned item is intended to be put in a
-Tcl list or to be an argument of a Tcl script or command.
+Optional argument `interp` is a pointer to a Tcl interpreter. If `interp` is specified and
+non-null, it is used to retrieve the error message in case of failure.
 
-Tcl interpreter `interp` may be provided to have more detailed error messages
-in case of failure.
+The following conditions are asserted: `list` must be *writable* (i.e., a non-null pointer
+to a non-shared Tcl object) and `item` must be *readable* (i.e., a non-null pointer to a Tcl
+object).
 
-See also: [`Tcl.list`](@ref), [`Tcl.getvar`](@ref).
+!!! warning
+    Unsafe method: `list`, `item`, and `interp` (the latter if non-null) must remain valid
+    during the call to this method (e.g., preserved from being garbage collected).
 
-"""
-lindex(list::TclObj{List}, i::Integer) =
-    lindex(Any, list, i)
+!!! warning
+    The method may throw and the caller is responsible of managing the reference count of
+    `item` to have it automatically deleted in case of errors if it is fresh object created
+    by `new_object(val)`.
 
-lindex(::Type{T}, list::TclObj{List}, i::Integer) where {T} =
-    __itemptr_to(T, C_NULL, __lindex(list, i))
+# See also
 
-lindex(interp::TclInterp, list::TclObj{List}, i::Integer) =
-    lindex(Any, interp, list, i)
-
-lindex(::Type{T}, interp::TclInterp, list::TclObj{List}, i::Integer) where {T} =
-    __itemptr_to(T, interp.ptr, __lindex(interp, list, i))
-
-__itemptr_to(::Type{T}, intptr::Ptr{Tcl_Interp}, objptr::Ptr{Tcl_Obj}) where {T} =
-    (objptr == C_NULL ? __missing_item(T) : __objptr_to(T, objptr))
+[`Tcl.unsafe_append_list`](@ref) and [`Tcl.new_list`](@ref).
 
 """
-```julia
-___missing_item(T)
-```
-
-yields the value of missing list item of type `T`.  May throw an error if
-missing items of such type are not allowed.
+function unsafe_append_element end
 
 """
-__missing_item(::Type{String}) = ""
-__missing_item(::Type{Any}) = nothing
-__itemptr_item(::Type{TclObj}) = TclObj()
-__itemptr_item(::Type{Vector}) = Any[]
-__missing_item(::Type{T}) where {T<:Union{Integer,AbstractFloat}} = zero(T)
-__missing_item(::Type{Char}) = '\0'
+    Tcl.unsafe_append_list([interp,] list, iter) -> nothing
 
-# Get a list item.
-#
-#     The convention of Tcl_ListObjIndex is to return TCL_ERROR if some error
-#     occured and TCL_OK with a NULL pointer if index is out of range.
+Private method to concatenate the elements of `iter` to the end of the Tcl object `list`.
 
-function __lindex(list::TclObj{List}, i::Integer)
-    status, objptr = Tcl_ListObjIndex(C_NULL, __objptr(list), i)
-    if status != TCL_OK
-        Tcl.error("failed to get Tcl list element at index $i")
+# See also
+
+[`Tcl.unsafe_append_element`](@ref) and [`Tcl.new_list`](@ref).
+
+"""
+function unsafe_append_list end
+
+for (jl, (c, mesg)) in (:unsafe_append_element => (:(Glue.Tcl_ListObjAppendElement),
+                                                   "failed to append item to Tcl list"),
+                        :unsafe_append_list => (:(Glue.Tcl_ListObjAppendList),
+                                                "failed to concatenate list to Tcl list"),
+                        )
+    @eval begin
+        $jl(list::ObjPtr, arg) = $jl(null(InterpPtr), list, arg)
+
+        function $jl(interp::InterpPtr, list::ObjPtr, obj::ObjPtr)
+            assert_writable(list) # required by copy-on-write policy
+            assert_readable(obj) # must be non-null
+            status = $c(interp, list, obj)
+            status == TCL_OK || unsafe_error(interp, $mesg)
+            return nothing
+        end
+
+        function $jl(interp::InterpPtr, list::ObjPtr, arg)
+            obj = unsafe_incr_refcnt(new_object(arg))
+            try
+                $jl(interp, list, obj)
+            finally
+                unsafe_decr_refcnt(obj)
+            end
+            return nothing
+        end
+
+        function $jl(interp::InterpPtr, list::ObjPtr, obj::TclObj)
+            GC.@preserve obj begin
+                $jl(interp, list, pointer(obj))
+            end
+            return nothing
+        end
+
+        function $jl(interp::InterpPtr, list::ObjPtr, func::Function)
+            @warn "Appending a callback is not yet implemented"
+            return nothing
+            # Setting a callback involves (i) passing the name of the corresponding Tcl
+            # command and (ii) creating this command in the target interpreter if it does
+            # not exists.
+        end
     end
-    return objptr
 end
 
-function __lindex(interp::TclInterp, list::TclObj{List}, i::Integer)
-    status, objptr = Tcl_ListObjIndex(interp.ptr, __objptr(list), i)
-    if status != TCL_OK
-        Tcl.error(interp)
-    end
-    return objptr
+# With a pair, `unsafe_append_list` appends a pair `key => val` as a command line flag with
+# value as for Tk widgets.
+
+function unsafe_append_list(interp::InterpPtr, list::ObjPtr,
+                            (key,val)::Pair{<:Union{AbstractString,Symbol},<:Any})
+    unsafe_append_list(interp, list, String(key) => val)
+    return nothing
 end
 
-# Yields (objc, objv) do not free this buffer (see Tcl doc.)
-function __getlistelements(listptr::Ptr{Tcl_Obj})
-    status, objc, objv = Tcl_ListObjGetElements(__intptr(), listptr)
-    if status != TCL_OK
-        __contextual_error("failed to convert Tcl object into a list")
+function unsafe_append_list(interp::InterpPtr, list::ObjPtr,
+                            (key,val)::Pair{String,<:Any})
+    unsafe_append_element(interp, list, "-"*string(key))
+    unsafe_append_element(interp, list, val)
+    return nothing
+end
+
+function unsafe_append_list(interp::InterpPtr, list::ObjPtr, iter::Tuple)
+    for x in iter
+        unsafe_append_element(interp, list, x)
     end
-    return objc, objv
+    return nothing
 end

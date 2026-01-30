@@ -1,20 +1,83 @@
-#
-# Tcl.jl -
-#
-# Tcl interface for Julia.
-#
-
-# Mist be a bare module because it implements its own `eval` method available
-# as `Tcl.eval`.
 baremodule Tcl
 
+# Tcl is a bare module because it implements its own `eval` function. But `using Base` and
+# the `include` function are needed.
+using Base
+include(filename::AbstractString) = Base.include(Tcl, filename)
+
+export
+    # Status.
+    TclStatus,
+    TCL_OK,
+    TCL_ERROR,
+    TCL_RETURN,
+    TCL_BREAK,
+    TCL_CONTINUE,
+
+    # Events.
+    TCL_DONT_WAIT,
+    TCL_ALL_EVENTS,
+
+    # Variables.
+    TCL_GLOBAL_ONLY,
+    TCL_NAMESPACE_ONLY,
+    TCL_APPEND_VALUE,
+    TCL_LIST_ELEMENT,
+    TCL_LEAVE_ERR_MSG,
+
+    # Others.
+    TclInterp,
+    TclObj,
+    tcl_library,
+    tcl_version
+
+# Direct calls to the functions of the Tcl/Tk C libraries.
+include("glue.jl")
+import .Glue:
+    # Status.
+    TclStatus,
+    TCL_OK,
+    TCL_ERROR,
+    TCL_RETURN,
+    TCL_BREAK,
+    TCL_CONTINUE,
+
+    # Events.
+    TCL_DONT_WAIT,
+    TCL_ALL_EVENTS,
+
+    # Variables.
+    TCL_GLOBAL_ONLY,
+    TCL_NAMESPACE_ONLY,
+    TCL_APPEND_VALUE,
+    TCL_LIST_ELEMENT,
+    TCL_LEAVE_ERR_MSG
+
+const WideInt = Glue.Tcl_WideInt
+
+using Neutrals
+
+if !isdefined(Base, :Memory)
+    const Memory{T} = Vector{T}
+end
+
+include("types.jl")
+include("private.jl")
+include("objects.jl")
+include("lists.jl")
+include("basics.jl")
+#include("variables.jl")
+#include("widgets.jl")
+#include("dialogs.jl")
+#include("images.jl")
+
+#=
 # Only export symbols which are prefixed with `Tcl`, `TCL_`, `Tk`, `Ttk` or
 # `TK_`, other "public" symbols will be available with the `Tcl.` prefix.
 const __EXPORTS = (
     :TclError,
     :TclInterp,
     :TclObj,
-    :TclObjList,
     :TclObjCommand,
     :TclStatus,
     :TCL_OK,
@@ -93,18 +156,6 @@ const __EXPORTS = (
     :TtkSpinbox,
     :TtkTreeview)
 
-# This baremodule has a special `eval` method available as `Tcl.eval`.
-using Base
-function eval end
-function error end
-
-if VERSION < v"0.6.0"
-    # macro for raw strings (will be part of Julia 0.6, see PR #19900 at
-    # https://github.com/JuliaLang/julia/pull/19900).
-    export @raw_str
-    macro raw_str(s); s; end
-end
-
 # Hide most implementation methods in a private module but make `Tcl` module
 # available (using a relative path, in case `Tcl` is itself embedded in another
 # module).
@@ -114,20 +165,6 @@ module Impl
 import ...Tcl
 
 using Printf
-
-using Tcl_jll
-using Tk_jll
-
-include("glue.jl")
-include("types.jl")
-include("macros.jl")
-include("basics.jl")
-include("objects.jl")
-include("lists.jl")
-include("variables.jl")
-include("widgets.jl")
-include("dialogs.jl")
-include("images.jl")
 
 end
 
@@ -150,7 +187,6 @@ import .Impl:
     exists,
     findphoto,
     getheight,
-    getinterp,
     getopenfile,
     getparent,
     getpath,
@@ -187,7 +223,21 @@ for sym in __EXPORTS
         export $sym
     end
 end
+=#
 
-#include("shortnames.jl")
+function __init__()
+    # Many things do not work properly (e.g., freeing a Tcl object yields a segmentation
+    # fault) if no interpreter has been created, so we always create an initial Tcl
+    # interpreter for this thread.
+    _ = TclInterp(:shared)
+
+    # The table of known types is updated while objects of new types are created because
+    # seeking for an existing type is much faster than creating the mutable TclObj
+    # structure. Nevertheless, we know in advance that objects with NULL object type are
+    # strings.
+    unsafe_register_new_typename(null(ObjTypePtr))
+
+    return nothing
+end
 
 end # module
