@@ -19,8 +19,8 @@ end
 mutable struct TclInterp
     ptr::InterpPtr
     threadid::Int
-    global _new_interpreter
-    function _new_interpreter(ptr::InterpPtr)
+    global _TclInterp # private inner constructor
+    function _TclInterp(ptr::InterpPtr)
         interp = new(ptr, Threads.threadid())
         return finalizer(finalize, interp)
     end

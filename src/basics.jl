@@ -127,15 +127,19 @@ should load Tk extension and create the "." toplevel Tk window.  But see
 """
 TclInterp(sym::Symbol) =
     sym === :shared ? TclInterp() :
-    sym === :private ? _new_interpreter() :
+    sym === :private ? _TclInterp() :
     throw(ArgumentError("unexpected argument, shall be `:shared` or `:private`"))
 
+# Create a thread-wise shared interpreter.
 function TclInterp()
     global _shared_interpreters
     threadid = Threads.threadid()
     if isassigned(_shared_interpreters, threadid)
+        # A shared interpreter already exists for this thread, just return it.
         return @inbounds(_shared_interpreters[threadid])
     else
+        # A new interpreter must be created. Call a separate (not in-lined) function so that
+        # `TclInterp()` remains small and can be in-lined.
         return _new_shared_interpreter()
     end
 end
@@ -150,29 +154,32 @@ const _shared_interpreters = TclInterp[]
                                                        max(threadid, Threads.nthreads()))
     isassigned(_shared_interpreters, threadid) && throw(AssertionError(
         "there is already a shared Tcl interpreter for this thread ($threadid)"))
-    interp = _new_interpreter()
+    interp = _TclInterp()
     _shared_interpreters[threadid] = interp
     return interp
 end
 
-function _new_interpreter()
-    # Create a new Tcl interpreter object.
-    ptr = Glue.Tcl_CreateInterp()
-    isnull(ptr) && throw(TclError("unable to create Tcl interpreter"))
-    interp = _new_interpreter(ptr) # call inner constructor
-
-    # Set Tcl global variable `tcl_library` to the directory where is the "init.tcl" script
-    # and evaluate this script.
-    library = tcl_library()
-    if !isfile(joinpath(library, "init.tcl"))
-        dir = tcl_library(; relative=true)
-        @warn "Tcl \"init.tcl\" not found in sub-directory \"$dir\" of the artifact"
-    elseif Glue.Tcl_Eval(interp, "set tcl_library {$(library)}") != TCL_OK
-        @warn "unable to set global Tcl variable \"tcl_library\""
-    elseif Glue.Tcl_Init(interp) != TCL_OK
-        @warn "unable to initialize Tcl interpreter"
+# Create a new Tcl interpreter object.
+function _TclInterp()
+    interp = Glue.Tcl_CreateInterp()
+    isnull(interp) && throw(TclError("unable to create Tcl interpreter"))
+    try
+        # Set Tcl global variable `tcl_library` to the directory where is the "init.tcl" script
+        # and evaluate this script.
+        library = tcl_library()
+        if !isfile(joinpath(library, "init.tcl"))
+            dir = tcl_library(; relative=true)
+            @warn "Tcl \"init.tcl\" not found in sub-directory \"$dir\" of the artifact"
+        elseif Glue.Tcl_Eval(interp, "set tcl_library {$(library)}") != TCL_OK
+            @warn "unable to set global Tcl variable \"tcl_library\""
+        elseif Glue.Tcl_Init(interp) != TCL_OK
+            @warn "unable to initialize Tcl interpreter"
+        end
+    catch
+        Glue.Tcl_DeleteInterp(interp)
+        rethrow()
     end
-    return interp
+    return _TclInterp(interp) # call inner constructor
 end
 
 # Make a Tcl interpreter callable.
