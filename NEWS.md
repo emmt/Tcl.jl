@@ -19,6 +19,10 @@ Versioning](https://semver.org).
   favor of the Julia API for collections. Thus, `length`, `append!`, `push!`, `delete!`,
   `getindex`, and `setindex!` shall be used to access Tcl objects as if they are lists.
 
+- `Tcl.getinterp()` has been replaced by `TclInterp()`.
+
+- `Tcl.setresult` has been replaced by `Tcl.setresult!`.
+
 ### Fixed
 
 - Raw pointers in C calls are protected by having their owner object preserved from being
@@ -43,3 +47,6 @@ Versioning](https://semver.org).
 ### Added
 
 - `Tcl.do_one_event(flags)` to process any pending events matching `flags`.
+
+- `TclInterp` constructor can yield the shared interpreted for the thread of the caller or a
+  new private interpreter.

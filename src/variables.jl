@@ -129,7 +129,7 @@ for (name, decl) in ((:name,)         => (:(name::Name),),
                 varname = variable_name($(name...))
                 mesg = "Tcl variable \"$varname\" does not exist"
             else
-                mesg = get(String, interp)
+                mesg = getresult(String, interp)
             end
             throw(TclError(mesg))
         end
@@ -197,7 +197,7 @@ for (name, decl) in ((:name,)         => (:(name::Name),),
                 varname = variable_name($(name...))
                 mesg = "cannot set Tcl variable \"$varname\""
             else
-                mesg = get(String, interp)
+                mesg = getresult(String, interp)
             end
             throw(TclError(mesg))
         end
@@ -251,7 +251,7 @@ for (name, (decl, unset)) in ((:name,)         => ((:(name::Name),),
                 varname = variable_name($(name...))
                 mesg = "Tcl variable \"$varname\" does not exist"
             else
-                mesg = get(String, interp)
+                mesg = getresult(String, interp)
             end
             throw(TclError(mesg))
         end

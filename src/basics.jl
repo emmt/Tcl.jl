@@ -41,7 +41,7 @@ assert_nonnull(ptr::Ptr) = isnull(ptr) ? throw_null_pointer(ptr) : nothing
     tcl_version() -> vnum::VersionNumber
     tcl_version(Tuple) -> (major, minor, patch, rtype)::NTuple{4,Cint}
 
-Return the version of the Tcl C library.
+Return the full version of the Tcl C library.
 
 """
 function tcl_version()
@@ -68,8 +68,16 @@ end
 """
     tcl_library(; relative::Bool=false) -> dir
 
-Return the Tcl library directory. If keyword `relative` is `true`, the path relative to the
-artifact directory is returned; otherwise, the absolute path is returned.
+Return the Tcl library directory as inferred from the installation of the Tcl artifact. If
+keyword `relative` is `true`, the path relative to the artifact directory is returned;
+otherwise, the absolute path is returned.
+
+The Tcl library directory contains a library of Tcl scripts, such as those used for
+auto-loading. It is also given by the global variable `"tcl_library"` which can be retrieved
+by:
+
+    interp[:tcl_library] -> dir
+    Tcl.getvar(String, interp = TclInterp(), :tcl_library) -> dir
 
 """
 function tcl_library(; relative::Bool=false)
@@ -226,41 +234,85 @@ same_thread(interp::TclInterp) =
 
 """
     interp[] -> str::String
-    get(interp) -> str::String
-    Tcl.last_result() -> str
+    Tcl.getresult() -> str::String
+    Tcl.getresult(interp) -> str::String
 
-    get(T, interp) -> val::T
-    Tcl.last_result(T) -> val::T
+    Tcl.getresult(T) -> val::T
+    Tcl.getresult(T, interp) -> val::T
 
 Retrieve the result of interpreter `interp` as a value of type `T` or as a string if `T` is
-not specified. `Tcl.last_result` returns the result of the shared interpreter of the
-thread. `T` may be `TclObj` to retrieve a managed Tcl object.
+not specified. `Tcl.getresult` returns the result of the shared interpreter of the thread.
+`T` may be `TclObj` to retrieve a managed Tcl object.
 
 # See also
 
 [`TclInterp`](@ref) and [`TclObj`](@ref).
 
 """
-last_result() = get(TclInterp())
-last_result(::Type{T}) where {T} = get(T, TclInterp())
+getresult() = get(TclInterp())
+getresult(::Type{T}) where {T} = getresult(T, TclInterp())
 
-Base.getindex(interp::TclInterp) = get(String, interp)
-Base.get(interp::TclInterp) = get(String, interp)
-function Base.get(::Type{String}, interp::TclInterp)
+getresult(interp::TclInterp) = get(String, interp)
+function getresult(::Type{String}, interp::TclInterp)
     GC.@preserve interp begin
         return unsafe_string(unsafe_cstring_result(checked_pointer(interp)))
     end
 end
-function Base.get(::Type{T}, interp::TclInterp) where {T}
+function getresult(::Type{T}, interp::TclInterp) where {T}
     GC.@preserve interp begin
         return unsafe_get(T, unsafe_object_result(checked_pointer(interp)))
     end
 end
 
+# Make `interp[]` yield result.
+Base.getindex(interp::TclInterp) = getresult(String, interp)
+
 # Interpreter's result. Unsafe: the returned pointer is only valid if the interpreter is
 # not deleted.
 unsafe_object_result(interp::Union{TclInterp,InterpPtr}) = Glue.Tcl_GetObjResult(interp)
 unsafe_cstring_result(interp::Union{TclInterp,InterpPtr}) = Glue.Tcl_GetStringResult(interp)
+
+"""
+    Tcl.setresult!(interp = TclInterp(), val) -> nothing
+
+Set the result stored in Tcl interpreter `interp` with `val`.
+
+If not specified, `interp` is the shared interpreter of the calling thread.
+
+"""
+setresult!(val) = setresult!(TclInterp(), val)
+
+# To set Tcl interpreter result, we can call `Tcl_SetObjResult` for any object, or
+# `Tcl_SetResult` for string results with no embedded nulls. Julia strings are immutable but
+# are volatile. Not sure whether symbols are volatile or not. In doubt, we always use
+# `TCL_VOLATILE`.
+
+setresult!(interp::TclInterp, val::FastString) =
+    Glue.Tcl_SetResult(interp, val, TCL_VOLATILE)
+
+setresult!(interp::TclInterp, val::TclObj) =
+    Glue.Tcl_SetObjResult(interp, val)
+
+function setresult!(interp::TclInterp, val)
+    # Here we save creating a mutable `TclObj` structure to temporarily wrap the new Tcl
+    # object.
+    GC.@preserve interp begin
+        interp_ptr = checked_pointer(interp) # this may throw
+        result_ptr = new_object_object(val) # this may throw
+        if true
+            # As can be seen in `generic/tclResult.c`, `Tcl_SetObjResult` does manage the
+            # reference count of its object argument so it is OK to directly pass a
+            # temporary object.
+            Glue.Tcl_SetObjResult(interp_ptr, result_ptr)
+        else
+            # A safer approach is to increment the reference count of the temporary object
+            # before calling `Tcl_SetObjResult` and decrement it after.
+            Glue.Tcl_SetObjResult(interp_ptr, unsafe_incr_refcnt(result_ptr))
+            unsafe_decr_refcnt(result_ptr)
+        end
+    end
+    return nothing
+end
 
 function finalize(interp::TclInterp)
     if !same_thread(interp)
@@ -283,90 +335,11 @@ isactive(interp::TclInterp) = !isnull(pointer(interp)) && !iszero(Tcl_InterpActi
 
 @deprecate getinterp(args...; kwds...) TclInterp(args...; kwds...)
 
-#=
 
 #------------------------------------------------------------------------------
 # Evaluation of Tcl scripts.
 
-"""
-```julia
-Tcl.setresult([interp,] args...) -> nothing
-```
-
-set result stored in Tcl interpreter `interp` or in the initial interpreter if
-this argument is omitted.
-
-"""
-setresult() = setresult(getinterp())
-setresult(arg) = setresult(getinterp(), arg)
-setresult(args...) = setresult(getinterp(), args...)
-
-# To set Tcl interpreter result, we can call `Tcl_SetObjResult` for any object,
-# or `Tcl_SetResult` but only for string results with no embedded nulls.  There
-# may be a slight advantage for calling `Tcl_SetResult` with non-volatile
-# strings as copies are avoided.  Julia strings are immutable but I am not sure
-# that they are non-volatile, so I prefer to not try using `Tcl_SetResult` and
-# rather use `Tcl_SetObjResult` for any object.
-#
-# `Tcl_SetObjResult` does manage the reference count of its object argument so
-# it is OK to directly pass a temporary object.
-setresult(interp::TclInterp) =
-    Tcl_SetObjResult(interp.ptr, __objptr())
-
-setresult(interp::TclInterp, arg) =
-    Tcl_SetObjResult(interp.ptr, __objptr(arg))
-
-setresult(interp::TclInterp, args...) =
-    Tcl_SetObjResult(interp.ptr, __newlistobj(args))
-
-@static if false
-    # The code for strings (taking care of embedded nulls and using
-    # `Tcl_SetResult` if possible) is written below for reference but not
-    # compiled.
-    function setresult(interp::TclInterp, str::AbstractString;
-                       volatile::Bool = true)
-        ptr, siz = Base.unsafe_convert(Ptr{Cchar}, str), sizeof(str)
-        if Base.containsnul(ptr, siz)
-            # String has embedded NULLs, wrap it into a temporary object.  It
-            # is not necessary to dela with its reference count as
-            # Tcl_SetObjResult takes care of that.
-            Tcl_SetObjResult(interp.ptr, __newstringobj(ptr, siz))
-        else
-            Tcl_SetResult(interp.ptr, ptr,
-                          (volatile ? TCL_VOLATILE : TCL_STATIC))
-        end
-    end
-end
-
-"""
-```julia
-Tcl.getresult([T=Any,][interp])
-```
-
-yields the current result stored in Tcl interpreter `interp` or in the initial
-interpreter if this argument is omitted.  If optional argument `T` is omitted,
-the type of the returned value reflects that of the internal representation of
-the result stored in Tcl interpreter; otherwise, `T` can be used to specify
-how Tcl result should be converted (see [`Tcl.getvar`](@ref) for details).
-
-See also: [`Tcl.getvar`](@ref).
-
-"""
-getresult() = getresult(getinterp())
-
-getresult(interp::TclInterp) = getresult(Any, interp)
-
-getresult(::Type{T}) where {T} = getresult(T, getinterp())
-
-getresult(::Type{T}, interp::TclInterp) where {T} = __getresult(T, interp)
-
-# Tcl_GetStringResult calls Tcl_GetObjResult, so we only interface to this
-# latter function.  Incrementing the reference count of the result is only
-# needed if we want to keep a long-term reference to it,
-# `__objptr_to(TclObj,...)` takes care of that).
-__getresult(::Type{T}, interp::TclInterp) where {T} =
-    __objptr_to(T, Tcl_GetObjResult(interp.ptr))
-
+#=
 
 """
 ```julia
@@ -399,10 +372,10 @@ See also: [`Tcl.eval`](@ref), [`Tcl.list`](@ref), [`Tcl.getresult`](@ref).
 
 """
 exec(args...; kwds...) =
-    exec(getinterp(), args...; kwds...)
+    exec(TclInterp(), args...; kwds...)
 
 exec(::Type{T}, args...; kwds...) where {T} =
-    exec(T, getinterp(), args...; kwds...)
+    exec(T, TclInterp(), args...; kwds...)
 
 exec(interp::TclInterp, args...; kwds...) =
     exec(Any, interp, args...; kwds...)
@@ -772,10 +745,10 @@ See also: [`Tcl.deletecommand`](@ref), [`Tcl.autoname`](@ref).
 
 """
 Callback(func::Function) =
-    Callback(getinterp(), func)
+    Callback(TclInterp(), func)
 
 Callback(name::FastString, func::Function) =
-    Callback(getinterp(), name, func)
+    Callback(TclInterp(), name, func)
 
 Callback(interp::TclInterp, func::Function) =
     __newcallback(interp.ptr,func)
@@ -836,7 +809,7 @@ See also: [`Tcl.Callback`](@ref).
 deletecommand(cmd::Union{FastString,Callback}) =
     # Since a callback just has a weak reference to the interpreter where it
     # was created, we must not use it as a default.
-    deletecommand(getinterp(), cmd)
+    deletecommand(TclInterp(), cmd)
 
 deletecommand(interp::TclInterp, cmd::Callback) =
     deletecommand(interp, cmd.name)
