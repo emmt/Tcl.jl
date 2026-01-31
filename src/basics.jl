@@ -422,20 +422,21 @@ Specify `T` as `TclStatus`, if you want to avoid throwing errors and
 See also: [`Tcl.concat`](@ref), [`Tcl.exec`](@ref), [`getvar`](@ref).
 
 """
+function eval end
+
+# Provide missing leading arguments.
 eval(args...) = eval(TclInterp(), args...)
-
 eval(::Type{T}, args...) where {T} = eval(T, TclInterp(), args...)
-
 eval(interp::TclInterp, args...) = eval(TclObj, interp, args...)
 
 function eval(::Type{T}, interp::TclInterp) where {T}
     throw(ArgumentError("missing script to evaluate"))
 end
 
+# Evaluate script provided as a string.
 function eval(::Type{T}, interp::TclInterp, script::AbstractString) where {T}
     return eval(T, interp, string(script))
 end
-
 function eval(::Type{T}, interp::TclInterp, script::String) where {T}
     # For a script given as a string, `Tcl_EvalEx` is slightly faster than `Tcl_Eval` (says
     # the doc.) and, more importantly, the script may contain embedded nulls.
@@ -447,9 +448,7 @@ function eval(::Type{T}, interp::TclInterp, script::String) where {T}
     end
 end
 
-# TODO For a not well defined Tcl object type, we peek the real object type to
-# TODO decide which of `Tcl_EvalObjEx` or `Tcl_EvalObjv` to call.
-
+# Evaluate script provided as a Tcl object.
 function eval(::Type{T}, interp::TclInterp, script::TclObj) where {T}
     GC.@preserve interp script begin
         interp_ptr = checked_pointer(interp)
@@ -459,26 +458,17 @@ function eval(::Type{T}, interp::TclInterp, script::TclObj) where {T}
     end
 end
 
+# Evaluate script provided as more than one arguments. Concatenate arguments in a Tcl list
+# object. Then, call `Tcl_EvalObjEx` which do manage the reference count of its object
+# argument.
 function eval(::Type{T}, interp::TclInterp, args...) where {T}
-    GC.@preserve interp script begin
+    GC.@preserve interp begin
         interp_ptr = checked_pointer(interp)
-        list_ptr = new_list()
-        try
-            for arg in args
-                unsafe_concat_to_list(interp_ptr, list_ptr, arg)
-            end
-            # FIXME call Tcl_EvalObjv?
-            #objc = RefCint}()
-            #objv = Ref{Ptr{ObjPtr}}()
-            #status = Glue.Tcl_ListObjGetElements(interp_ptr, list_ptr, objc, objv)
-            #status == TCL_OK || throw(TclError(unsafe_get(String, interp_ptr)))
-            #status = Glue.Tcl_EvalObjv(interp_ptr, objc[], objv[],
-            #                           TCL_EVAL_DIRECT | TCL_EVAL_GLOBAL)
-            #return unsafe_result(T, status, interp_ptr)
-        catch
-            unsafe_decr_refcnt(list_ptr)
-            retrow()
-        end
+        list_ptr = new_list(unsafe_append_list, interp_ptr, args...)
+        status = Glue.Tcl_EvalObjEx(interp_ptr, unsafe_incr_refcnt(list_ptr),
+                                    Glue.TCL_EVAL_DIRECT | Glue.TCL_EVAL_GLOBAL)
+        unsafe_decr_refcnt(list_ptr)
+        return unsafe_result(T, status, interp_ptr)
     end
 end
 
@@ -487,42 +477,19 @@ function unsafe_result(::Type{TclStatus}, status::TclStatus, interp::InterpPtr)
 end
 
 function unsafe_result(::Type{T}, status::TclStatus, interp::InterpPtr) where {T}
-    status == TCL_OK && return unsafe_get(T, interp)
-    status == TCL_ERROR && throw(TclError(unsafe_get(String, interp)))
-    return TclStatus
+    status == TCL_OK && return unsafe_get(T, unsafe_object_result(interp))
+    status == TCL_ERROR && unsafe_throw_error(interp)
+    throw_unexpected(status)
 end
+
+@noinline throw_unexpected(status::TclStatus) =
+    throw(TclError("unexpected return status: $status"))
+
+@noinline unsafe_throw_error(interp::InterpPtr) =
+    throw(TclError(unsafe_string(unsafe_cstring_result(interp))))
+
+
 #=
-function __eval(::Type{TclStatus}, interp::TclInterp,
-                ::Type{TclObj}, objptr::Ptr{Tcl_Obj})
-    return __eval(TclStatus, interp, TclObj{__objtype(objptr)}, objptr)
-end
-
-__eval(::Type{TclStatus}, interp::TclInterp, ::Type{String}, script::String) =
-    Tcl_EvalEx(interp.ptr, Base.unsafe_convert(Ptr{Cchar}, script),
-               sizeof(script), TCL_EVAL_GLOBAL|TCL_EVAL_DIRECT)
-
-# For non-list objects, we use `Tcl_EvalObjEx` to evaluate a single argument
-# script.  `Tcl_EvalObjEx` does manage the reference count of its object
-# argument.
-function __eval(::Type{TclStatus}, interp::TclInterp,
-                ::Type{TclObj{S}}, objptr::Ptr{Tcl_Obj}) where S
-    flags = TCL_EVAL_GLOBAL
-    if Tcl_GetRefCount(objptr) < 1
-        # For a temporary object there is no needs to compile the script.
-        flags |= TCL_EVAL_DIRECT
-    end
-    return Tcl_EvalObjEx(interp.ptr, objptr, flags)
-end
-
-function __eval(::Type{TclStatus}, interp::TclInterp,
-                ::Type{TclObj{List}}, listptr::Ptr{Tcl_Obj})
-    flags = TCL_EVAL_GLOBAL
-    status, objc, objv = Tcl_ListObjGetElements(interp.ptr, listptr)
-    if status == TCL_OK
-        status = Tcl_EvalObjv(interp.ptr, objc, objv, flags)
-    end
-    return status
-end
 
 #------------------------------------------------------------------------------
 # Exceptions
