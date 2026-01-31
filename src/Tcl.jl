@@ -31,6 +31,10 @@ export
     tcl_library,
     tcl_version
 
+# Non-exported public symbols.
+using TypeUtils: @public
+@public list concat eval exists setvar getvar unsetvar getresult setresult!
+
 # Direct calls to the functions of the Tcl/Tk C libraries.
 include("glue.jl")
 import .Glue:
