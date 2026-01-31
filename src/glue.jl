@@ -288,8 +288,12 @@ function Tcl_SetStringObj(obj, str, len)
     @ccall libtcl.Tcl_SetStringObj(obj::Ptr{Tcl_Obj}, str::Ptr{UInt8}, len::Cint)::Cvoid
 end
 
-function Tcl_GetStringFromObj(obj, lenptr)
-    @ccall libtcl.Tcl_GetStringFromObj(obj::Ptr{Tcl_Obj}, lenptr::Ptr{Cint})::Ptr{UInt8}
+function Tcl_GetString(obj)
+    @ccall libtcl.Tcl_GetStringFromObj(obj::Ptr{Tcl_Obj})::Cstring
+end
+
+function Tcl_GetStringFromObj(obj, lenPtr)
+    @ccall libtcl.Tcl_GetStringFromObj(obj::Ptr{Tcl_Obj}, lenPtr::Ptr{Cint})::Ptr{UInt8}
 end
 
 # Multi-precision integers. TODO "Bignum" => :BigInt

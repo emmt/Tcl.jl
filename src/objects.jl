@@ -12,7 +12,7 @@ Tcl objects have a type given by `obj.type` and reflecting their current interna
 efficiency, this type may change depending on how the object is used and provided this does
 not modify the content of the object.
 
-The content of a Tcl object may always be converted into a string. `string(obj)` or
+The content of a Tcl object may always be converted into a string. Calling `string(obj)` or
 `String(obj)` return a copy of this string.
 
 If the content of a Tcl object is valid as a list, the object may be indexed, elements may
@@ -22,12 +22,12 @@ be added, deleted, etc.
 
 Tcl objects have the following properties:
 
-- `obj.refcnt` the reference count of `obj`. If `obj.refcnt > 1`, the object is shared and
-  must be copied before being modified.
+- `obj.refcnt` yields the reference count of `obj`. If `obj.refcnt > 1`, the object is
+  shared and must be copied before being modified.
 
-- `obj.ptr` the pointer to the Tcl object, this is the same as `pointer(obj)`.
+- `obj.ptr` yields the pointer to the Tcl object, this is the same as `pointer(obj)`.
 
-- `obj.type` the symbolic current type of `obj`. Common types are:
+- `obj.type` yields the symbolic current type of `obj`. Common types are:
 
   - `:null` for a null Tcl object pointer.
 
@@ -160,6 +160,9 @@ function assert_writable(objptr::ObjPtr)
     return objptr
 end
 
+# The string representation of a Tcl object is owned by Tcl's value manager, so getting a C
+# string pointer to this string is always safe unless object pointer is null.
+Base.unsafe_convert(::Type{Cstring}, obj::TclObj) = Glue.Tcl_GetString(checked_pointer(obj))
 Base.unsafe_convert(::Type{ObjPtr}, obj::TclObj) = checked_pointer(obj)
 Base.pointer(obj::TclObj) = getfield(obj, :ptr)
 

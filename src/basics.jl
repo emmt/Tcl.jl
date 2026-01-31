@@ -4,8 +4,31 @@
 # Implement interface to Tcl interpreter, evaluation of scripts, callbacks...
 #
 
-checked_pointer(obj) = checked_pointer(pointer(obj))
-checked_pointer(ptr::Ptr) = isnull(ptr) ? throw_null_pointer(ptr) : ptr
+
+# For a Tcl object, a valid pointer is simply non-null.
+checked_pointer(obj::TclObj) = nonnull_pointer(obj)
+
+# For a Tcl interpreter, a valid pointer is non-null and the interpreter must also live in
+# the same thread as the caller.
+function checked_pointer(interp::TclInterp)
+    ptr = nonnull_pointer(interp)
+    assert_same_thread(interp)
+    return ptr
+end
+
+# For an optional Tcl interpreter, a valid pointer may be null, otherwise the interpreter
+# must live in the same thread as the caller.
+function null_or_checked_pointer(interp::TclInterp)
+    ptr = pointer(interp)
+    isnull(ptr) || assert_same_thread(interp)
+    return ptr
+end
+
+nonnull_pointer(obj) = nonnull_pointer(pointer(obj))
+nonnull_pointer(ptr::Ptr) = isnull(ptr) ? throw_null_pointer(ptr) : ptr
+
+assert_nonnull(ptr::Ptr) = isnull(ptr) ? throw_null_pointer(ptr) : nothing
+
 @noinline throw_null_pointer(ptr::Ptr) = throw_null_pointer(typeof(ptr))
 @noinline throw_null_pointer(::Type{InterpPtr}) =
     throw(ArgumentError("invalid NULL pointer to Tcl interpreter"))
@@ -190,18 +213,58 @@ end
 (interp::TclInterp)(args...; kwds...) = Tcl.eval(interp, args...; kwds...)
 
 Base.pointer(interp::TclInterp) = getfield(interp, :ptr)
+Base.unsafe_convert(::Type{InterpPtr}, interp::TclInterp) = checked_pointer(interp)
 
-function Base.unsafe_convert(::Type{InterpPtr}, interp::TclInterp)
-    getfield(interp, :threadid) == Threads.threadid() || throw_thread_mismatch()
-    return checked_pointer(interp)
-end
+assert_same_thread(interp::TclInterp) =
+    same_thread(interp) ? nothing : throw_thread_mismatch()
+
+same_thread(interp::TclInterp) =
+    getfield(interp, :threadid) == Threads.threadid()
 
 @noinline throw_thread_mismatch() = throw(AssertionError(
     "attempt to use a Tcl interpreter in a different thread"))
 
+"""
+    interp[] -> str::String
+    get(interp) -> str::String
+    Tcl.last_result() -> str
+
+    get(T, interp) -> val::T
+    Tcl.last_result(T) -> val::T
+
+Retrieve the result of interpreter `interp` as a value of type `T` or as a string if `T` is
+not specified. `Tcl.last_result` returns the result of the shared interpreter of the
+thread. `T` may be `TclObj` to retrieve a managed Tcl object.
+
+# See also
+
+[`TclInterp`](@ref) and [`TclObj`](@ref).
+
+"""
+last_result() = get(TclInterp())
+last_result(::Type{T}) where {T} = get(T, TclInterp())
+
+Base.getindex(interp::TclInterp) = get(String, interp)
+Base.get(interp::TclInterp) = get(String, interp)
+function Base.get(::Type{String}, interp::TclInterp)
+    GC.@preserve interp begin
+        return unsafe_string(unsafe_cstring_result(checked_pointer(interp)))
+    end
+end
+function Base.get(::Type{T}, interp::TclInterp) where {T}
+    GC.@preserve interp begin
+        return unsafe_get(T, unsafe_object_result(checked_pointer(interp)))
+    end
+end
+
+# Interpreter's result. Unsafe: the returned pointer is only valid if the interpreter is
+# not deleted.
+unsafe_object_result(interp::Union{TclInterp,InterpPtr}) = Glue.Tcl_GetObjResult(interp)
+unsafe_cstring_result(interp::Union{TclInterp,InterpPtr}) = Glue.Tcl_GetStringResult(interp)
+
 function finalize(interp::TclInterp)
-    if getfield(interp, :threadid) != Threads.threadid()
-        @warn "finalize called by wrong thread"
+    if !same_thread(interp)
+        @warn "finalize called by wrong thread for Tcl interpreter"
     else
         ptr = pointer(interp)
         null = typeof(ptr)(0)

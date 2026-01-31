@@ -72,8 +72,9 @@ deleted.
     function.
 
 """
-unsafe_get(::Type{T}, obj::ObjPtr) where {T} = unsafe_get(T, null(InterpPtr), obj)
-unsafe_get(::Type{String}, interp::InterpPtr, obj::ObjPtr) = unsafe_get(String, obj)
+unsafe_get(::Type{TclObj}, objptr::ObjPtr) = _TclObj(objptr)
+unsafe_get(::Type{T}, objptr::ObjPtr) where {T} = unsafe_get(T, null(InterpPtr), objptr)
+unsafe_get(::Type{String}, interp::InterpPtr, objptr::ObjPtr) = unsafe_get(String, objptr)
 
 """
     Tcl.unsafe_get(T, interp) -> val
@@ -245,7 +246,8 @@ function new_object(tup::Tuple)
     end
     return list
 end
-# Dense vector of bytes are stored as Tcl `bytearray`.
+#
+# Dense vector of bytes are stored as Tcl `bytearray` object.
 #
 value_type(::Type{T}) where {T<:DenseVector{UInt8}} = T
 new_object(arr::DenseVector{UInt8}) = Glue.Tcl_NewByteArrayObj(arr, length(arr))
@@ -266,8 +268,10 @@ end
 #
 @noinline value_type(::Type{T}) where {T} =
     throw(TclError("unknown Tcl object type for Julia objects of type `$T`"))
+@noinline new_object(val::T) where {T} =
+    throw(TclError("cannot convert an instance of type `$T` into a Tcl object"))
 @noinline unsafe_get(::Type{T}, interp::InterpPtr, obj::ObjPtr) where {T} =
-    throw(TclError("retrieving a value of type `$T` from a Tcl object is not unsupported"))
+    throw(TclError("retrieving an instance of type `$T` from a Tcl object is not unsupported"))
 
 """
     Tcl.unsafe_incr_refcnt(objptr) -> objptr
