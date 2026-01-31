@@ -238,11 +238,11 @@ function new_object(tup::Tuple)
     list = new_list()
     try
         for item in tup
-            unsafe_append_element(interp, list, item)
+            unsafe_append_element(list, item)
         end
     catch
         unsafe_decr_refcnt(list)
-        retrow()
+        rethrow()
     end
     return list
 end

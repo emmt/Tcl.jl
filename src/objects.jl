@@ -1,19 +1,29 @@
 """
     TclObj(val) -> obj
 
-Return a Tcl object storing value `val`. If `val` is a Tcl object, it is returned unchanged.
-Call `copy(obj)` to have an independent copy.
+Return a Tcl object storing value `val`. The initial type of the Tcl object, given by
+`obj.type`, depends on the type of `val`:
 
-Call `convert(T, obj)` to get a value of type `T` from Tcl object `obj`.
+- A string, symbol, or character is stored as a Tcl `:string`.
 
-# Object type
+- A Boolean or integer is stored as a Tcl `:int`.
 
-Tcl objects have a type given by `obj.type` and reflecting their current internal state. For
-efficiency, this type may change depending on how the object is used and provided this does
-not modify the content of the object.
+- A non-integer real is stored as a Tcl `:double`.
 
-The content of a Tcl object may always be converted into a string. Calling `string(obj)` or
-`String(obj)` return a copy of this string.
+- A dense vector of bytes (`UInt8`) is stored as a Tcl `:bytearray`.
+
+- A tuple is stored as a Tcl `:list`.
+
+- A Tcl object is returned unchanged. Call `copy` to have an independent copy.
+
+Beware that `obj.type` reflects the *current internal state* of `obj`. Indeed, for
+efficiency, this type may change depending on how the object is used. For example, after
+having evaluated a script in a Tcl string object, the object internal state becomes
+`:bytecode` to reflect that it now stores compiled byte code.
+
+Call `convert(T, obj)` to get a value of type `T` from Tcl object `obj`. The content of a
+Tcl object may always be converted into a string. `convert(String, obj)`, `string(obj)`, and
+`String(obj)` yield a copy of this string.
 
 If the content of a Tcl object is valid as a list, the object may be indexed, elements may
 be added, deleted, etc.
@@ -27,22 +37,7 @@ Tcl objects have the following properties:
 
 - `obj.ptr` yields the pointer to the Tcl object, this is the same as `pointer(obj)`.
 
-- `obj.type` yields the symbolic current type of `obj`. Common types are:
-
-  - `:null` for a null Tcl object pointer.
-
-  - `:string` for an undefined Tcl object type.
-
-  - `:int` for integers.
-
-  - `:double` for floating-point.
-
-  - `:bytearray` for an array of raw bytes.
-
-  - `:list` for a list of objects.
-
-  - `:bytecode` for compiled byte code.
-
+- `obj.type` yields the symbolic current type of `obj`.
 
 # See also
 
@@ -73,7 +68,6 @@ function unsafe_duplicate(objptr::ObjPtr)
     end
 end
 
-Base.repr(obj::TclObj) = String(obj) # FIXME
 Base.string(obj::TclObj) = String(obj)
 Base.String(obj::TclObj) = convert(String, obj)
 
@@ -85,41 +79,86 @@ function Base.convert(::Type{T}, obj::TclObj) where {T}
     end
 end
 
-# FIXME unused
-@noinline function throw_conversion_error(::Type{T}, obj::TclObj) where {T}
-    io = IOBuffer()
-    print(io, "cannot convert \"")
-    summary(io, obj)
-    print(io, "\" to type `", T, "`")
-    throw(ErrorException(String(take!(io))))
-end
-
 # Extend base methods for objects.
 function Base.summary(io::IO, obj::TclObj)
-    print(io, "TclObj(")
-    type = obj.type
-    if type == :int
-        print(io, convert(WideInt, obj))
-    elseif type == :double
-        print(io, convert(Cdouble, obj))
-    elseif type == :bytearray
-        print(io, "UInt8[...]")
-    elseif type == :list
-        print(io, "...")
-    elseif type != :null
-        print(io, repr(string(obj)))
-    end
-    print(io, ")")
+    print(io, "TclObj: ")
+    show_value(io, obj)
 end
-
 function Base.summary(obj::TclObj)
     io = IOBuffer()
     summary(io, obj)
     return String(take!(io))
 end
 
-Base.show(io::IO, ::MIME"text/plain", obj::TclObj) = summary(io, obj)
-Base.show(io::IO, obj::TclObj) = summary(io, obj)
+function Base.repr(obj::TclObj)
+    io = IOBuffer()
+    show(io, obj)
+    return String(take!(io))
+end
+
+Base.show(io::IO, ::MIME"text/plain", obj::TclObj) = show(io, obj)
+function Base.show(io::IO, obj::TclObj)
+    print(io, "TclObj(")
+    show_value(io, obj)
+    print(io, ")")
+end
+
+function show_value(io::IO, obj::TclObj)
+    type = obj.type
+    if type == :int
+        print(io, convert(WideInt, obj))
+    elseif type == :double
+        print(io, convert(Cdouble, obj))
+    elseif type == :bytearray
+        print(io, "UInt8[")
+        GC.@preserve obj begin
+            len = Ref{Cint}()
+            ptr = Glue.Tcl_GetByteArrayFromObj(obj, len)
+            len = Int(len[])::Int
+            if len ≤ 10
+                for i in 1:len
+                    i > 1 && print(io, ", ")
+                    show(io, unsafe_load(ptr, i))
+                end
+            else
+                for i in 1:5
+                    i > 1 && print(io, ", ")
+                    show(io, unsafe_load(ptr, i))
+                end
+                print(io, ", ...")
+                for i in len-4:len
+                    print(io, ", ")
+                    show(io, unsafe_load(ptr, i))
+                end
+            end
+        end
+        print(io, "]")
+    elseif type == :list
+        print(io, "(")
+        len = length(obj)
+        if len ≤ 10
+            for i in 1:len
+                i > 1 && print(io, ", ")
+                show_value(io, obj[i])
+            end
+        else
+            for i in 1:5
+                i > 1 && print(io, ", ")
+                show_value(io, obj[i])
+            end
+            print(io, ", ...")
+            for i in len-4:len
+                print(io, ", ")
+                show_value(io, obj[i])
+            end
+        end
+        print(io, ",)")
+    elseif type == :null
+        print(io, "#= NULL =#")
+    else
+        show(io, string(obj))
+    end
+end
 
 # It is forbidden to access to the fields of a `TclObj` by the `obj.key` syntax.
 Base.propertynames(obj::TclObj) = (:ptr, :refcnt, :type)
