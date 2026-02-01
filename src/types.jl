@@ -21,6 +21,7 @@ mutable struct TclInterp
     threadid::Int
     global _TclInterp # private inner constructor
     function _TclInterp(ptr::InterpPtr)
+        isnull(ptr) || Glue.Tcl_Preserve(ptr)
         interp = new(ptr, Threads.threadid())
         return finalizer(finalize, interp)
     end

@@ -316,14 +316,14 @@ end
 
 function finalize(interp::TclInterp)
     if !same_thread(interp)
-        @warn "finalize called by wrong thread for Tcl interpreter"
+        @warn "`finalize` called by wrong thread for Tcl interpreter"
     else
         ptr = pointer(interp)
-        null = typeof(ptr)(0)
-        if ptr !== null
-            setfield!(interp, :ptr, null) # we do not want to free more than once
+        if !isnull(ptr)
+            setfield!(interp, :ptr, null(ptr)) # we do not want to free more than once
             setfield!(interp, :threadid, 0) # make this interpreter is no longer usable
             Glue.Tcl_DeleteInterp(ptr)
+            Glue.Tcl_Release(ptr)
         end
     end
     return nothing
