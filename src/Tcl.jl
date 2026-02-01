@@ -1,16 +1,18 @@
 baremodule Tcl
 
-# Tcl is a bare module because it implements its own `eval` function. But `using Base` and
-# the `include` function are needed.
+# Tcl is a bare module because it implements its own `eval` function.
+function eval end
 using Base
-include(filename::AbstractString) = Base.include(Tcl, filename)
 
 # Non-exported public symbols.
 using TypeUtils: @public
 @public list concat eval exists setvar getvar unsetvar getresult setresult!
 
-function eval end
+"""
 
+`Tcl.Private` module hosts the private API of the `Tcl` package.
+
+"""
 module Private
 
 import ..Tcl
@@ -34,7 +36,23 @@ include("variables.jl")
 #include("widgets.jl")
 #include("dialogs.jl")
 #include("images.jl")
+
+function __init__()
+    # Many things do not work properly (e.g., freeing a Tcl object yields a segmentation
+    # fault) if no interpreter has been created, so we always create an initial Tcl
+    # interpreter for this thread.
+    _ = TclInterp(:shared)
+
+    # The table of known types is updated while objects of new types are created because
+    # seeking for an existing type is much faster than creating the mutable TclObj
+    # structure. Nevertheless, we know in advance that objects with NULL object type are
+    # strings.
+    unsafe_register_new_typename(ObjTypePtr(0))
+
+    return nothing
 end
+
+end # module
 
 # Public symbols. Only those with recognizable prefixes (like "Tcl", "TCL_", "Tk", etc.)
 # are exported, the other must be explicitly imported or used with the `Tcl.` prefix.
@@ -205,20 +223,5 @@ import .Impl:
     threshold!,
 
 =#
-
-function __init__()
-    # Many things do not work properly (e.g., freeing a Tcl object yields a segmentation
-    # fault) if no interpreter has been created, so we always create an initial Tcl
-    # interpreter for this thread.
-    _ = TclInterp(:shared)
-
-    # The table of known types is updated while objects of new types are created because
-    # seeking for an existing type is much faster than creating the mutable TclObj
-    # structure. Nevertheless, we know in advance that objects with NULL object type are
-    # strings.
-    Private.unsafe_register_new_typename(Private.ObjTypePtr(0))
-
-    return nothing
-end
 
 end # module
