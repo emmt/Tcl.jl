@@ -1,26 +1,26 @@
 # Private methods for the Julia interface to Tcl/Tk.
 
 """
-    Tcl.isnull(ptr) -> bool
+    Tcl.Private.isnull(ptr) -> bool
 
 Return whether pointer `ptr` is null.
 
 # See also
 
-[`Tcl.null`](@ref).
+[`Tcl.Private.null`](@ref).
 
 """
 isnull(ptr::Union{Ptr,Cstring}) = ptr === null(ptr)
 
 """
-    Tcl.null(ptr) -> nullptr
-    Tcl.null(typeof(ptr)) -> nullptr
+    Tcl.Private.null(ptr) -> nullptr
+    Tcl.Private.null(typeof(ptr)) -> nullptr
 
 Return a null-pointer of the same type as `ptr`.
 
 # See also
 
-[`Tcl.isnull`](@ref).
+[`Tcl.Private.isnull`](@ref).
 
 """
 null(ptr::Union{Ptr,Cstring}) = null(typeof(ptr))
@@ -28,36 +28,36 @@ null(::Type{Ptr{T}}) where {T} = Ptr{T}(0)
 null(::Type{Cstring}) = Cstring(C_NULL)
 
 """
-    Tcl.value_type(x)
-    Tcl.value_type(typeof(x))
+    Tcl.Private.value_type(x)
+    Tcl.Private.value_type(typeof(x))
 
 Return the suitable type for storing a Julia object `x` in a Tcl object.
 
 # See also
 
-[`Tcl.new_object`](@ref) and [`Tcl.new_list`](@ref).
+[`Tcl.Private.new_object`](@ref) and [`Tcl.Private.new_list`](@ref).
 
 """
 value_type(x) = value_type(typeof(x))
 
 """
-    Tcl.new_object(x) -> ptr
+    Tcl.Private.new_object(x) -> ptr
 
 Return a pointer to a new Tcl object storing value `x`. The new object has a reference count
 of `0`.
 
 # See also
 
-[`TclObj`](@ref), [`Tcl.new_list`](@ref), [`Tcl.value_type`](@ref),
-[`Tcl.unsafe_get_refcnt`](@ref), [`Tcl.unsafe_incr_refcnt`](@ref), and
-[`Tcl.unsafe_decr_refcnt`](@ref).
+[`TclObj`](@ref), [`Tcl.Private.new_list`](@ref), [`Tcl.Private.value_type`](@ref),
+[`Tcl.Private.unsafe_get_refcnt`](@ref), [`Tcl.Private.unsafe_incr_refcnt`](@ref), and
+[`Tcl.Private.unsafe_decr_refcnt`](@ref).
 
 """
 new_object
 
 """
-    Tcl.unsafe_get(T, objptr) -> val
-    Tcl.unsafe_get(T, interp, objptr) -> val
+    Tcl.Private.unsafe_get(T, objptr) -> val
+    Tcl.Private.unsafe_get(T, interp, objptr) -> val
 
 Get a value of type `T` from Tcl object pointer `objptr`. Optional argument `interp` is a
 pointer to a Tcl interpreter which, if non-null, may be used for error messages.
@@ -77,7 +77,7 @@ unsafe_get(::Type{T}, objptr::ObjPtr) where {T} = unsafe_get(T, null(InterpPtr),
 unsafe_get(::Type{String}, interp::InterpPtr, objptr::ObjPtr) = unsafe_get(String, objptr)
 
 """
-    Tcl.unsafe_get(T, interp) -> val
+    Tcl.Private.unsafe_get(T, interp) -> val
 
 Get the result from Tcl interpreter pointer `interp` as a value of type `T`.
 
@@ -87,10 +87,10 @@ Get the result from Tcl interpreter pointer `interp` as a value of type `T`.
 
 """
 function unsafe_get(::Type{String}, interp::InterpPtr)
-    return unsafe_string(Glue.Tcl_GetStringResult(interp))
+    return unsafe_string(Tcl_GetStringResult(interp))
 end
 function unsafe_get(::Type{T}, interp::InterpPtr) where {T}
-    obj = Glue.Tcl_GetObjResult(interp)
+    obj = Tcl_GetObjResult(interp)
     return unsafe_get(T, interp, obj)
 end
 
@@ -110,13 +110,13 @@ value_type(::Type{<:AbstractString}) = String
 new_object(str::AbstractString) = new_object(String(str))
 function new_object(str::Union{String,SubString{String}})
     GC.@preserve str begin
-        return Glue.Tcl_NewStringObj(pointer(str), ncodeunits(str))
+        return Tcl_NewStringObj(pointer(str), ncodeunits(str))
     end
 end
 function unsafe_get(::Type{String}, obj::ObjPtr)
     # NOTE `unsafe_string` catches that `ptr` must not be null so we do not check that.
     len = Ref{Cint}()
-    return unsafe_string(Glue.Tcl_GetStringFromObj(obj, len), len[])
+    return unsafe_string(Tcl_GetStringFromObj(obj, len), len[])
 end
 #
 # Symbols are considered as Tcl strings.
@@ -124,7 +124,7 @@ end
 value_type(::Type{Symbol}) = String
 function new_object(sym::Symbol)
     GC.@preserve sym begin
-        return Glue.Tcl_NewStringObj(sym, -1)
+        return Tcl_NewStringObj(sym, -1)
     end
 end
 #
@@ -135,7 +135,7 @@ new_object(str::AbstractChar) = new_object(string(char))
 function unsafe_get(::Type{T}, obj::ObjPtr) where {T<:AbstractChar}
     # FIXME Optimize this.
     str = unsafe_get(String, obj)
-    length(str) == 1 || throw(Tcl.error("cannot convert Tcl object to `$T` value"))
+    length(str) == 1 || throw(TclError("cannot convert Tcl object to `$T` value"))
     return first(str)
 end
 #
@@ -145,10 +145,10 @@ end
 #     stores Booleans as `Cint`s and Booleans are retrieved as `Cint` objects.
 #
 value_type(::Type{Bool}) = Bool
-new_object(val::Bool) = Glue.Tcl_NewBooleanObj(val)
+new_object(val::Bool) = Tcl_NewBooleanObj(val)
 function unsafe_get(::Type{Bool}, interp::InterpPtr, obj::ObjPtr)
     val = Ref{Cint}()
-    status = Glue.Tcl_GetBooleanFromObj(interp, obj, val)
+    status = Tcl_GetBooleanFromObj(interp, obj, val)
     status == TCL_OK || unsafe_error(interp, "cannot convert Tcl object to `Bool` value")
     return !iszero(val[])
 end
@@ -162,10 +162,10 @@ end
 # `Clong` type.
 #
 value_type(::Type{Clong}) = Clong
-new_object(val::Clong) = Glue.Tcl_NewLongObj(val)
+new_object(val::Clong) = Tcl_NewLongObj(val)
 function unsafe_get(::Type{Clong}, interp::InterpPtr, obj::ObjPtr)
     val = Ref{Clong}()
-    status = Glue.Tcl_GetLongFromObj(interp, obj, val)
+    status = Tcl_GetLongFromObj(interp, obj, val)
     status == TCL_OK || unsafe_error(interp, "cannot convert Tcl object to `$Clong` value")
     return val[]
 end
@@ -174,10 +174,10 @@ end
 #
 if Cint != Clong
     value_type(::Type{Cint}) = Cint
-    new_object(val::Cint) = Glue.Tcl_NewIntObj(val)
+    new_object(val::Cint) = Tcl_NewIntObj(val)
     function unsafe_get(::Type{Cint}, interp::InterpPtr, obj::ObjPtr)
         val = Ref{Cint}()
-        status = Glue.Tcl_GetIntFromObj(interp, obj, val)
+        status = Tcl_GetIntFromObj(interp, obj, val)
         status == TCL_OK || unsafe_error(interp, "cannot convert Tcl object to `$Cint` value")
         return val[]
     end
@@ -187,10 +187,10 @@ end
 #
 if WideInt != Clong && WideInt != Cint
     value_type(::Type{WideInt}) = WideInt
-    new_object(val::WideInt) = Glue.Tcl_NewWideIntObj(val)
+    new_object(val::WideInt) = Tcl_NewWideIntObj(val)
     function unsafe_get(::Type{WideInt}, interp::InterpPtr, obj::ObjPtr)
         val = Ref{WideInt}()
-        status = Glue.Tcl_GetWideIntFromObj(interp, obj, val)
+        status = Tcl_GetWideIntFromObj(interp, obj, val)
         status == TCL_OK || unsafe_error(interp, "cannot convert Tcl object to `$WideInt` value")
         return val[]
     end
@@ -221,10 +221,10 @@ end
 #     Non-integer reals are considered as double precision floating-point numbers.
 #
 value_type(::Type{<:Real}) = Cdouble
-new_object(val::Real) = Glue.Tcl_NewDoubleObj(val)
+new_object(val::Real) = Tcl_NewDoubleObj(val)
 function unsafe_get(::Type{Cdouble}, interp::InterpPtr, obj::ObjPtr)
     val = Ref{Cdouble}()
-    status = Glue.Tcl_GetDoubleFromObj(interp, obj, val)
+    status = Tcl_GetDoubleFromObj(interp, obj, val)
     status == TCL_OK || unsafe_error(interp, "cannot convert Tcl object to `$Cdouble` value")
     return val[]
 end
@@ -250,14 +250,14 @@ end
 # Dense vector of bytes are stored as Tcl `bytearray` object.
 #
 value_type(::Type{T}) where {T<:DenseVector{UInt8}} = T
-new_object(arr::DenseVector{UInt8}) = Glue.Tcl_NewByteArrayObj(arr, length(arr))
+new_object(arr::DenseVector{UInt8}) = Tcl_NewByteArrayObj(arr, length(arr))
 function unsafe_get(::Type{T}, interp::InterpPtr,
                     obj::ObjPtr) where {T<:Union{Vector{UInt8},Memory{UInt8}}}
     return unsafe_get(T, obj) # `interp` not needed
 end
 function unsafe_get(::Type{T}, obj::ObjPtr) where {T<:Union{Vector{UInt8},Memory{UInt8}}}
     len = Ref{Cint}()
-    ptr = Glue.Tcl_GetByteArrayFromObj(obj, len)
+    ptr = Tcl_GetByteArrayFromObj(obj, len)
     len = Int(len[])::Int
     arr = T(undef, len)
     len > 0 && Libc.memcpy(arr, ptr, len)
@@ -274,7 +274,7 @@ end
     throw(TclError("retrieving an instance of type `$T` from a Tcl object is not unsupported"))
 
 """
-    Tcl.unsafe_incr_refcnt(objptr) -> objptr
+    Tcl.Private.unsafe_incr_refcnt(objptr) -> objptr
 
 Increment the reference count of the Tcl object given its pointer and return it.
 
@@ -284,13 +284,13 @@ Increment the reference count of the Tcl object given its pointer and return it.
 
 # See also
 
-[`Tcl.unsafe_decr_refcnt`](@ref) and [`Tcl.unsafe_get_refcnt`](@ref).
+[`Tcl.Private.unsafe_decr_refcnt`](@ref) and [`Tcl.Private.unsafe_get_refcnt`](@ref).
 
 """
-unsafe_incr_refcnt(obj::ObjPtr) = Glue.Tcl_IncrRefCount(obj)
+unsafe_incr_refcnt(obj::ObjPtr) = Tcl_IncrRefCount(obj)
 
 """
-    Tcl.unsafe_decr_refcnt(objptr) -> refcnt
+    Tcl.Private.unsafe_decr_refcnt(objptr) -> refcnt
 
 Decrement the reference count of the Tcl object given its pointer and return its new
 reference count. If `refcnt < 1` holds, the Tcl object has been released and `objptr` shall
@@ -302,13 +302,13 @@ no longer be used.
 
 # See also
 
-[`Tcl.unsafe_incr_refcnt`](@ref) and [`Tcl.unsafe_get_refcnt`](@ref).
+[`Tcl.Private.unsafe_incr_refcnt`](@ref) and [`Tcl.Private.unsafe_get_refcnt`](@ref).
 
 """
-unsafe_decr_refcnt(obj::ObjPtr) = Glue.Tcl_DecrRefCount(obj)
+unsafe_decr_refcnt(obj::ObjPtr) = Tcl_DecrRefCount(obj)
 
 """
-    Tcl.unsafe_get_refcnt(objptr) -> refcnt
+    Tcl.Private.unsafe_get_refcnt(objptr) -> refcnt
 
 Return the current reference count of the Tcl object at address `objptr`.
 
@@ -318,20 +318,20 @@ Return the current reference count of the Tcl object at address `objptr`.
 
 # See also
 
-[`Tcl.unsafe_incr_refcnt`](@ref) and [`Tcl.unsafe_decr_refcnt`](@ref).
+[`Tcl.Private.unsafe_incr_refcnt`](@ref) and [`Tcl.Private.unsafe_decr_refcnt`](@ref).
 
 """
-unsafe_get_refcnt(obj::ObjPtr) = Glue.Tcl_GetRefCount(obj)
+unsafe_get_refcnt(obj::ObjPtr) = Tcl_GetRefCount(obj)
 
 function _getproperty(obj::TclObj, ::Val{:refcnt})
     GC.@preserve obj begin
         ptr = pointer(obj)
-        return isnull(ptr) ? -one(Glue.Tcl_Obj_refCount_type) : unsafe_get_refcnt(ptr)
+        return isnull(ptr) ? -one(Tcl_Obj_refCount_type) : unsafe_get_refcnt(ptr)
     end
 end
 
 """
-    Tcl.unsafe_get_typename(ptr) -> sym::Symbol
+    Tcl.Private.unsafe_get_typename(ptr) -> sym::Symbol
 
 Return the symbolic type name of Tcl object pointer `ptr`. The result can be:
 
@@ -361,7 +361,7 @@ const _known_types = Tuple{ObjTypePtr,Symbol}[]
 
 function unsafe_get_typename(objPtr::ObjPtr)
     isnull(objPtr) && return :null # null object pointer
-    typePtr = unsafe_load(Ptr{Glue.Tcl_Obj_typePtr_type}(objPtr + Glue.Tcl_Obj_typePtr_offset))
+    typePtr = unsafe_load(Ptr{Tcl_Obj_typePtr_type}(objPtr + Tcl_Obj_typePtr_offset))
     return unsafe_get_typename(typePtr)
 end
 
@@ -378,7 +378,7 @@ end
         sym = :string
     else
         # NOTE Type name is a C string at offset 0 of structure `Tcl_ObjType`.
-        namePtr = unsafe_load(Ptr{Glue.Tcl_ObjType_name_type}(typePtr + Glue.Tcl_ObjType_name_offset))
+        namePtr = unsafe_load(Ptr{Tcl_ObjType_name_type}(typePtr + Tcl_ObjType_name_offset))
         isnull(namePtr) && unexpected_null("Tcl object type name")
         sym = Symbol(unsafe_string(namePtr))
     end
@@ -399,7 +399,7 @@ Base.showerror(io::IO, ex::TclError) = print(io, "Tcl/Tk error: ", ex.msg)
 @noinline unexpected_null(str::AbstractString) = assertion_error("unexpected NULL ", str)
 
 """
-    Tcl.unsafe_error(interp, mesg)
+    Tcl.Private.unsafe_error(interp, mesg)
 
 Throw a Tcl error. If `interp` is a non-null pointer to a Tcl interpreter, the error message
 is taken from interpreter's result; otherwise, the error message is `mesg`.
@@ -410,7 +410,7 @@ is taken from interpreter's result; otherwise, the error message is `mesg`.
 
 # See also
 
-[`Tcl.unsafe_get`](@ref).
+[`Tcl.Private.unsafe_get`](@ref).
 
 """
 @noinline function unsafe_error(interp::InterpPtr, mesg::AbstractString)
@@ -419,7 +419,7 @@ end
 
 function unsafe_error_message(interp::InterpPtr, mesg::AbstractString)
     if !isnull(interp)
-        cstr = Glue.Tcl_GetStringResult(interp)
+        cstr = Tcl_GetStringResult(interp)
         if !isnull(cstr) && !iszero(unsafe_load(Ptr{UInt8}(cstr)))
             return unsafe_string(cstr)
         end

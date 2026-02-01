@@ -61,7 +61,7 @@ _getproperty(interp::TclInterp, ::Val{:concat}) = PrefixedFunction(concat, inter
 Base.IteratorSize(::Type{TclObj}) = Base.HasLength()
 function Base.length(list::TclObj)
     len = Ref{Cint}()
-    status = Glue.Tcl_ListObjLength(null(InterpPtr), list, len)
+    status = Tcl_ListObjLength(null(InterpPtr), list, len)
     status == TCL_OK || invalid_list()
     return Int(len[])::Int
 end
@@ -79,7 +79,7 @@ Base.last(list::TclObj) = list[lastindex(list)]
 function Base.getindex(list::TclObj, index::Integer)
     if index ≥ 𝟙
         objref = Ref{ObjPtr}()
-        status = Glue.Tcl_ListObjIndex(null(InterpPtr), list, index - 𝟙, objref)
+        status = Tcl_ListObjIndex(null(InterpPtr), list, index - 𝟙, objref)
         status == TCL_OK || invalid_list()
         objptr = objref[]
         isnull(objptr) || return _TclObj(objptr)
@@ -150,7 +150,7 @@ function Base.append!(list::TclObj, args...)
 end
 
 struct ListIterator
-    parent::TclObj # to hold a reference on the parent list and make it non-writable
+    parent::TclObj # to hold a reference on the parent list
     objc::Int
     objv::Ptr{ObjPtr}
     function ListIterator(list::TclObj)
@@ -175,7 +175,7 @@ unsafe_get_list_elements(list::ObjPtr) = unsafe_get_list_elements(null(InterpPtr
 function unsafe_get_list_elements(interp::InterpPtr, list::ObjPtr)
     objc = Ref{Cint}()
     objv = Ref{Ptr{ObjPtr}}()
-    status = Glue.Tcl_ListObjGetElements(interp, list, objc, objv)
+    status = Tcl_ListObjGetElements(interp, list, objc, objv)
     status == TCL_OK || unsafe_error(interp, "failed to retrieve Tcl list elements")
     return Int(objc[])::Int, objv[]
 end
@@ -231,21 +231,21 @@ end
 function unsafe_replace_list(interp::InterpPtr, list::ObjPtr, first::Integer,
                              count::Integer, objc::Integer, objv)
     assert_writable(list) # required by copy-on-write policy
-    status = Glue.Tcl_ListObjReplace(interp, list, first, count, objc, objv)
+    status = Tcl_ListObjReplace(interp, list, first, count, objc, objv)
     status == TCL_OK || unsafe_error(interp, "failed to replace Tcl list element(s)")
     return nothing
 end
 
 """
-    Tcl.new_list() -> lstptr
+    Tcl.Private.new_list() -> lstptr
 
 Return a pointer to a Tcl object storing an empty list.
 
-    Tcl.new_list(f, [interp,] args...) -> lstptr
+    Tcl.Private.new_list(f, [interp,] args...) -> lstptr
 
 Return a pointer to a Tcl object storing a list built by calling `f(interp, list, arg)` for
-each `arg` in `args...`. Typically, `f` is [`Tcl.unsafe_append_element`](@ref) or
-[`Tcl.unsafe_append_list`](@ref).
+each `arg` in `args...`. Typically, `f` is [`Tcl.Private.unsafe_append_element`](@ref) or
+[`Tcl.Private.unsafe_append_list`](@ref).
 
 Optional argument `interp` is a Tcl interpreter that can be used to retrieve the error
 message in case of failure.
@@ -255,7 +255,7 @@ message in case of failure.
     responsible of taking care of that.
 
 """
-new_list() = Glue.Tcl_NewListObj(0, C_NULL)
+new_list() = Tcl_NewListObj(0, C_NULL)
 
 new_list(f::Function, args...) = unsafe_new_list(f, null(InterpPtr), args...)
 
@@ -265,10 +265,30 @@ function new_list(f::Function, interp::TclInterp, args...)
     end
 end
 
-"""
-    Tcl.unsafe_new_list(f, interp, args...) -> lstptr
+# Build a list from a given vector of of objects.
 
-Unsafe method called by [`Tcl.new_list`](@ref) to build its result. Argument `interp` is a
+function new_list(objc::Integer, objv::Ptr{Ptr{Tcl_Obj}})
+    return new_list(unsafe_append_element, objc, objv)
+end
+
+function new_list(f::Function, objc::Integer, objv::Ptr{Ptr{Tcl_Obj}})
+    return unsafe_new_list(f, null(InterpPtr), objc, objv)
+end
+
+function new_list(interp::TclInterp, objc::Integer, objv::Ptr{Ptr{Tcl_Obj}})
+    return new_list(unsafe_append_element, interp, objc, objv)
+end
+
+function new_list(f::Function, interp::TclInterp, objc::Integer, objv::Ptr{Ptr{Tcl_Obj}})
+    GC.@preserve interp begin
+        return unsafe_new_list(f, null_or_checked_pointer(list), objc, objv)
+    end
+end
+
+"""
+    Tcl.Private.unsafe_new_list(f, interp, args...) -> lstptr
+
+Unsafe method called by [`Tcl.Private.new_list`](@ref) to build its result. Argument `interp` is a
 pointer to a Tcl interpreter. If `interp` is non-null, it is used to retrieve the error
 message in case of failure.
 
@@ -290,6 +310,20 @@ function unsafe_new_list(f::Function, interp::InterpPtr, args...)
     return list
 end
 
+function unsafe_new_list(f::Function, interp::InterpPtr,
+                         objc::Integer, objv::Ptr{Ptr{Tcl_Obj}})
+    list = new_list()
+    try
+        for i in 1:objc
+            f(interp, list, unsafe_load(objv, i))
+        end
+    catch
+        unsafe_decr_refcnt(list)
+        rethrow()
+    end
+    return lis_ptr
+end
+
 # Appending a new item to a list with `Tcl_ListObjAppendElement` or `Tcl_ListObjAppendList`
 # increments the reference count of the item, this is the only side effect for the item.
 # That is to say, the appended item is not duplicated, just shared. So, to manage the memory
@@ -300,7 +334,7 @@ end
 # collected.
 
 """
-    Tcl.unsafe_append_element([interp,] list, item) -> nothing
+    Tcl.Private.unsafe_append_element([interp,] list, item) -> nothing
 
 Private method to append `item` as a single element to the Tcl object `list`.
 
@@ -322,26 +356,26 @@ object).
 
 # See also
 
-[`Tcl.unsafe_append_list`](@ref) and [`Tcl.new_list`](@ref).
+[`Tcl.Private.unsafe_append_list`](@ref) and [`Tcl.Private.new_list`](@ref).
 
 """
 function unsafe_append_element end
 
 """
-    Tcl.unsafe_append_list([interp,] list, iter) -> nothing
+    Tcl.Private.unsafe_append_list([interp,] list, iter) -> nothing
 
 Private method to concatenate the elements of `iter` to the end of the Tcl object `list`.
 
 # See also
 
-[`Tcl.unsafe_append_element`](@ref) and [`Tcl.new_list`](@ref).
+[`Tcl.Private.unsafe_append_element`](@ref) and [`Tcl.Private.new_list`](@ref).
 
 """
 function unsafe_append_list end
 
-for (jl, (c, mesg)) in (:unsafe_append_element => (:(Glue.Tcl_ListObjAppendElement),
+for (jl, (c, mesg)) in (:unsafe_append_element => (:(Tcl_ListObjAppendElement),
                                                    "failed to append item to Tcl list"),
-                        :unsafe_append_list => (:(Glue.Tcl_ListObjAppendList),
+                        :unsafe_append_list => (:(Tcl_ListObjAppendList),
                                                 "failed to concatenate list to Tcl list"),
                         )
     @eval begin

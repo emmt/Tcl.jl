@@ -5,110 +5,101 @@ baremodule Tcl
 using Base
 include(filename::AbstractString) = Base.include(Tcl, filename)
 
-export
-    # Status.
-    TclStatus,
-    TCL_OK,
-    TCL_ERROR,
-    TCL_RETURN,
-    TCL_BREAK,
-    TCL_CONTINUE,
-
-    # Events.
-    TCL_DONT_WAIT,
-    TCL_ALL_EVENTS,
-
-    # Variables.
-    TCL_GLOBAL_ONLY,
-    TCL_NAMESPACE_ONLY,
-    TCL_APPEND_VALUE,
-    TCL_LIST_ELEMENT,
-    TCL_LEAVE_ERR_MSG,
-
-    # Others.
-    TclInterp,
-    TclObj,
-    tcl_library,
-    tcl_version
-
 # Non-exported public symbols.
 using TypeUtils: @public
 @public list concat eval exists setvar getvar unsetvar getresult setresult!
 
-# Direct calls to the functions of the Tcl/Tk C libraries.
-include("glue.jl")
-import .Glue:
-    # Status.
-    TclStatus,
-    TCL_OK,
-    TCL_ERROR,
-    TCL_RETURN,
-    TCL_BREAK,
-    TCL_CONTINUE,
+function eval end
 
-    # Events.
-    TCL_DONT_WAIT,
-    TCL_ALL_EVENTS,
+module Private
 
-    # Variables.
-    TCL_GLOBAL_ONLY,
-    TCL_NAMESPACE_ONLY,
-    TCL_APPEND_VALUE,
-    TCL_LIST_ELEMENT,
-    TCL_LEAVE_ERR_MSG
-
-const WideInt = Glue.Tcl_WideInt
-
+import ..Tcl
+using Tcl_jll
+using Tk_jll
+using CEnum
 using Neutrals
 
 if !isdefined(Base, :Memory)
     const Memory{T} = Vector{T}
 end
 
+include("glue.jl")
 include("types.jl")
 include("private.jl")
 include("objects.jl")
 include("lists.jl")
 include("basics.jl")
 include("variables.jl")
+#include("callbacks.jl")
 #include("widgets.jl")
 #include("dialogs.jl")
 #include("images.jl")
+end
 
-#=
-# Only export symbols which are prefixed with `Tcl`, `TCL_`, `Tk`, `Ttk` or
-# `TK_`, other "public" symbols will be available with the `Tcl.` prefix.
-const __EXPORTS = (
-    :TclError,
-    :TclInterp,
-    :TclObj,
-    :TclObjCommand,
+# Public symbols. Only those with recognizable prefixes (like "Tcl", "TCL_", "Tk", etc.)
+# are exported, the other must be explicitly imported or used with the `Tcl.` prefix.
+for sym in (
+    # Status.
     :TclStatus,
     :TCL_OK,
     :TCL_ERROR,
     :TCL_RETURN,
     :TCL_BREAK,
     :TCL_CONTINUE,
-    :TCL_GLOBAL_ONLY,
-    :TCL_NAMESPACE_ONLY,
-    :TCL_APPEND_VALUE,
-    :TCL_LIST_ELEMENT,
-    :TCL_LEAVE_ERR_MSG,
+
+    # Events.
     :TCL_DONT_WAIT,
     :TCL_WINDOW_EVENTS,
     :TCL_FILE_EVENTS,
     :TCL_TIMER_EVENTS,
     :TCL_IDLE_EVENTS,
     :TCL_ALL_EVENTS,
-    :TCL_NO_EVAL,
-    :TCL_EVAL_GLOBAL,
-    :TCL_EVAL_DIRECT,
-    :TCL_EVAL_INVOKE,
-    :TCL_CANCEL_UNWIND,
-    :TCL_EVAL_NOERR,
-    :tkstart,
+    #:do_evants,
+    #:do_one_event,
+    #:isrunning,
+    #:resume,
+    #:suspend,
+
+    # Variables.
+    :TCL_GLOBAL_ONLY,
+    :TCL_NAMESPACE_ONLY,
+    :TCL_APPEND_VALUE,
+    :TCL_LIST_ELEMENT,
+    :TCL_LEAVE_ERR_MSG,
+    :exists,
+    :getvar,
+    :setvar,
+    :unsetvar,
+
+    # Interpreters.
+    :TclInterp,
+    :getresult,
+    :setresult!,
+
+    # Types.
+    #:Callback
+    :TclObj,
+    :TclError,
+    :WideInt,
+
+    # Scripts.
+    #:eval,
+    #:exec,
+
+    # Lists.
+    :concat,
+    :list,
+
+    # Others.
+    :TclObj,
+    :tcl_library,
+    :tcl_version,
+
+    # Tk.
+    #:tkstart,
     #:@TkWidget,
-    # Colors:
+
+    # Colors.
     :TkColor,
     :TkGray,
     :TkRGB,
@@ -117,78 +108,80 @@ const __EXPORTS = (
     :TkBGRA,
     :TkARGB,
     :TkABGR,
-    # Widgets:
-    :TkObject,
-    :TkImage,
-    :TkWidget,
-    :TkRootWidget,
-    :TkButton,
-    :TkCanvas,
-    :TkCheckbutton,
-    :TkEntry,
-    :TkFrame,
-    :TkLabel,
-    :TkLabelframe,
-    :TkListbox,
-    :TkMenu,
-    :TkMenubutton,
-    :TkMessage,
-    :TkPanedwindow,
-    :TkRadiobutton,
-    :TkScale,
-    :TkScrollbar,
-    :TkSpinbox,
-    :TkText,
-    :TkToplevel,
-    :TkWidget,
-    :TtkButton,
-    :TtkCheckbutton,
-    :TtkCombobox,
-    :TtkEntry,
-    :TtkFrame,
-    :TtkLabel,
-    :TtkLabelframe,
-    :TtkMenubutton,
-    :TtkNotebook,
-    :TtkPanedwindow,
-    :TtkProgressbar,
-    :TtkRadiobutton,
-    :TtkScale,
-    :TtkScrollbar,
-    :TtkSeparator,
-    :TtkSizegrip,
-    :TtkSpinbox,
-    :TtkTreeview)
 
-# Hide most implementation methods in a private module but make `Tcl` module
-# available (using a relative path, in case `Tcl` is itself embedded in another
-# module).
-module Impl
-#using ...Tcl # for public symbols
-#import ...Tcl: TclInterp, TclInterpPtr, TclObj, TclObjPtr, TkImage, TclStatus
-import ...Tcl
+    # Widgets.
+    #:TkObject,
+    #:TkImage,
+    #:TkWidget,
+    #:TkRootWidget,
+    #:TkButton,
+    #:TkCanvas,
+    #:TkCheckbutton,
+    #:TkEntry,
+    #:TkFrame,
+    #:TkLabel,
+    #:TkLabelframe,
+    #:TkListbox,
+    #:TkMenu,
+    #:TkMenubutton,
+    #:TkMessage,
+    #:TkPanedwindow,
+    #:TkRadiobutton,
+    #:TkScale,
+    #:TkScrollbar,
+    #:TkSpinbox,
+    #:TkText,
+    #:TkToplevel,
+    #:TkWidget,
+    #:TtkButton,
+    #:TtkCheckbutton,
+    #:TtkCombobox,
+    #:TtkEntry,
+    #:TtkFrame,
+    #:TtkLabel,
+    #:TtkLabelframe,
+    #:TtkMenubutton,
+    #:TtkNotebook,
+    #:TtkPanedwindow,
+    #:TtkProgressbar,
+    #:TtkRadiobutton,
+    #:TtkScale,
+    #:TtkScrollbar,
+    #:TtkSeparator,
+    #:TtkSizegrip,
+    #:TtkSpinbox,
+    #:TtkTreeview
+    )
 
-using Printf
-
+    # Import public symbols from the `Private` module, export those prefixed with `Tcl`,
+    # `TCL_`, `Tk`, `@Tk`, `Ttk` or `TK_`, and declare the others as "public".
+    @eval import .Private: $sym
+    name = string(sym)
+    if startswith(name, r"Tcl[A-Z]|TCL_|@?Tkk?[A-Z]")
+        @eval export $sym
+    end
 end
 
-# Import public methods, types and constants.  These will be available as
-# `Tcl.$name`.
+#=
+const __EXPORTS = (
+    :TclObjCommand,
+    :TCL_NO_EVAL,
+    :TCL_EVAL_GLOBAL,
+    :TCL_EVAL_DIRECT,
+    :TCL_EVAL_INVOKE,
+    :TCL_CANCEL_UNWIND,
+    :TCL_EVAL_NOERR,
+)
+
 import .Impl:
-    Callback,
-    WideInt,
-    AtomicType,
     cget,
     choosecolor,
     choosedirectory,
     colorize!,
     colorize,
-    concat,
     configure,
     delete,
     deletecommand,
-    exec,
-    exists,
     findphoto,
     getheight,
     getopenfile,
@@ -204,29 +197,13 @@ import .Impl:
     grid,
     isactive,
     isdeleted,
-    lappend!,
-    lindex,
-    list,
-    llength,
     messagebox,
     pack,
     place,
-    resume,
     setphotosize!,
     setpixels!,
-    setresult,
-    setvar,
-    suspend,
     threshold!,
-    unsetvar
 
-# Reexport prefixed public symbols.
-for sym in __EXPORTS
-    @eval begin
-        import .Impl: $sym
-        export $sym
-    end
-end
 =#
 
 function __init__()
@@ -239,7 +216,7 @@ function __init__()
     # seeking for an existing type is much faster than creating the mutable TclObj
     # structure. Nevertheless, we know in advance that objects with NULL object type are
     # strings.
-    unsafe_register_new_typename(null(ObjTypePtr))
+    Private.unsafe_register_new_typename(Private.ObjTypePtr(0))
 
     return nothing
 end

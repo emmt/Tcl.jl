@@ -230,9 +230,9 @@ function unsetvar_default_flags(nocomplain::Bool)
 end
 
 for (name, (decl, unset)) in ((:name,)         => ((:(name::Name),),
-                                                   :(Glue.Tcl_UnsetVar)),
+                                                   :(Tcl_UnsetVar)),
                               (:part1, :part2) => ((:(part1::Name), :(part2::Name)),
-                                                   :(Glue.Tcl_UnsetVar2)))
+                                                   :(Tcl_UnsetVar2)))
     @eval begin
 
         unsetvar($(decl...); kwds...) = unsetvar(TclInterp(), $(name...); kwds...)
@@ -259,8 +259,8 @@ for (name, (decl, unset)) in ((:name,)         => ((:(name::Name),),
 end
 
 """
-    Tcl.unsafe_getvar(interp, name, flags) -> value_ptr
-    Tcl.unsafe_getvar(interp, part1, part2, flags) -> value_ptr
+    Tcl.Private.unsafe_getvar(interp, name, flags) -> value_ptr
+    Tcl.Private.unsafe_getvar(interp, part1, part2, flags) -> value_ptr
 
 Private function to get the value of a Tcl variable. Return a pointer `value_ptr` to the Tcl
 object storing the value or *null* if the variable does not exists.
@@ -272,7 +272,7 @@ being deleted.
 
 # See also
 
-[`Tcl.getvar`](@ref), [`Tcl.exists`](@ref), and [`Tcl.unsafe_setvar`](@ref).
+[`Tcl.getvar`](@ref), [`Tcl.exists`](@ref), and [`Tcl.Private.unsafe_setvar`](@ref).
 
 """
 function unsafe_getvar end
@@ -286,14 +286,14 @@ function unsafe_getvar end
 # and manage their reference counts.
 
 function unsafe_getvar(interp::TclInterp, name::FastString, flags::Integer)
-    return Glue.Tcl_GetVar2Ex(interp, name, C_NULL, flags)
+    return Tcl_GetVar2Ex(interp, name, C_NULL, flags)
 end
 
 function unsafe_getvar(interp::TclInterp, name::Name, flags::Integer)
     GC.@preserve interp name begin
         interp_ptr = checked_pointer(interp)
         name_ptr = unsafe_incr_refcnt(unsafe_objptr_from(name, "Tcl variable name"))
-        value_ptr = Glue.Tcl_ObjGetVar2(interp_ptr, name_ptr, null(ObjPtr), flags)
+        value_ptr = Tcl_ObjGetVar2(interp_ptr, name_ptr, null(ObjPtr), flags)
         unsafe_decr_refcnt(name_ptr)
         return value_ptr
     end
@@ -301,7 +301,7 @@ end
 
 function unsafe_getvar(interp::TclInterp, part1::FastString, part2::FastString,
                      flags::Integer)
-    return Glue.Tcl_GetVar2Ex(interp, part1, part2, flags)
+    return Tcl_GetVar2Ex(interp, part1, part2, flags)
 end
 
 function unsafe_getvar(interp::TclInterp, part1::Name, part2::Name, flags::Integer)
@@ -318,7 +318,7 @@ function unsafe_getvar(interp::TclInterp, part1::Name, part2::Name, flags::Integ
             part1_ptr = unsafe_incr_refcnt(unsafe_objptr_from(part2, "Tcl array index"))
             stage = 2
             # Call C function.
-            return Glue.Tcl_ObjGetVar2(interp_ptr, part1_ptr, part2_ptr, flags)
+            return Tcl_ObjGetVar2(interp_ptr, part1_ptr, part2_ptr, flags)
         finally
             # Decrement reference counts.
             stage ≥ 1 && unsafe_decr_refcnt(part1_ptr)
@@ -328,8 +328,8 @@ function unsafe_getvar(interp::TclInterp, part1::Name, part2::Name, flags::Integ
 end
 
 """
-    Tcl.unsafe_setvar(interp, name, value, flags) -> new_value_ptr
-    Tcl.unsafe_setvar(interp, part1, part2, value, flags) -> new_value_ptr
+    Tcl.Private.unsafe_setvar(interp, name, value, flags) -> new_value_ptr
+    Tcl.Private.unsafe_setvar(interp, part1, part2, value, flags) -> new_value_ptr
 
 Private function to set a Tcl variable. Return a pointer `new_value_ptr` to the Tcl object
 storing the value of the variable after being set or *null* in case of failure.
@@ -341,13 +341,13 @@ variable name part(s) and the value from being deleted.
 
 # See also
 
-[`Tcl.setvar`](@ref) and [`Tcl.unsafe_getvar`](@ref).
+[`Tcl.setvar`](@ref) and [`Tcl.Private.unsafe_getvar`](@ref).
 
 """
 function unsafe_setvar end
 
 # `unsafe_setvar` always calls `Tcl_ObjSetVar2` and is similar to
-# [`Tcl.unsafe_getvar`](@ref) for managing arguments.
+# [`Tcl.Private.unsafe_getvar`](@ref) for managing arguments.
 
 function unsafe_setvar(interp::TclInterp, name::Name, value, flags::Integer)
     interp_ptr = checked_pointer(interp)
@@ -360,7 +360,7 @@ function unsafe_setvar(interp::TclInterp, name::Name, value, flags::Integer)
         value_ptr = unsafe_incr_refcnt(unsafe_objptr_from(value, "Tcl variable value"))
         stage = 2
         # Call C function.
-        return Glue.Tcl_ObjSetVar2(interp_ptr, name_ptr, null(ObjPtr), value_ptr, flags)
+        return Tcl_ObjSetVar2(interp_ptr, name_ptr, null(ObjPtr), value_ptr, flags)
     finally
         # Decrement reference counts.
         stage ≥ 1 && unsafe_decr_refcnt(name_ptr)
@@ -381,7 +381,7 @@ function unsafe_setvar(interp::TclInterp, part1::Name, part2::Name, value, flags
         value_ptr = unsafe_incr_refcnt(unsafe_objptr_from(value, "Tcl array value"))
         stage = 3
         # Call C function.
-        return Glue.Tcl_ObjSetVar2(interp_ptr, part1_ptr, part2_ptr, value_ptr, flags)
+        return Tcl_ObjSetVar2(interp_ptr, part1_ptr, part2_ptr, value_ptr, flags)
     finally
         # Decrement reference counts.
         stage ≥ 1 && unsafe_decr_refcnt(part1_ptr)

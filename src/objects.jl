@@ -22,8 +22,8 @@ having evaluated a script in a Tcl string object, the object internal state beco
 `:bytecode` to reflect that it now stores compiled byte code.
 
 Call `convert(T, obj)` to get a value of type `T` from Tcl object `obj`. The content of a
-Tcl object may always be converted into a string. `convert(String, obj)`, `string(obj)`, and
-`String(obj)` yield a copy of this string.
+Tcl object may always be converted into a string. Methods `convert(String, obj)`,
+`string(obj)`, and `String(obj)` yield a copy of this string.
 
 If the content of a Tcl object is valid as a list, the object may be indexed, elements may
 be added, deleted, etc.
@@ -44,7 +44,7 @@ Tcl objects have the following properties:
 [`Tcl.list`](@ref) or [`Tcl.concat`](@ref) for building Tcl objects to efficiently store
 arguments of Tcl commands.
 
-Private methods [`Tcl.value_type`](@ref) and [`Tcl.new_object`](@ref) may be extended to
+Private methods [`Tcl.Private.value_type`](@ref) and [`Tcl.Private.new_object`](@ref) may be extended to
 convert other types of value to Tcl object.
 
 """
@@ -64,7 +64,7 @@ function unsafe_duplicate(objptr::ObjPtr)
     if isnull(objptr) || unsafe_get_refcnt(objptr) < 𝟙
         return objptr
     else
-        return Glue.Tcl_DuplicateObj(objptr)
+        return Tcl_DuplicateObj(objptr)
     end
 end
 
@@ -113,7 +113,7 @@ function show_value(io::IO, obj::TclObj)
         print(io, "UInt8[")
         GC.@preserve obj begin
             len = Ref{Cint}()
-            ptr = Glue.Tcl_GetByteArrayFromObj(obj, len)
+            ptr = Tcl_GetByteArrayFromObj(obj, len)
             len = Int(len[])::Int
             if len ≤ 10
                 for i in 1:len
@@ -169,13 +169,13 @@ _getproperty(obj::TclObj, ::Val{key}) where {key} = throw(KeyError(key))
 _setproperty!(obj::TclObj, key::Symbol, val) = throw(KeyError(key))
 
 """
-    Tcl.iswritable(obj) -> bool
+    iswritable(obj) -> bool
 
 Return whether Tcl object `obj` is writable, that is whether its pointer is non-null and it
 has at most one reference.
 
 """
-Base.isreadable(obj::ManagedObject) = isreadable(pointer(obj))
+Base.isreadable(obj::TclObj) = isreadable(pointer(obj))
 Base.isreadable(objptr::ObjPtr) = !isnull(objptr)
 
 function assert_readable(objptr::ObjPtr)
@@ -184,13 +184,13 @@ function assert_readable(objptr::ObjPtr)
 end
 
 """
-    Tcl.iswritable(obj) -> bool
+    iswritable(obj) -> bool
 
 Return whether Tcl object `obj` is writable, that is whether its pointer is non-null and it
 has at most one reference.
 
 """
-Base.iswritable(obj::ManagedObject) = iswritable(pointer(obj))
+Base.iswritable(obj::TclObj) = iswritable(pointer(obj))
 Base.iswritable(objptr::ObjPtr) = !isnull(objptr) && unsafe_get_refcnt(objptr) ≤ 𝟙
 
 function assert_writable(objptr::ObjPtr)
@@ -201,7 +201,7 @@ end
 
 # The string representation of a Tcl object is owned by Tcl's value manager, so getting a C
 # string pointer to this string is always safe unless object pointer is null.
-Base.unsafe_convert(::Type{Cstring}, obj::TclObj) = Glue.Tcl_GetString(checked_pointer(obj))
+Base.unsafe_convert(::Type{Cstring}, obj::TclObj) = Tcl_GetString(checked_pointer(obj))
 Base.unsafe_convert(::Type{ObjPtr}, obj::TclObj) = checked_pointer(obj)
 Base.pointer(obj::TclObj) = getfield(obj, :ptr)
 

@@ -4,11 +4,11 @@
 # Definitions of Tcl constants and types.
 #
 
-const InterpPtr = Ptr{Glue.Tcl_Interp}
-const ObjTypePtr = Ptr{Glue.Tcl_ObjType}
-const ObjPtr = Ptr{Glue.Tcl_Obj}
+const InterpPtr = Ptr{Tcl_Interp}
+const ObjTypePtr = Ptr{Tcl_ObjType}
+const ObjPtr = Ptr{Tcl_Obj}
 
-#@assert Glue.Tcl_Obj_typePtr_type === Glue.Tcl_ObjType
+#@assert Tcl_Obj_typePtr_type === Tcl_ObjType
 
 struct TclError <: Exception
     msg::String
@@ -21,7 +21,7 @@ mutable struct TclInterp
     threadid::Int
     global _TclInterp # private inner constructor
     function _TclInterp(ptr::InterpPtr)
-        isnull(ptr) || Glue.Tcl_Preserve(ptr)
+        isnull(ptr) || Tcl_Preserve(ptr)
         interp = new(ptr, Threads.threadid())
         return finalizer(finalize, interp)
     end
@@ -35,10 +35,9 @@ Abstract super-type of Tcl or Tk objects which manage their reference count.
 """
 abstract type ManagedObject end
 
-# Structure to store a pointer to a Tcl object. (Even though the address
-# should not be modified, it is mutable because immutable objects cannot be
-# finalized.)  The constructor will refuse to build a managed Tcl object with
-# a NULL address.
+# Structure to store a pointer to a Tcl object. (Even though the address should not be
+# modified, it is mutable because immutable objects cannot be finalized.) The constructor
+# will refuse to build a managed Tcl object with a NULL address.
 mutable struct TclObj <: ManagedObject
     ptr::ObjPtr
     global _TclObj
@@ -51,10 +50,9 @@ mutable struct TclObj <: ManagedObject
     end
 end
 
-struct Callback <: ManagedObject
-    intptr::InterpPtr # weak reference to interpreter
-    obj::TclObj # command name (possibly fully-qualified)
-    func::Function
+struct Callback{F<:Ref{<:Function}}
+    token::Ptr{Tcl_Command}
+    func::F
 end
 
 # Floating-point types.
