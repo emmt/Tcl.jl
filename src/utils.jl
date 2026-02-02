@@ -147,12 +147,7 @@ end
 
 const autoname_counter = Ref{UInt64}(0)
 
-function _getproperty(obj::TclObj, ::Val{:refcnt})
-    GC.@preserve obj begin
-        ptr = pointer(obj)
-        return isnull(ptr) ? -one(Tcl_Obj_refCount_type) : unsafe_get_refcnt(ptr)
-    end
-end
+#-------------------------------------------------------------------------- Tcl type names -
 
 """
     Tcl.Private.unsafe_get_typename(ptr) -> sym::Symbol
@@ -171,12 +166,6 @@ Return the symbolic type name of Tcl object pointer `ptr`. The result can be:
     duration of the call (i.e., protected form being garbage collected).
 
 """ unsafe_get_typename
-
-function _getproperty(obj::TclObj, ::Val{:type})
-    GC.@preserve obj begin
-        return unsafe_get_typename(pointer(obj))
-    end
-end
 
 # The table of known types is updated while objects of new types are created because seeking
 # for an existing type is much faster than creating the mutable `TclObj` structure so the

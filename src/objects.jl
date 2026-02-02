@@ -168,6 +168,19 @@ Base.setproperty!(obj::TclObj, key::Symbol, val) = _setproperty!(obj, Val(key), 
 _getproperty(obj::TclObj, ::Val{key}) where {key} = throw(KeyError(key))
 _setproperty!(obj::TclObj, key::Symbol, val) = throw(KeyError(key))
 
+function _getproperty(obj::TclObj, ::Val{:refcnt})
+    GC.@preserve obj begin
+        ptr = pointer(obj)
+        return isnull(ptr) ? -one(Tcl_Obj_refCount_type) : Tcl_GetRefCount(ptr)
+    end
+end
+
+function _getproperty(obj::TclObj, ::Val{:type})
+    GC.@preserve obj begin
+        return unsafe_get_typename(pointer(obj))
+    end
+end
+
 """
     iswritable(obj) -> bool
 
