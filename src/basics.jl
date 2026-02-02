@@ -606,8 +606,6 @@ do_one_event(flags::Integer = default_event_flags) =
     !iszero(Tcl_DoOneEvent(flags))
 
 
-AtomicType(::Type{<:Union{Function,Callback}}) = Atomic()
-
 __objptr(func::Function) = __objptr(__newobj(func))
 
 __newobj(func::Function) = __objptr(__newcallback(func))

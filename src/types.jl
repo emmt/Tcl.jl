@@ -64,40 +64,12 @@ struct PrefixedFunction{F,T}
 end
 (f::PrefixedFunction)(args...; kwds...) = f.func(f.arg1, args...; kwds...)
 
-"""
-
-The abstract type `Trait` is inherited by types indicating specific traits.
-
-See also: [`Tcl.AtomicType`](@ref).
-
-"""
-abstract type Trait end
-
-# Define the `AtomicType` trait and its 2 singleton sub-types `Atomic` and
-# `NonAtomic`.
-abstract type AtomicType <: Trait end
-for T in (:NonAtomic, :Atomic)
-    @eval begin
-        struct $T <: AtomicType end
-        @doc @doc(AtomicType) $T
-    end
-end
-
-# FIXME const TclObjCommand = TclObj{Function}
-
 # `Name` is anything that can be understood as the name of a variable or of a
 # command.
 const Name = Union{AbstractString,Symbol,TclObj}
 
 # Union of types that can be converted into a `Cstring` by `ccall` without overheads.
 const FastString = Union{AbstractString,Symbol}
-
-# FIXME # A `Byte` is any bits type that is exactly 8 bits.
-# FIXME const Byte = Union{UInt8,Int8}
-
-# FIXME # Objects of type `Iterables` are considered as iterators, making an object out
-# FIXME # of them yield a Tcl list.
-# FIXME const Iterables = Union{AbstractVector,Tuple,Set,BitSet}
 
 #------------------------------------------------------------------------------
 # Tk widgets and other Tk objects.
