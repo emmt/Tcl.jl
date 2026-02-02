@@ -29,6 +29,7 @@ include("lists.jl")
 include("basics.jl")
 include("variables.jl")
 include("callbacks.jl")
+include("events.jl")
 #include("widgets.jl")
 #include("dialogs.jl")
 #include("images.jl")
@@ -76,14 +77,14 @@ for sym in (
     :TkARGB,
     :TkABGR,
 
-    # Status values.
+    # Status constants.
     :TCL_OK,
     :TCL_ERROR,
     :TCL_RETURN,
     :TCL_BREAK,
     :TCL_CONTINUE,
 
-    # Flags for Events.
+    # Constants for events.
     :TCL_DONT_WAIT,
     :TCL_WINDOW_EVENTS,
     :TCL_FILE_EVENTS,
@@ -91,7 +92,7 @@ for sym in (
     :TCL_IDLE_EVENTS,
     :TCL_ALL_EVENTS,
 
-    # Flags for variables.
+    # Constants for variables.
     :TCL_GLOBAL_ONLY,
     :TCL_NAMESPACE_ONLY,
     :TCL_APPEND_VALUE,
@@ -101,19 +102,19 @@ for sym in (
     # Methods.
     :concat,
     :deletecommand,
-    #:do_events,
-    #:do_one_event,
+    :do_events,
+    :do_one_event,
     :eval,
     #:exec,
-    #:isrunning,
+    :isrunning,
     :exists,
     :getresult,
     :getvar,
     :list,
-    #:resume,
+    :resume,
     :setresult!,
     :setvar,
-    #:suspend,
+    :suspend,
     :tcl_library,
     :tcl_version,
     #:tkstart,
