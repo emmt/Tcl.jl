@@ -111,6 +111,7 @@ for sym in (
     :getresult,
     :getvar,
     :list,
+    :quote_string,
     :resume,
     :setresult!,
     :setvar,

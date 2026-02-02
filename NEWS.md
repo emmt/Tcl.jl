@@ -50,3 +50,6 @@ Versioning](https://semver.org).
 
 - `TclInterp` constructor can yield the shared interpreted for the thread of the caller or a
   new private interpreter.
+
+- `Tcl.quote_string(str)` yields a proper double-quoted string that can be inserted directly
+  in Tcl scripts.

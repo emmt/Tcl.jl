@@ -129,6 +129,55 @@ assert_nonnull(ptr::Ptr) = isnull(ptr) ? throw_null_pointer(ptr) : nothing
 @noinline throw_null_pointer(::Type{Ptr{T}}) where {T} =
     throw(ArgumentError("invalid NULL pointer to object of type `$T`"))
 
+#---------------------------------------------------------------------------- Quote string -
+
+"""
+    Tcl.quote_string(str)
+
+Return string `str` a valid Tcl string surrounded by double quotes that can be directly
+inserted in Tcl scripts.
+
+This is similar to `escape_string` but specialized to represent a valid Tcl string
+surrounded by double quotes in a script.
+
+"""
+function quote_string(str::AbstractString)
+    esc = ('"', '{', '}')
+    io = IOBuffer()
+    print(io, '"')
+    for c::AbstractChar in str
+        if c ∈ esc
+            print(io, '\\', c)
+        elseif isascii(c)
+            if isprint(c)
+                if c == '\\'
+                    print(io, "\\\\")
+                else
+                    print(io, c)
+                end
+            elseif c == '\0'
+                print(io, "\300\200") # see man page of `Tcl_NewStringObj`
+            elseif c == '\e'
+                print(io, "\\e")
+            elseif '\a' <= c <= '\r'
+                print(io, '\\', "abtnvfr"[Int(c)-6])
+            else
+                print(io, "\\x", string(UInt32(c), base = 16, pad = 2))
+            end
+        elseif !Base.isoverlong(c) && !Base.ismalformed(c) && isprint(c)
+            print(io, c)
+        else # malformed, overlong, or not printable
+            u = bswap(reinterpret(UInt32, c)::UInt32)
+            while true
+                print(io, "\\x", string(u % UInt8, base = 16, pad = 2))
+                (u >>= 8) == 0 && break
+            end
+        end
+    end
+    print(io, '"')
+    return String(take!(io))
+end
+
 #------------------------------------------------------------------------ Automatic names -
 
 """
