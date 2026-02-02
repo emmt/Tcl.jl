@@ -4,10 +4,6 @@ baremodule Tcl
 function eval end
 using Base
 
-# Non-exported public symbols.
-using TypeUtils: @public
-@public list concat eval exists setvar getvar unsetvar getresult setresult!
-
 """
 
 `Tcl.Private` module hosts the private API of the `Tcl` package.
@@ -115,7 +111,7 @@ for sym in (
 
     # Tk.
     #:tkstart,
-    #:@TkWidget,
+    #Symbol("@TkWidget"),
 
     # Colors.
     :TkColor,
@@ -177,6 +173,8 @@ for sym in (
     name = string(sym)
     if startswith(name, r"Tcl[A-Z]|TCL_|@?Tkk?[A-Z]")
         @eval export $sym
+    elseif VERSION ≥ v"1.11.0-DEV.469"
+        @eval $(Base.Expr(:public, sym))
     end
 end
 

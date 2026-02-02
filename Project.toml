@@ -10,7 +10,6 @@ Neutrals = "789cc80b-6f9a-47a7-8588-bb01047265c3"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Tcl_jll = "9fc9b8dd-f768-5d0d-bb0b-e65961e00eb6"
 Tk_jll = "056b5f69-f28f-5060-ad8a-df43647a2b5c"
-TypeUtils = "c3b1956e-8857-4d84-9b79-890df85b1e67"
 
 [compat]
 CEnum = "0.5.0"
@@ -18,7 +17,6 @@ Neutrals = "0.3.5"
 Tcl_jll = "8.6.14"
 Test = "<0.0.1, 1"
 Tk_jll = "8.6.12"
-TypeUtils = "1.14.0"
 julia = "1.5"
 
 [extras]
