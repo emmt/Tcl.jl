@@ -23,10 +23,10 @@ end
 
 include("glue.jl")
 include("types.jl")
-include("private.jl")
+include("utils.jl")
 include("objects.jl")
 include("lists.jl")
-include("basics.jl")
+include("interpreters.jl")
 include("variables.jl")
 include("callbacks.jl")
 include("events.jl")

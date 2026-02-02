@@ -4,89 +4,6 @@
 # Implement interface to Tcl interpreter, evaluation of scripts, callbacks...
 #
 
-
-# For a Tcl object, a valid pointer is simply non-null.
-checked_pointer(obj::TclObj) = nonnull_pointer(obj)
-
-# For a Tcl interpreter, a valid pointer is non-null and the interpreter must also live in
-# the same thread as the caller.
-function checked_pointer(interp::TclInterp)
-    ptr = nonnull_pointer(interp)
-    assert_same_thread(interp)
-    return ptr
-end
-
-# For an optional Tcl interpreter, a valid pointer may be null, otherwise the interpreter
-# must live in the same thread as the caller.
-function null_or_checked_pointer(interp::TclInterp)
-    ptr = pointer(interp)
-    isnull(ptr) || assert_same_thread(interp)
-    return ptr
-end
-
-nonnull_pointer(obj) = nonnull_pointer(pointer(obj))
-nonnull_pointer(ptr::Ptr) = isnull(ptr) ? throw_null_pointer(ptr) : ptr
-
-assert_nonnull(ptr::Ptr) = isnull(ptr) ? throw_null_pointer(ptr) : nothing
-
-@noinline throw_null_pointer(ptr::Ptr) = throw_null_pointer(typeof(ptr))
-@noinline throw_null_pointer(::Type{InterpPtr}) =
-    throw(ArgumentError("invalid NULL pointer to Tcl interpreter"))
-@noinline throw_null_pointer(::Type{ObjPtr}) =
-    throw(ArgumentError("invalid NULL pointer to Tcl object"))
-@noinline throw_null_pointer(::Type{Ptr{T}}) where {T} =
-    throw(ArgumentError("invalid NULL pointer to object of type `$T`"))
-
-"""
-    tcl_version() -> vnum::VersionNumber
-    tcl_version(Tuple) -> (major, minor, patch, rtype)::NTuple{4,Cint}
-
-Return the full version of the Tcl C library.
-
-"""
-function tcl_version()
-    major, minor, patch, rtype = tcl_version(Tuple)
-    if rtype == TCL_ALPHA_RELEASE
-        return VersionNumber(major, minor, patch, ("beta",))
-    elseif rtype == TCL_BETA_RELEASE
-        return VersionNumber(major, minor, patch, ("alpha",))
-    elseif rtype != TCL_FINAL_RELEASE
-        @warn "unknown Tcl release type $rtype"
-    end
-    return VersionNumber(major, minor, patch)
-end
-
-function tcl_version(::Type{Tuple})
-    major = Ref{Cint}()
-    minor = Ref{Cint}()
-    patch = Ref{Cint}()
-    rtype = Ref{Cint}()
-    Tcl_GetVersion(major, minor, patch, rtype)
-    return (major[], minor[], patch[], rtype[])
-end
-
-"""
-    tcl_library(; relative::Bool=false) -> dir
-
-Return the Tcl library directory as inferred from the installation of the Tcl artifact. If
-keyword `relative` is `true`, the path relative to the artifact directory is returned;
-otherwise, the absolute path is returned.
-
-The Tcl library directory contains a library of Tcl scripts, such as those used for
-auto-loading. It is also given by the global variable `"tcl_library"` which can be retrieved
-by:
-
-    interp[:tcl_library] -> dir
-    Tcl.getvar(String, interp = TclInterp(), :tcl_library) -> dir
-
-"""
-function tcl_library(; relative::Bool=false)
-    major, minor, patch, rtype = tcl_version(Tuple)
-    path = joinpath("lib", "tcl$(major).$(minor)")
-    relative && return path
-    return joinpath(Tcl_jll.artifact_dir, path)
-end
-
 #---------------------------------------------------------- Management of Tcl interpreters -
 
 """
@@ -200,18 +117,6 @@ end
 
 (interp::TclInterp)(args...; kwds...) = Tcl.eval(interp, args...; kwds...)
 
-Base.pointer(interp::TclInterp) = getfield(interp, :ptr)
-Base.unsafe_convert(::Type{InterpPtr}, interp::TclInterp) = checked_pointer(interp)
-
-assert_same_thread(interp::TclInterp) =
-    same_thread(interp) ? nothing : throw_thread_mismatch()
-
-same_thread(interp::TclInterp) =
-    getfield(interp, :threadid) == Threads.threadid()
-
-@noinline throw_thread_mismatch() = throw(AssertionError(
-    "attempt to use a Tcl interpreter in a different thread"))
-
 """
     interp[] -> str::String
     Tcl.getresult() -> str::String
@@ -235,22 +140,17 @@ getresult(::Type{T}) where {T} = getresult(T, TclInterp())
 getresult(interp::TclInterp) = get(String, interp)
 function getresult(::Type{String}, interp::TclInterp)
     GC.@preserve interp begin
-        return unsafe_string(unsafe_cstring_result(checked_pointer(interp)))
+        return unsafe_string(Tcl_GetStringResult(interp))
     end
 end
 function getresult(::Type{T}, interp::TclInterp) where {T}
     GC.@preserve interp begin
-        return unsafe_get(T, unsafe_object_result(checked_pointer(interp)))
+        return unsafe_get(T, Tcl_GetObjResult(interp))
     end
 end
 
 # Make `interp[]` yield result.
 Base.getindex(interp::TclInterp) = getresult(String, interp)
-
-# Interpreter's result. Unsafe: the returned pointer is only valid if the interpreter is
-# not deleted.
-unsafe_object_result(interp::Union{TclInterp,InterpPtr}) = Tcl_GetObjResult(interp)
-unsafe_cstring_result(interp::Union{TclInterp,InterpPtr}) = Tcl_GetStringResult(interp)
 
 """
     Tcl.setresult!(interp = TclInterp(), val) -> nothing
@@ -314,7 +214,6 @@ isdeleted(interp::TclInterp) = isnull(pointer(interp)) || !iszero(Tcl_InterpDele
 isactive(interp::TclInterp) = !isnull(pointer(interp)) && !iszero(Tcl_InterpActive(interp))
 
 @deprecate getinterp(args...; kwds...) TclInterp(args...; kwds...)
-
 
 #------------------------------------------------------------------------------
 # Evaluation of Tcl scripts.
@@ -457,23 +356,7 @@ function unsafe_result(::Type{TclStatus}, status::TclStatus, interp::InterpPtr)
 end
 
 function unsafe_result(::Type{T}, status::TclStatus, interp::InterpPtr) where {T}
-    status == TCL_OK && return unsafe_get(T, unsafe_object_result(interp))
-    status == TCL_ERROR && unsafe_throw_error(interp)
+    status == TCL_OK && return unsafe_get(T, Tcl_GetObjResult(interp))
+    status == TCL_ERROR && unsafe_error(interp)
     throw_unexpected(status)
 end
-
-@noinline throw_unexpected(status::TclStatus) =
-    throw(TclError("unexpected return status: $status"))
-
-@noinline unsafe_throw_error(interp::InterpPtr) =
-    throw(TclError(unsafe_string(unsafe_cstring_result(interp))))
-
-#--------------------------------------------------------------------------------------- Exceptions -
-
-"""
-    get_error_message(ex)
-
-Return the error message associated with exception `ex`.
-
-"""
-get_error_message(ex::Exception) = sprint(io -> showerror(io, ex))
