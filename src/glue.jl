@@ -208,13 +208,43 @@ function TclFreeObj(objPtr::Ptr{Tcl_Obj})
     @ccall libtcl.TclFreeObj(objPtr::Ptr{Tcl_Obj})::Cvoid
 end
 
-# This is not provide in <tcl.h> but is useful.
+"""
+    Tcl.Private.Tcl_GetRefCount(objptr) -> refcnt
+
+Return the current reference count of the Tcl object at address `objptr`.
+
+This is not provided in `<tcl.h>` but is useful.
+
+!!! warning
+    Unsafe function: object pointer must not be null and must remain valid during the call
+    to this function.
+
+# See also
+
+[`Tcl.Private.Tcl_IncrRefCount`](@ref) and [`Tcl.Private.Tcl_DecrRefCount`](@ref).
+
+"""
 function Tcl_GetRefCount(objPtr::Ptr{Tcl_Obj})
     refCountPtr = Ptr{Tcl_Obj_refCount_type}(objPtr + Tcl_Obj_refCount_offset)
     return unsafe_load(refCountPtr)
 end
 
-# Emulate the `Tcl_IncrRefCount` macro.
+"""
+    Tcl.Private.Tcl_IncrRefCount(objptr) -> objptr
+
+Increment the reference count of the Tcl object given its pointer and return it.
+
+This method emulates the `Tcl_IncrRefCount` macro defined in `<tcl.h>`.
+
+!!! warning
+    Unsafe function: object pointer must not be null and must remain valid during the call
+    to this function.
+
+# See also
+
+[`Tcl.Private.Tcl_DecrRefCount`](@ref) and [`Tcl.Private.Tcl_GetRefCount`](@ref).
+
+"""
 function Tcl_IncrRefCount(objPtr::Ptr{Tcl_Obj})
     refCountPtr = Ptr{Tcl_Obj_refCount_type}(objPtr + Tcl_Obj_refCount_offset)
     refCount = unsafe_load(refCountPtr) + one(Tcl_Obj_refCount_type)
@@ -222,7 +252,24 @@ function Tcl_IncrRefCount(objPtr::Ptr{Tcl_Obj})
     return objPtr
 end
 
-# Emulate the `Tcl_DecrRefCount` macro.
+"""
+    Tcl.Private.Tcl_DecrRefCount(objptr) -> refcnt
+
+Decrement the reference count of the Tcl object given its pointer and return its new
+reference count. If `refcnt < 1` holds, the Tcl object has been released and `objptr` shall
+no longer be used.
+
+This method emulates the `Tcl_DecrRefCount` macro defined in `<tcl.h>`.
+
+!!! warning
+    Unsafe function: object pointer must not be null and must remain valid during the call
+    to this function.
+
+# See also
+
+[`Tcl.Private.Tcl_IncrRefCount`](@ref) and [`Tcl.Private.Tcl_GetRefCount`](@ref).
+
+"""
 function Tcl_DecrRefCount(objPtr::Ptr{Tcl_Obj})
     refCountPtr = Ptr{Tcl_Obj_refCount_type}(objPtr + Tcl_Obj_refCount_offset)
     refCount = unsafe_load(refCountPtr) - one(Tcl_Obj_refCount_type)

@@ -98,7 +98,7 @@ function Base.getindex(list::TclObj, indices::AbstractVector{<:Integer})
                 unsafe_append_element(result, unsafe_load(objv, index))
             end
         catch
-            unsafe_decr_refcnt(result)
+            Tcl_DecrRefCount(result)
             rethrow()
         end
         return _TclObj(result)
@@ -120,7 +120,7 @@ function Base.getindex(list::TclObj, flags::AbstractVector{Bool})
                 end
             end
         catch
-            unsafe_decr_refcnt(result)
+            Tcl_DecrRefCount(result)
             rethrow()
         end
         return _TclObj(result)
@@ -184,7 +184,7 @@ end
 # length(list)`, `value` is appended to the end of the list.
 function Base.setindex!(list::TclObj, value, index::Integer)
     GC.@preserve list value begin
-        obj = unsafe_incr_refcnt(
+        obj = Tcl_IncrRefCount(
             if value isa TclObj
                 checked_pointer(value)
             else
@@ -193,7 +193,7 @@ function Base.setindex!(list::TclObj, value, index::Integer)
         try
             unsafe_replace_list(pointer(list), index - 1, 1, 1, Ref(obj))
         finally
-            unsafe_decr_refcnt(obj)
+            Tcl_DecrRefCount(obj)
         end
     end
     return list
@@ -304,7 +304,7 @@ function unsafe_new_list(f::Function, interp::InterpPtr, args...)
             f(interp, list, arg)
         end
     catch
-        unsafe_decr_refcnt(list) # free list object
+        Tcl_DecrRefCount(list) # free list object
         rethrow()
     end
     return list
@@ -318,7 +318,7 @@ function unsafe_new_list(f::Function, interp::InterpPtr,
             f(interp, list, unsafe_load(objv, i))
         end
     catch
-        unsafe_decr_refcnt(list)
+        Tcl_DecrRefCount(list)
         rethrow()
     end
     return list
@@ -390,11 +390,11 @@ for (jl, (c, mesg)) in (:unsafe_append_element => (:(Tcl_ListObjAppendElement),
         end
 
         function $jl(interp::InterpPtr, list::ObjPtr, arg)
-            obj = unsafe_incr_refcnt(new_object(arg))
+            obj = Tcl_IncrRefCount(new_object(arg))
             try
                 $jl(interp, list, obj)
             finally
-                unsafe_decr_refcnt(obj)
+                Tcl_DecrRefCount(obj)
             end
             return nothing
         end

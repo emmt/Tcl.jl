@@ -147,56 +147,6 @@ end
 
 const autoname_counter = Ref{UInt64}(0)
 
-"""
-    Tcl.Private.unsafe_incr_refcnt(objptr) -> objptr
-
-Increment the reference count of the Tcl object given its pointer and return it.
-
-!!! warning
-    Unsafe function: object pointer must not be null and must remain valid during the call
-    to this function.
-
-# See also
-
-[`Tcl.Private.unsafe_decr_refcnt`](@ref) and [`Tcl.Private.unsafe_get_refcnt`](@ref).
-
-"""
-unsafe_incr_refcnt(obj::ObjPtr) = Tcl_IncrRefCount(obj)
-
-"""
-    Tcl.Private.unsafe_decr_refcnt(objptr) -> refcnt
-
-Decrement the reference count of the Tcl object given its pointer and return its new
-reference count. If `refcnt < 1` holds, the Tcl object has been released and `objptr` shall
-no longer be used.
-
-!!! warning
-    Unsafe function: object pointer must not be null and must remain valid during the call
-    to this function.
-
-# See also
-
-[`Tcl.Private.unsafe_incr_refcnt`](@ref) and [`Tcl.Private.unsafe_get_refcnt`](@ref).
-
-"""
-unsafe_decr_refcnt(obj::ObjPtr) = Tcl_DecrRefCount(obj)
-
-"""
-    Tcl.Private.unsafe_get_refcnt(objptr) -> refcnt
-
-Return the current reference count of the Tcl object at address `objptr`.
-
-!!! warning
-    Unsafe function: object pointer must not be null and must remain valid during the call
-    to this function.
-
-# See also
-
-[`Tcl.Private.unsafe_incr_refcnt`](@ref) and [`Tcl.Private.unsafe_decr_refcnt`](@ref).
-
-"""
-unsafe_get_refcnt(obj::ObjPtr) = Tcl_GetRefCount(obj)
-
 function _getproperty(obj::TclObj, ::Val{:refcnt})
     GC.@preserve obj begin
         ptr = pointer(obj)

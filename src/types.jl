@@ -44,7 +44,7 @@ mutable struct TclObj <: ManagedObject
     function _TclObj(ptr::ObjPtr)
         if !isnull(ptr)
             _ = unsafe_get_typename(ptr) # register object's type
-            unsafe_incr_refcnt(ptr)
+            Tcl_IncrRefCount(ptr)
         end
         return finalizer(finalize, new(ptr))
     end

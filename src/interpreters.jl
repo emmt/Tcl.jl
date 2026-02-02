@@ -187,8 +187,8 @@ function setresult!(interp::TclInterp, val)
         else
             # A safer approach is to increment the reference count of the temporary object
             # before calling `Tcl_SetObjResult` and decrement it after.
-            Tcl_SetObjResult(interp_ptr, unsafe_incr_refcnt(result_ptr))
-            unsafe_decr_refcnt(result_ptr)
+            Tcl_SetObjResult(interp_ptr, Tcl_IncrRefCount(result_ptr))
+            Tcl_DecrRefCount(result_ptr)
         end
     end
     return nothing
@@ -344,9 +344,9 @@ function Tcl.eval(::Type{T}, interp::TclInterp, args...) where {T}
     GC.@preserve interp begin
         interp_ptr = checked_pointer(interp)
         list_ptr = new_list(unsafe_append_list, interp_ptr, args...)
-        status = Tcl_EvalObjEx(interp_ptr, unsafe_incr_refcnt(list_ptr),
+        status = Tcl_EvalObjEx(interp_ptr, Tcl_IncrRefCount(list_ptr),
                                     TCL_EVAL_DIRECT | TCL_EVAL_GLOBAL)
-        unsafe_decr_refcnt(list_ptr)
+        Tcl_DecrRefCount(list_ptr)
         return unsafe_result(T, status, interp_ptr)
     end
 end

@@ -61,7 +61,7 @@ function Base.copy(obj::TclObj)
 end
 
 function unsafe_duplicate(objptr::ObjPtr)
-    if isnull(objptr) || unsafe_get_refcnt(objptr) < 𝟙
+    if isnull(objptr) || Tcl_GetRefCount(objptr) < 𝟙
         return objptr
     else
         return Tcl_DuplicateObj(objptr)
@@ -191,11 +191,11 @@ has at most one reference.
 
 """
 Base.iswritable(obj::TclObj) = iswritable(pointer(obj))
-Base.iswritable(objptr::ObjPtr) = !isnull(objptr) && unsafe_get_refcnt(objptr) ≤ 𝟙
+Base.iswritable(objptr::ObjPtr) = !isnull(objptr) && Tcl_GetRefCount(objptr) ≤ 𝟙
 
 function assert_writable(objptr::ObjPtr)
     isnull(objptr) && assertion_error("null Tcl object is not writable")
-    unsafe_get_refcnt(objptr) > 𝟙 && assertion_error("shared Tcl object is not writable")
+    Tcl_GetRefCount(objptr) > 𝟙 && assertion_error("shared Tcl object is not writable")
     return objptr
 end
 
@@ -211,8 +211,8 @@ end
 function _setproperty!(obj::TclObj, ::Val{:ptr}, newptr::ObjPtr)
     oldptr = getfield(obj, :ptr)
     if newptr != oldptr
-        isnull(newptr) || unsafe_incr_refcnt(newptr)
-        isnull(oldptr) || unsafe_decr_refcnt(oldptr)
+        isnull(newptr) || Tcl_IncrRefCount(newptr)
+        isnull(oldptr) || Tcl_DecrRefCount(oldptr)
         setfield!(obj, :ptr, newptr)
     end
     nothing
@@ -240,8 +240,8 @@ of `0`.
 # See also
 
 [`TclObj`](@ref), [`Tcl.Private.new_list`](@ref), [`Tcl.Private.value_type`](@ref),
-[`Tcl.Private.unsafe_get_refcnt`](@ref), [`Tcl.Private.unsafe_incr_refcnt`](@ref), and
-[`Tcl.Private.unsafe_decr_refcnt`](@ref).
+[`Tcl.Private.Tcl_GetRefCount`](@ref), [`Tcl.Private.Tcl_IncrRefCount`](@ref), and
+[`Tcl.Private.Tcl_DecrRefCount`](@ref).
 
 """
 new_object
@@ -432,7 +432,7 @@ function new_object(tup::Tuple)
             unsafe_append_element(list, item)
         end
     catch
-        unsafe_decr_refcnt(list)
+        Tcl_DecrRefCount(list)
         rethrow()
     end
     return list

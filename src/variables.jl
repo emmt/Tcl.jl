@@ -113,12 +113,12 @@ for (name, decl) in ((:name,)         => (:(name::Name),),
                 if T == TclObj
                     return _TclObj(value_ptr)
                 else
-                    unsafe_incr_refcnt(value_ptr)
+                    Tcl_IncrRefCount(value_ptr)
                     try
                         # Attempt conversion.
                         return unsafe_get(T, value_ptr)
                     finally
-                        unsafe_decr_refcnt(value_ptr)
+                        Tcl_DecrRefCount(value_ptr)
                     end
                 end
             end
@@ -292,9 +292,9 @@ end
 function unsafe_getvar(interp::TclInterp, name::Name, flags::Integer)
     GC.@preserve interp name begin
         interp_ptr = checked_pointer(interp)
-        name_ptr = unsafe_incr_refcnt(unsafe_objptr_from(name, "Tcl variable name"))
+        name_ptr = Tcl_IncrRefCount(unsafe_objptr_from(name, "Tcl variable name"))
         value_ptr = Tcl_ObjGetVar2(interp_ptr, name_ptr, null(ObjPtr), flags)
-        unsafe_decr_refcnt(name_ptr)
+        Tcl_DecrRefCount(name_ptr)
         return value_ptr
     end
 end
@@ -313,16 +313,16 @@ function unsafe_getvar(interp::TclInterp, part1::Name, part2::Name, flags::Integ
         stage = 0 # counter to memorize which arguments are to be released
         try
             # Retrieve pointers and increment reference counts.
-            part1_ptr = unsafe_incr_refcnt(unsafe_objptr_from(part1, "Tcl array name"))
+            part1_ptr = Tcl_IncrRefCount(unsafe_objptr_from(part1, "Tcl array name"))
             stage = 1
-            part1_ptr = unsafe_incr_refcnt(unsafe_objptr_from(part2, "Tcl array index"))
+            part1_ptr = Tcl_IncrRefCount(unsafe_objptr_from(part2, "Tcl array index"))
             stage = 2
             # Call C function.
             return Tcl_ObjGetVar2(interp_ptr, part1_ptr, part2_ptr, flags)
         finally
             # Decrement reference counts.
-            stage ≥ 1 && unsafe_decr_refcnt(part1_ptr)
-            stage ≥ 2 && unsafe_decr_refcnt(part2_ptr)
+            stage ≥ 1 && Tcl_DecrRefCount(part1_ptr)
+            stage ≥ 2 && Tcl_DecrRefCount(part2_ptr)
         end
     end
 end
@@ -355,16 +355,16 @@ function unsafe_setvar(interp::TclInterp, name::Name, value, flags::Integer)
     stage = 0 # counter to memorize which arguments are to be released
     try
         # Retrieve pointers and increment reference counts.
-        name_ptr = unsafe_incr_refcnt(unsafe_objptr_from(name, "Tcl variable name"))
+        name_ptr = Tcl_IncrRefCount(unsafe_objptr_from(name, "Tcl variable name"))
         stage = 1
-        value_ptr = unsafe_incr_refcnt(unsafe_objptr_from(value, "Tcl variable value"))
+        value_ptr = Tcl_IncrRefCount(unsafe_objptr_from(value, "Tcl variable value"))
         stage = 2
         # Call C function.
         return Tcl_ObjSetVar2(interp_ptr, name_ptr, null(ObjPtr), value_ptr, flags)
     finally
         # Decrement reference counts.
-        stage ≥ 1 && unsafe_decr_refcnt(name_ptr)
-        stage ≥ 2 && unsafe_decr_refcnt(value_ptr)
+        stage ≥ 1 && Tcl_DecrRefCount(name_ptr)
+        stage ≥ 2 && Tcl_DecrRefCount(value_ptr)
     end
 end
 
@@ -374,19 +374,19 @@ function unsafe_setvar(interp::TclInterp, part1::Name, part2::Name, value, flags
     stage = 0 # counter to memorize which arguments are to be released
     try
         # Retrieve pointers and increment reference counts.
-        part1_ptr = unsafe_incr_refcnt(unsafe_objptr_from(part1, "Tcl array name"))
+        part1_ptr = Tcl_IncrRefCount(unsafe_objptr_from(part1, "Tcl array name"))
         stage = 1
-        part2_ptr = unsafe_incr_refcnt(unsafe_objptr_from(part2, "Tcl array index"))
+        part2_ptr = Tcl_IncrRefCount(unsafe_objptr_from(part2, "Tcl array index"))
         stage = 2
-        value_ptr = unsafe_incr_refcnt(unsafe_objptr_from(value, "Tcl array value"))
+        value_ptr = Tcl_IncrRefCount(unsafe_objptr_from(value, "Tcl array value"))
         stage = 3
         # Call C function.
         return Tcl_ObjSetVar2(interp_ptr, part1_ptr, part2_ptr, value_ptr, flags)
     finally
         # Decrement reference counts.
-        stage ≥ 1 && unsafe_decr_refcnt(part1_ptr)
-        stage ≥ 2 && unsafe_decr_refcnt(part2_ptr)
-        stage ≥ 3 && unsafe_decr_refcnt(value_ptr)
+        stage ≥ 1 && Tcl_DecrRefCount(part1_ptr)
+        stage ≥ 2 && Tcl_DecrRefCount(part2_ptr)
+        stage ≥ 3 && Tcl_DecrRefCount(value_ptr)
     end
 end
 
