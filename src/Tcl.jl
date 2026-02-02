@@ -171,7 +171,7 @@ for sym in (
         @eval import .Private: $sym
     end
     name = string(sym)
-    if startswith(name, r"Tcl[A-Z]|TCL_|@?Tkk?[A-Z]")
+    if startswith(name, r"Tcl[A-Z]|tcl_|TCL_|@?Tkk?[A-Z]")
         @eval export $sym
     elseif VERSION ≥ v"1.11.0-DEV.469"
         @eval $(Base.Expr(:public, sym))
