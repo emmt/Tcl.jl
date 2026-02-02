@@ -50,8 +50,10 @@ mutable struct TclObj <: ManagedObject
     end
 end
 
-struct Callback{F<:Ref{<:Function}}
-    token::Ptr{Tcl_Command}
+# `Callback` must be mutable to have a stable address given by `pointer_from_objref`.
+mutable struct Callback{F<:Function}
+    interp::TclInterp
+    token::Tcl_Command
     func::F
 end
 

@@ -281,7 +281,7 @@ end
 
 function new_list(f::Function, interp::TclInterp, objc::Integer, objv::Ptr{Ptr{Tcl_Obj}})
     GC.@preserve interp begin
-        return unsafe_new_list(f, null_or_checked_pointer(list), objc, objv)
+        return unsafe_new_list(f, null_or_checked_pointer(interp), objc, objv)
     end
 end
 
@@ -321,7 +321,7 @@ function unsafe_new_list(f::Function, interp::InterpPtr,
         unsafe_decr_refcnt(list)
         rethrow()
     end
-    return lis_ptr
+    return list
 end
 
 # Appending a new item to a list with `Tcl_ListObjAppendElement` or `Tcl_ListObjAppendList`

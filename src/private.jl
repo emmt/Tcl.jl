@@ -28,6 +28,22 @@ null(::Type{Ptr{T}}) where {T} = Ptr{T}(0)
 null(::Type{Cstring}) = Cstring(C_NULL)
 
 """
+    Tcl.Private.autoname(pfx = "jl_auto_")
+
+Return a unique with given prefix. The result is a string of the form `pfx#` where `#` is a
+unique number.
+
+"""
+function autoname(pfx::AbstractString = "jl_auto_")
+    global autoname_counter
+    n = autoname_counter[] + 𝟙
+    autoname_counter[] = n
+    return pfx*string(n)
+end
+
+const autoname_counter = Ref{UInt64}(0)
+
+"""
     Tcl.Private.value_type(x)
     Tcl.Private.value_type(typeof(x))
 

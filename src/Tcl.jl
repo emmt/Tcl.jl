@@ -28,7 +28,7 @@ include("objects.jl")
 include("lists.jl")
 include("basics.jl")
 include("variables.jl")
-#include("callbacks.jl")
+include("callbacks.jl")
 #include("widgets.jl")
 #include("dialogs.jl")
 #include("images.jl")
@@ -45,6 +45,11 @@ function __init__()
     # strings.
     unsafe_register_new_typename(ObjTypePtr(0))
 
+    # Compile C functions for callbacks.
+    release_object_proc[] = @cfunction(unsafe_release, Cvoid, (Ptr{Cvoid},))
+    eval_command_proc[] = @cfunction(eval_command, TclStatus,
+                                     (ClientData, Ptr{Tcl_Interp},
+                                      Cint, Ptr{Ptr{Tcl_Obj}}))
     return nothing
 end
 
@@ -53,65 +58,13 @@ end # module
 # Public symbols. Only those with recognizable prefixes (like "Tcl", "TCL_", "Tk", etc.)
 # are exported, the other must be explicitly imported or used with the `Tcl.` prefix.
 for sym in (
-    # Status.
-    :TclStatus,
-    :TCL_OK,
-    :TCL_ERROR,
-    :TCL_RETURN,
-    :TCL_BREAK,
-    :TCL_CONTINUE,
-
-    # Events.
-    :TCL_DONT_WAIT,
-    :TCL_WINDOW_EVENTS,
-    :TCL_FILE_EVENTS,
-    :TCL_TIMER_EVENTS,
-    :TCL_IDLE_EVENTS,
-    :TCL_ALL_EVENTS,
-    #:do_evants,
-    #:do_one_event,
-    #:isrunning,
-    #:resume,
-    #:suspend,
-
-    # Variables.
-    :TCL_GLOBAL_ONLY,
-    :TCL_NAMESPACE_ONLY,
-    :TCL_APPEND_VALUE,
-    :TCL_LIST_ELEMENT,
-    :TCL_LEAVE_ERR_MSG,
-    :exists,
-    :getvar,
-    :setvar,
-    :unsetvar,
-
-    # Interpreters.
-    :TclInterp,
-    :getresult,
-    :setresult!,
-
     # Types.
-    #:Callback
-    :TclObj,
+    :Callback,
     :TclError,
-    :WideInt,
-
-    # Scripts.
-    #:eval,
-    #:exec,
-
-    # Lists.
-    :concat,
-    :list,
-
-    # Others.
+    :TclInterp,
     :TclObj,
-    :tcl_library,
-    :tcl_version,
-
-    # Tk.
-    #:tkstart,
-    #Symbol("@TkWidget"),
+    :TclStatus,
+    :WideInt,
 
     # Colors.
     :TkColor,
@@ -123,7 +76,51 @@ for sym in (
     :TkARGB,
     :TkABGR,
 
+    # Status values.
+    :TCL_OK,
+    :TCL_ERROR,
+    :TCL_RETURN,
+    :TCL_BREAK,
+    :TCL_CONTINUE,
+
+    # Flags for Events.
+    :TCL_DONT_WAIT,
+    :TCL_WINDOW_EVENTS,
+    :TCL_FILE_EVENTS,
+    :TCL_TIMER_EVENTS,
+    :TCL_IDLE_EVENTS,
+    :TCL_ALL_EVENTS,
+
+    # Flags for variables.
+    :TCL_GLOBAL_ONLY,
+    :TCL_NAMESPACE_ONLY,
+    :TCL_APPEND_VALUE,
+    :TCL_LIST_ELEMENT,
+    :TCL_LEAVE_ERR_MSG,
+
+    # Methods.
+    :concat,
+    :deletecommand,
+    #:do_events,
+    #:do_one_event,
+    :eval,
+    #:exec,
+    #:isrunning,
+    :exists,
+    :getresult,
+    :getvar,
+    :list,
+    #:resume,
+    :setresult!,
+    :setvar,
+    #:suspend,
+    :tcl_library,
+    :tcl_version,
+    #:tkstart,
+    :unsetvar,
+
     # Widgets.
+    #Symbol("@TkWidget"),
     #:TkObject,
     #:TkImage,
     #:TkWidget,
@@ -169,7 +166,9 @@ for sym in (
 
     # Import public symbols from the `Private` module, export those prefixed with `Tcl`,
     # `TCL_`, `Tk`, `@Tk`, `Ttk` or `TK_`, and declare the others as "public".
-    @eval import .Private: $sym
+    if sym != :eval
+        @eval import .Private: $sym
+    end
     name = string(sym)
     if startswith(name, r"Tcl[A-Z]|TCL_|@?Tkk?[A-Z]")
         @eval export $sym

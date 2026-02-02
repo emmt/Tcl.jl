@@ -87,26 +87,6 @@ function tcl_library(; relative::Bool=false)
     return joinpath(Tcl_jll.artifact_dir, path)
 end
 
-#=
-#------------------------------------------------------------------------------
-# Automatically name objects.
-
-const __counter = Dict{String,Int}()
-
-"""
-    autoname(pfx = "jl_auto")
-
-yields a unique name with given prefix.  The result is a string of the form
-`pfx#` where `#` is a unique number for that prefix.
-"""
-function autoname(pfx::AbstractString = "jl_auto")
-    global __counter
-    n = get(__counter, pfx, 0) + 1
-    __counter[pfx] = n
-    return pfx*string(n)
-end
-=#
-
 #---------------------------------------------------------- Management of Tcl interpreters -
 
 """
@@ -298,7 +278,7 @@ function setresult!(interp::TclInterp, val)
     # object.
     GC.@preserve interp begin
         interp_ptr = checked_pointer(interp) # this may throw
-        result_ptr = new_object_object(val) # this may throw
+        result_ptr = new_object(val) # this may throw
         if true
             # As can be seen in `generic/tclResult.c`, `Tcl_SetObjResult` does manage the
             # reference count of its object argument so it is OK to directly pass a
@@ -488,35 +468,17 @@ end
 @noinline unsafe_throw_error(interp::InterpPtr) =
     throw(TclError(unsafe_string(unsafe_cstring_result(interp))))
 
+#--------------------------------------------------------------------------------------- Exceptions -
+
+"""
+    get_error_message(ex)
+
+Return the error message associated with exception `ex`.
+
+"""
+get_error_message(ex::Exception) = sprint(io -> showerror(io, ex))
 
 #=
-
-#------------------------------------------------------------------------------
-# Exceptions
-
-"""
-```julia
-Tcl.error(arg)
-```
-
-throws a [`TclError`](@ref) exception, argument `arg` can be the error message
-as a string or a Tcl interpreter (in which case the error message is assumed to
-be the current result of the Tcl interpreter).
-
-"""
-Tcl.error(msg::AbstractString) = throw(TclError(string(msg)))
-Tcl.error(interp::TclInterp) = Tcl.error(getresult(String, interp))
-
-"""
-```julia
-geterrmsg(ex)
-```
-
-yields the error message associated with exception `ex`.
-
-"""
-geterrmsg(ex::Exception) = sprint(io -> showerror(io, ex))
-
 #------------------------------------------------------------------------------
 # Processing Tcl/Tk events.  The function `do_events` must be repeatedly
 # called to process events when Tk is loaded.
