@@ -334,11 +334,17 @@ interpreter `interp`, and return a value of type `T`. Any `key => val` pair in `
 converted in the pair of arguments `-key` and `val` in the command list (note the hyphen
 before the key name).
 
-The evaluation of a Tcl command stores a result or an error message in the interpreter and
-returns a status. If `T` is `TclStatus`, the status of the evaluation is returned and the
-command result may be retrieved by calling [`Tcl.getresult`](@ref). Otherwise, the command
-result is returned as a value of type `T` if the evaluation status is [`TCL_OK`](@ref) and
-an exception is thrown for any other status.
+The evaluation of a Tcl command stores a result (or an error message) in the interpreter and
+returns a status. The behavior of `Tcl.exec` depend on the type `T` of the expected result:
+
+* If `T` is `TclStatus`, the status of the evaluation is returned and the command result may
+  be retrieved by calling [`Tcl.getresult`](@ref).
+
+* If `T` is `Nothing`, an exception is thrown if the status is not [`TCL_OK`](@ref) and
+  `nothing` is returned otherwise (i.e., the result of the command is ignored).
+
+* Otherwise, an exception is thrown if the status is not [`TCL_OK`](@ref) and the result of
+  the command is returned as a value of type `T` otherwise.
 
 # See also
 
@@ -389,14 +395,17 @@ interpreter `interp`, and return a value of type `T`.Any `key => val` pair in `a
 converted in the pair of arguments `-key` and `val` in the script list (note the hyphen
 before the key name).
 
-The evaluation of a Tcl script stores a result or an error message in the interpreter and
-returns a status. If `T` is `TclStatus`, the status of the evaluation is returned and the
-script result may be retrieved by calling [`Tcl.getresult`](@ref). Otherwise, the script
-result is returned as a value of type `T` if the evaluation status is [`TCL_OK`](@ref) and
-an exception is thrown for any other status.
+The evaluation of a Tcl script stores a result (or an error message) in the interpreter and
+returns a status. The behavior of `Tcl.eval` depend on the type `T` of the expected result:
 
-Use `Tcl.exec` if you want to consider each argument in `args...` as a distinct
-command argument.
+* If `T` is `TclStatus`, the status of the evaluation is returned and the script result may
+  be retrieved by calling [`Tcl.getresult`](@ref).
+
+* If `T` is `Nothing`, an exception is thrown if the status is not [`TCL_OK`](@ref) and
+  `nothing` is returned otherwise (i.e., the result of the script is ignored).
+
+* Otherwise, an exception is thrown if the status is not [`TCL_OK`](@ref) and the result of
+  the script is returned as a value of type `T` otherwise.
 
 # See also
 
@@ -469,6 +478,12 @@ end
 
 function unsafe_result(::Type{TclStatus}, status::TclStatus, interp::InterpPtr)
     return status
+end
+
+function unsafe_result(::Type{Nothing}, status::TclStatus, interp::InterpPtr)
+    status == TCL_OK && return nothing
+    status == TCL_ERROR && unsafe_error(interp)
+    throw_unexpected(status)
 end
 
 function unsafe_result(::Type{T}, status::TclStatus, interp::InterpPtr) where {T}
