@@ -5,77 +5,80 @@
 #
 
 """
-    @TkWidget cls cmd pfx
+    @TkWidget type class command prefix
 
-Create widget class `cls` based on Tk command `cmd` and using prefix `pfx` for automatically
-defined widget names. If `pfx` starts with a dot, a top-level widget class is assumed. For
-now, `cmd` and `pfx` must be string literals.
+Define structure `type` for widget `class` based on Tk `command` and using `prefix` for
+automatically defined widget names. If `prefix` starts with a dot, a top-level widget is
+assumed. `class` is the class name as given by the Tk command `winfo class \$w` and is
+needed to uniquely identify Julia widget type given its Tk class. For now, `command` and
+`prefix` must be string literals.
 
 """
-macro TkWidget(_cls, cmd, pfx)
+macro TkWidget(_type, class, command, prefix)
 
-    cls = esc(_cls)
-    isa(cmd, String) || error("command must be a string literal")
-    isa(pfx, String) || error("prefix must be a string literal")
+    type = esc(_type) # constructor must be in the caller's module
+    class isa Union{Symbol,String} || error("`class` must be a symbol or a string literal")
+    class isa String || (class = String(class)::String)
+    command isa String || error("`command` must be a string literal")
+    prefix isa String || error("`prefix` must be a string literal")
 
-    if first(pfx) == '.'
+    if first(prefix) == '.'
         # Root (top-level) widget.
         quote
-            struct $cls <: TkRootWidget
+            struct $type <: TkRootWidget
                 interp::TclInterp
                 path::String
                 obj::TclObj
-                function $cls(interp::TclInterp, name::Name, pairs::Pair...)
+                function $type(interp::TclInterp, name::Name, pairs::Pair...)
                     # It is sufficient to ensure that Tk is loaded for root widgets because
                     # other widgets must have a parent.
                     tk_start(interp)
                     path = widget_path(name)
-                    obj = create_widget(interp, $cmd, path, pairs...)
+                    obj = create_widget(interp, $command, path, pairs...)
                     return new(interp, path, obj)
                 end
             end
 
-            # Register widget class.
-            register_widget_class(widget_class_name($(string(_cls))), $cls)
-
             # Provide optional arguments.
-            $cls(pairs::Pair...) = $cls(TclInterp(), pairs...)
-            $cls(name::Name, pairs::Pair...) = $cls(TclInterp(), name, pairs...)
-            $cls(interp::TclInterp, pairs::Pair...) = $cls(interp, autoname($pfx), pairs...)
+            $type(pairs::Pair...) = $type(TclInterp(), pairs...)
+            $type(name::Name, pairs::Pair...) = $type(TclInterp(), name, pairs...)
+            $type(interp::TclInterp, pairs::Pair...) = $type(interp, autoname($prefix), pairs...)
 
             # Make the widget callable.
-            (w::$cls)(args...; kwds...) = w.interp(w.path, args...; kwds...)
+            (w::$type)(args...; kwds...) = w.interp(w.path, args...; kwds...)
 
+            # Register widget class.
+            register_widget_class($class, $type)
         end
     else
         # Other (top-level) widget.
         quote
-            struct $cls <: TkWidget
+            struct $type <: TkWidget
                 parent::TkWidget
                 interp::TclInterp
                 path::String
                 obj::TclObj
-                function $cls(parent::TkWidget, child::Name, pairs::Pair...)
+                function $type(parent::TkWidget, child::Name, pairs::Pair...)
                     interp = parent.interp
                     path = widget_path(parent, child)
-                    obj = create_widget(interp, $cmd, path, pairs...)
+                    obj = create_widget(interp, $command, path, pairs...)
                     return new(parent, interp, path, obj)
                 end
             end
 
-            # Register widget class.
-            register_widget_class(widget_class_name($(string(_cls))), $cls)
-
             # Provide optional arguments.
-            $cls(parent::Union{TkWidget,Name}, pairs::Pair...) =
-                $cls(parent, autoname($pfx), pairs...)
+            $type(parent::Union{TkWidget,Name}, pairs::Pair...) =
+                $type(parent, autoname($prefix), pairs...)
 
             # Get widget for parent.
-            $cls(parent::Name, child::Name, pairs::Pair...) =
-                $cls(TkWidget(parent), child, pairs...)
+            $type(parent::Name, child::Name, pairs::Pair...) =
+                $type(TkWidget(parent), child, pairs...)
 
             # Make the widget callable.
-            (w::$cls)(args...; kwds...) = w.interp(w.path, args...; kwds...)
+            (w::$type)(args...; kwds...) = w.interp(w.path, args...; kwds...)
+
+            # Register widget class.
+            register_widget_class($class, $type)
         end
     end
 end
@@ -93,63 +96,49 @@ function register_widget_class(class::String, ::Type{T}) where {T<:TkWidget}
     return nothing
 end
 
-# Attempt to guess widget class name in Tk.
-function widget_class_name(class::AbstractString)
-    start, stop = firstindex(class), lastindex(class)
-    if startswith(class, "Tk")
-        index = nextind(class, start, 2)
-        return String(SubString(class, index, stop))
-    elseif startswith(class, "Ttk")
-        index = nextind(class, start, 3)
-        return String("T"*SubString(class, index, stop))
-    else
-        return String(class)
-    end
-    return nothing
-end
-
 # Top-level widgets.
-@TkWidget TkToplevel      "::toplevel"          ".top"
-@TkWidget TkMenu          "::menu"              ".mnu"
+@TkWidget TkToplevel      Toplevel      "::toplevel"          ".top"
+@TkWidget TkMenu          Menu          "::menu"              ".mnu"
 
 # Tk widgets.
-@TkWidget TkButton        "::button"            "btn"
-@TkWidget TkCanvas        "::canvas"            "cnv"
-@TkWidget TkCheckbutton   "::checkbutton"       "cbt"
-@TkWidget TkEntry         "::entry"             "ent"
-@TkWidget TkFrame         "::frame"             "frm"
-@TkWidget TkLabel         "::label"             "lab"
-@TkWidget TkLabelframe    "::labelframe"        "lfr"
-@TkWidget TkListbox       "::listbox"           "lbx"
-@TkWidget TkMenubutton    "::menubutton"        "mbt"
-@TkWidget TkMessage       "::message"           "msg"
-@TkWidget TkPanedwindow   "::panedwindow"       "pwn"
-@TkWidget TkRadiobutton   "::radiobutton"       "rbt"
-@TkWidget TkScale         "::scale"             "scl"
-@TkWidget TkScrollbar     "::scrollbar"         "sbr"
-@TkWidget TkSpinbox       "::spinbox"           "sbx"
-@TkWidget TkText          "::text"              "txt"
+@TkWidget TkButton        Button        "::button"            "btn"
+@TkWidget TkCanvas        Canvas        "::canvas"            "cnv"
+@TkWidget TkCheckbutton   Checkbutton   "::checkbutton"       "cbt"
+@TkWidget TkEntry         Entry         "::entry"             "ent"
+@TkWidget TkFrame         Frame         "::frame"             "frm"
+@TkWidget TkLabel         Label         "::label"             "lab"
+@TkWidget TkLabelframe    Labelframe    "::labelframe"        "lfr"
+@TkWidget TkListbox       Listbox       "::listbox"           "lbx"
+@TkWidget TkMenubutton    Menubutton    "::menubutton"        "mbt"
+@TkWidget TkMessage       Message       "::message"           "msg"
+@TkWidget TkPanedwindow   Panedwindow   "::panedwindow"       "pwn"
+@TkWidget TkRadiobutton   Radiobutton   "::radiobutton"       "rbt"
+@TkWidget TkScale         Scale         "::scale"             "scl"
+@TkWidget TkScrollbar     Scrollbar     "::scrollbar"         "sbr"
+@TkWidget TkSpinbox       Spinbox       "::spinbox"           "sbx"
+@TkWidget TkText          Text          "::text"              "txt"
 
 # Ttk (Themed Tk) widgets.
-@TkWidget TtkButton       "::ttk::button"       "btn"
-@TkWidget TtkCheckbutton  "::ttk::checkbutton"  "cbt"
-@TkWidget TtkCombobox     "::ttk::combobox"     "cbx"
-@TkWidget TtkEntry        "::ttk::entry"        "ent"
-@TkWidget TtkFrame        "::ttk::frame"        "frm"
-@TkWidget TtkLabel        "::ttk::label"        "lab"
-@TkWidget TtkLabelframe   "::ttk::labelframe"   "lfr"
-@TkWidget TtkMenubutton   "::ttk::menubutton"   "mbt"
-@TkWidget TtkNotebook     "::ttk::notebook"     "nbk"
-@TkWidget TtkPanedwindow  "::ttk::panedwindow"  "pwn"
-@TkWidget TtkProgressbar  "::ttk::progressbar"  "pgb"
-@TkWidget TtkRadiobutton  "::ttk::radiobutton"  "rbt"
-@TkWidget TtkScale        "::ttk::scale"        "scl"
-@TkWidget TtkScrollbar    "::ttk::scrollbar"    "sbr"
-@TkWidget TtkSeparator    "::ttk::separator"    "sep"
-@TkWidget TtkSizegrip     "::ttk::sizegrip"     "szg"
-@TkWidget TtkSpinbox      "::ttk::spinbox"      "sbx"
-@TkWidget TtkTreeview     "::ttk::treeview"     "trv"
+@TkWidget TtkButton       TButton       "::ttk::button"       "btn"
+@TkWidget TtkCheckbutton  TCheckbutton  "::ttk::checkbutton"  "cbt"
+@TkWidget TtkCombobox     TCombobox     "::ttk::combobox"     "cbx"
+@TkWidget TtkEntry        TEntry        "::ttk::entry"        "ent"
+@TkWidget TtkFrame        TFrame        "::ttk::frame"        "frm"
+@TkWidget TtkLabel        TLabel        "::ttk::label"        "lab"
+@TkWidget TtkLabelframe   TLabelframe   "::ttk::labelframe"   "lfr"
+@TkWidget TtkMenubutton   TMenubutton   "::ttk::menubutton"   "mbt"
+@TkWidget TtkNotebook     TNotebook     "::ttk::notebook"     "nbk"
+@TkWidget TtkPanedwindow  TPanedwindow  "::ttk::panedwindow"  "pwn"
+@TkWidget TtkProgressbar  TProgressbar  "::ttk::progressbar"  "pgb"
+@TkWidget TtkRadiobutton  TRadiobutton  "::ttk::radiobutton"  "rbt"
+@TkWidget TtkScale        TScale        "::ttk::scale"        "scl"
+@TkWidget TtkScrollbar    TScrollbar    "::ttk::scrollbar"    "sbr"
+@TkWidget TtkSeparator    TSeparator    "::ttk::separator"    "sep"
+@TkWidget TtkSizegrip     TSizegrip     "::ttk::sizegrip"     "szg"
+@TkWidget TtkSpinbox      TSpinbox      "::ttk::spinbox"      "sbx"
+@TkWidget TtkTreeview     TTreeview     "::ttk::treeview"     "trv"
 
+# Window "." has a special class in Tk.
 register_widget_class("Tk", TkToplevel)
 
 function TkWidget(path::Name, interp::TclInterp = TclInterp())
@@ -157,9 +146,10 @@ function TkWidget(path::Name, interp::TclInterp = TclInterp())
     interp(Bool, "winfo exists", path) || argument_error(
         "\"$path\" is not the path of an existing widget")
     class = interp(String, "winfo class", path)
-    # TODO for Tix: class = string(interp(path, "configure -class")[4])
+    # TODO for Tix widgets, we may instead use: class = string(interp(path, "configure -class")[4])
     constructor = get(widget_classes, class, nothing)
-    constructor == nothing && argument_error("widget \"$path\" has unknown class \"$class\"")
+    constructor == nothing && argument_error(
+        "widget \"$path\" has unregistered class \"$class\"")
     return constructor(interp, path)
 end
 
@@ -184,8 +174,7 @@ end
 function create_widget(interp::TclInterp, cmd::String, path::String, pairs::Pair...)::TclObj
     if interp(Bool, "winfo exists", path)
         # If widget already exists, it will be simply re-used, so we just apply
-        # configuration options if any.  FIXME: there must be a way to check
-        # the correctness of the widget class.
+        # configuration options if any.
         if length(pairs) > 0
             status = interp(TclStatus, path, "configure", pairs...)
             status == TCL_OK || throw(TclError(interp))
