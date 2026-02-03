@@ -287,8 +287,13 @@ Another way to obtain an option value is:
 
 """
 cget(w::TkWidget, opt::Name) = exec(w, :cget, "-"*string(opt))
+cget(::Type{T}, w::TkWidget, opt::Name) where {T} = exec(T, w, :cget, "-"*string(opt))
+cget(w::TkWidget, ::Type{T}, opt::Name) where {T} = cget(T, w, opt)
 
 Base.getindex(w::TkWidget, key::Name) = cget(w, key)
+Base.getindex(w::TkWidget, (key,T)::Pair{<:Name,DataType}) = cget(T, w, key)
+Base.getindex(w::TkWidget, ::Type{T}, key::Name) where {T} = cget(T, w, key)
+Base.getindex(w::TkWidget, key::Name, ::Type{T}) where {T} = cget(T, w, key)
 function Base.setindex!(w::TkWidget, value, key::Name)
     exec(w, :configure, key => value)
     return w
