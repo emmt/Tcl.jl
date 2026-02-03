@@ -204,6 +204,42 @@ function Base.show(io::IO, interp::TclInterp)
     print(io, ", threadid: ", interp.threadid, ")")
 end
 
+#------------------------------------------------------------------ Interpreter properties -
+
+Base.propertynames(interp::TclInterp) = (:concat, :eval, :exec, :list, :ptr, :threadid)
+
+Base.getproperty(interp::TclInterp, key::Symbol) = _getproperty(interp, Val(key))
+_getproperty(interp::TclInterp, ::Val{:concat}) = PrefixedFunction(concat, interp)
+_getproperty(interp::TclInterp, ::Val{:eval}) = PrefixedFunction(Tcl.eval, interp)
+_getproperty(interp::TclInterp, ::Val{:exec}) = PrefixedFunction(exec, interp)
+_getproperty(interp::TclInterp, ::Val{:list}) = PrefixedFunction(list, interp)
+_getproperty(interp::TclInterp, ::Val{:ptr}) = getfield(interp, :ptr)
+_getproperty(interp::TclInterp, ::Val{:threadid}) = getfield(interp, :threadid)
+_getproperty(interp::TclInterp, ::Val{key}) where {key} = throw(KeyError(key))
+
+# Properties are read-only, only `finalize` (see below) may change their values.
+@noinline function Base.setproperty!(interp::TclInterp, key::Symbol, val)
+    key ∈ propertynames(interp) || throw(KeyError(key))
+    error("attempt to set read-only field `$key` in Tcl interpreter")
+end
+
+function finalize(interp::TclInterp)
+    if !same_thread(interp)
+        @warn "`finalize` called by wrong thread for Tcl interpreter"
+    else
+        ptr = pointer(interp)
+        if !isnull(ptr)
+            setfield!(interp, :ptr, null(ptr)) # we do not want to free more than once
+            setfield!(interp, :threadid, 0) # make this interpreter is no longer usable
+            Tcl_DeleteInterp(ptr)
+            Tcl_Release(ptr)
+        end
+    end
+    return nothing
+end
+
+#---------------------------------------------------------------------- Interpreter result -
+
 """
     interp[] -> str::String
     Tcl.getresult() -> str::String
@@ -281,21 +317,6 @@ function setresult!(interp::TclInterp, val)
     return nothing
 end
 
-function finalize(interp::TclInterp)
-    if !same_thread(interp)
-        @warn "`finalize` called by wrong thread for Tcl interpreter"
-    else
-        ptr = pointer(interp)
-        if !isnull(ptr)
-            setfield!(interp, :ptr, null(ptr)) # we do not want to free more than once
-            setfield!(interp, :threadid, 0) # make this interpreter is no longer usable
-            Tcl_DeleteInterp(ptr)
-            Tcl_Release(ptr)
-        end
-    end
-    return nothing
-end
-
 # TODO rename and doc
 isdeleted(interp::TclInterp) = isnull(pointer(interp)) || !iszero(Tcl_InterpDeleted(interp))
 isactive(interp::TclInterp) = !isnull(pointer(interp)) && !iszero(Tcl_InterpActive(interp))
@@ -342,7 +363,10 @@ end
 # Provide optional leading arguments.
 exec(args...) = exec(TclInterp(), args...)
 exec(::Type{T}, args...) where {T} = exec(T, TclInterp(), args...)
-exec(interp::TclInterp, args...) = exec(Any, interp, args...)
+exec(interp::TclInterp, args...) = exec(TclObj, interp, args...)
+
+# Re-order leading arguments.
+exec(interp::TclInterp, ::Type{T}, args...) where {T} = exec(T, interp, args...)
 
 function unsafe_append_exec_arg(interp::InterpPtr, list::ObjPtr, arg)
     unsafe_append_element(interp, list, arg)
@@ -389,6 +413,9 @@ Tcl.eval
 Tcl.eval(args...) = Tcl.eval(TclInterp(), args...)
 Tcl.eval(::Type{T}, args...) where {T} = Tcl.eval(T, TclInterp(), args...)
 Tcl.eval(interp::TclInterp, args...) = Tcl.eval(TclObj, interp, args...)
+
+# Re-order leading arguments.
+Tcl.eval(interp::TclInterp, ::Type{T}, args...) where {T} = Tcl.eval(T, interp, args...)
 
 # Evaluate script provided as a (symbolic) string.
 function Tcl.eval(::Type{T}, interp::TclInterp, script::FastString) where {T}
