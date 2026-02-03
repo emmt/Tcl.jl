@@ -347,7 +347,7 @@ exec(interp::TclInterp, args...; kwds...) =
     exec(Any, interp, args...; kwds...)
 
 function exec(::Type{T}, interp::TclInterp, args...; kwds...) where {T}
-    length(args) ≥ 1 || Tcl.error("expecting at least one argument")
+    length(args) ≥ 1 || throw(TclError("expecting at least one argument"))
     listptr = C_NULL
     __set_context(interp)
     try
@@ -409,7 +409,7 @@ function Tcl.eval(::Type{T}, interp::TclInterp, script::String) where {T}
     GC.@preserve interp script begin
         interp_ptr = checked_pointer(interp)
         status = Tcl_EvalEx(interp_ptr, pointer(script), ncodeunits(script),
-                                 TCL_EVAL_DIRECT | TCL_EVAL_GLOBAL)
+                            TCL_EVAL_DIRECT | TCL_EVAL_GLOBAL)
         return unsafe_result(T, status, interp_ptr)
     end
 end
@@ -419,7 +419,7 @@ function Tcl.eval(::Type{T}, interp::TclInterp, script::TclObj) where {T}
     GC.@preserve interp script begin
         interp_ptr = checked_pointer(interp)
         status = Tcl_EvalObjEx(interp_ptr, script,
-                                    TCL_EVAL_DIRECT | TCL_EVAL_GLOBAL)
+                               TCL_EVAL_DIRECT | TCL_EVAL_GLOBAL)
         return unsafe_result(T, status, interp_ptr)
     end
 end
@@ -432,7 +432,7 @@ function Tcl.eval(::Type{T}, interp::TclInterp, args...) where {T}
         interp_ptr = checked_pointer(interp)
         list_ptr = unsafe_new_list(unsafe_append_list, interp_ptr, args...)
         status = Tcl_EvalObjEx(interp_ptr, Tcl_IncrRefCount(list_ptr),
-                                    TCL_EVAL_DIRECT | TCL_EVAL_GLOBAL)
+                               TCL_EVAL_DIRECT | TCL_EVAL_GLOBAL)
         Tcl_DecrRefCount(list_ptr)
         return unsafe_result(T, status, interp_ptr)
     end
