@@ -193,11 +193,16 @@ function search_tclIndex!(list::Vector{String}, dir::AbstractString)
 end
 
 # Make a Tcl interpreter callable.
-
 (interp::TclInterp)(::Type{T}, args...; kwds...) where {T} =
     Tcl.eval(T, interp, args...; kwds...)
-
 (interp::TclInterp)(args...; kwds...) = Tcl.eval(interp, args...; kwds...)
+
+Base.show(io::IO, ::MIME"text/plain", interp::TclInterp) = show(io, interp)
+function Base.show(io::IO, interp::TclInterp)
+    print(io, "Tcl interpreter (address: ")
+    show(io, UInt(pointer(interp)))
+    print(io, ", threadid: ", interp.threadid, ")")
+end
 
 """
     interp[] -> str::String
