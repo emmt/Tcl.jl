@@ -425,7 +425,7 @@ end
 function Tcl.eval(::Type{T}, interp::TclInterp, args...) where {T}
     GC.@preserve interp begin
         interp_ptr = checked_pointer(interp)
-        list_ptr = new_list(unsafe_append_list, interp_ptr, args...)
+        list_ptr = unsafe_new_list(unsafe_append_list, interp_ptr, args...)
         status = Tcl_EvalObjEx(interp_ptr, Tcl_IncrRefCount(list_ptr),
                                     TCL_EVAL_DIRECT | TCL_EVAL_GLOBAL)
         Tcl_DecrRefCount(list_ptr)
