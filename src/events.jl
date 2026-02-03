@@ -35,7 +35,7 @@ Tcl.resume()
 or alternatively:
 
 ```julia
-Tcl.tkstart()
+tk_start()
 ```
 
 can be called to do that.

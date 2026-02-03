@@ -7,9 +7,9 @@
 """
     @TkWidget cls cmd pfx
 
-create widget class `cls` based on Tk command `cmd` and using prefix `pfx` for
-automatically defined widget names.  If `pfx` starts with a dot, a toplevel
-widget class is assumed.  For now, `cmd` and `pfx` must be string literals.
+Create widget class `cls` based on Tk command `cmd` and using prefix `pfx` for automatically
+defined widget names. If `pfx` starts with a dot, a top-level widget class is assumed. For
+now, `cmd` and `pfx` must be string literals.
 
 """
 macro TkWidget(_cls, cmd, pfx)
@@ -18,52 +18,119 @@ macro TkWidget(_cls, cmd, pfx)
     isa(cmd, String) || error("command must be a string literal")
     isa(pfx, String) || error("prefix must be a string literal")
 
-    pfx[1] == '.' ? quote
-
-        struct $cls <: TkRootWidget
-            interp::TclInterp
-            path::String
-            obj::TclObj{$cls}
-            function $cls(interp::TclInterp, name::Name=autoname($pfx);
-                          kwds...)
-                # It is sufficient to ensure that Tk is loaded for root widgets
-                # because other widgets must have a parent.
-                tkstart(interp)
-                path = __widgetpath(__string(name))
-                obj = __createwidget($cls, interp, $cmd, path; kwds...)
-                new(interp, path, obj)
+    if first(pfx) == '.'
+        # Root (top-level) widget.
+        quote
+            struct $cls <: TkRootWidget
+                interp::TclInterp
+                path::String
+                obj::TclObj
+                function $cls(interp::TclInterp, name::Name, pairs::Pair...)
+                    # It is sufficient to ensure that Tk is loaded for root widgets because
+                    # other widgets must have a parent.
+                    tk_start(interp)
+                    path = widget_path(name)
+                    obj = create_widget(interp, $cmd, path, pairs...)
+                    return new(interp, path, obj)
+                end
             end
+
+            # Register widget class.
+            register_widget_class(widget_class_name($(string(_cls))), $cls)
+
+            # Provide optional arguments.
+            $cls(pairs::Pair...) = $cls(TclInterp(), pairs...)
+            $cls(name::Name, pairs::Pair...) = $cls(TclInterp(), name, pairs...)
+            $cls(interp::TclInterp, pairs::Pair...) = $cls(interp, autoname($pfx), pairs...)
+
+            # Make the widget callable.
+            (w::$cls)(args...; kwds...) = w.interp(w.path, args...; kwds...)
+
         end
-
-        $cls(name::Name = autoname($pfx); kwds...) =
-            $cls(getinterp(), name; kwds...)
-
-        (w::$cls)(args...; kwds...) = Tcl.eval(w, args...; kwds...)
-
-    end : quote
-
-        struct $cls <: TkWidget
-            parent::TkWidget
-            interp::TclInterp
-            path::String
-            obj::TclObj{$cls}
-            function $cls(parent::TkWidget, child::Name=autoname($pfx);
-                          kwds...)
-                interp = getinterp(parent)
-                path = __widgetpath(parent, __string(child))
-                obj = __createwidget($cls, interp, $cmd, path; kwds...)
-                new(parent, interp, path, obj)
+    else
+        # Other (top-level) widget.
+        quote
+            struct $cls <: TkWidget
+                parent::TkWidget
+                interp::TclInterp
+                path::String
+                obj::TclObj
+                function $cls(parent::TkWidget, child::Name, pairs::Pair...)
+                    interp = parent.interp
+                    path = widget_path(parent, child)
+                    obj = create_widget(interp, $cmd, path, pairs...)
+                    return new(parent, interp, path, obj)
+                end
             end
+
+            # Register widget class.
+            register_widget_class(widget_class_name($(string(_cls))), $cls)
+
+            # Provide optional arguments.
+            $cls(parent::Union{TkWidget,Name}, pairs::Pair...) =
+                $cls(parent, autoname($pfx), pairs...)
+
+            # Get widget for parent.
+            $cls(parent::Name, child::Name, pairs::Pair...) =
+                $cls(TkWidget(parent), child, pairs...)
+
+            # Make the widget callable.
+            (w::$cls)(args...; kwds...) = w.interp(w.path, args...; kwds...)
         end
-
-        (w::$cls)(args...; kwds...) = Tcl.eval(w, args...; kwds...)
-
     end
 end
 
+const widget_classes = Dict{String,Type{<:TkWidget}}()
+
+function register_widget_class(class::String, ::Type{T}) where {T<:TkWidget}
+    if haskey(widget_classes, class)
+        S = widget_classes[class]
+        isequal(S, T) || error("attempt to register widget class `$class` for type `$T` ",
+                               "while already registered for type `$S`")
+    else
+        widget_classes[class] = T
+    end
+    return nothing
+end
+
+# Attempt to guess widget class name in Tk.
+function widget_class_name(class::AbstractString)
+    start, stop = firstindex(class), lastindex(class)
+    if startswith(class, "Tk")
+        index = nextind(class, start, 2)
+        return String(SubString(class, index, stop))
+    elseif startswith(class, "Ttk")
+        index = nextind(class, start, 3)
+        return String("T"*SubString(class, index, stop))
+    else
+        return String(class)
+    end
+    return nothing
+end
+
+# Top-level widgets.
 @TkWidget TkToplevel      "::toplevel"          ".top"
 @TkWidget TkMenu          "::menu"              ".mnu"
 
+# Tk widgets.
+@TkWidget TkButton        "::button"            "btn"
+@TkWidget TkCanvas        "::canvas"            "cnv"
+@TkWidget TkCheckbutton   "::checkbutton"       "cbt"
+@TkWidget TkEntry         "::entry"             "ent"
+@TkWidget TkFrame         "::frame"             "frm"
+@TkWidget TkLabel         "::label"             "lab"
+@TkWidget TkLabelframe    "::labelframe"        "lfr"
+@TkWidget TkListbox       "::listbox"           "lbx"
+@TkWidget TkMenubutton    "::menubutton"        "mbt"
+@TkWidget TkMessage       "::message"           "msg"
+@TkWidget TkPanedwindow   "::panedwindow"       "pwn"
+@TkWidget TkRadiobutton   "::radiobutton"       "rbt"
+@TkWidget TkScale         "::scale"             "scl"
+@TkWidget TkScrollbar     "::scrollbar"         "sbr"
+@TkWidget TkSpinbox       "::spinbox"           "sbx"
+@TkWidget TkText          "::text"              "txt"
+
+# Ttk (Themed Tk) widgets.
 @TkWidget TtkButton       "::ttk::button"       "btn"
 @TkWidget TtkCheckbutton  "::ttk::checkbutton"  "cbt"
 @TkWidget TtkCombobox     "::ttk::combobox"     "cbx"
@@ -82,86 +149,75 @@ end
 @TkWidget TtkSizegrip     "::ttk::sizegrip"     "szg"
 @TkWidget TtkSpinbox      "::ttk::spinbox"      "sbx"
 @TkWidget TtkTreeview     "::ttk::treeview"     "trv"
-@TkWidget TkButton        "::button"            "btn"
-@TkWidget TkCanvas        "::canvas"            "cnv"
-@TkWidget TkCheckbutton   "::checkbutton"       "cbt"
-@TkWidget TkEntry         "::entry"             "ent"
-@TkWidget TkFrame         "::frame"             "frm"
-@TkWidget TkLabel         "::label"             "lab"
-@TkWidget TkLabelframe    "::labelframe"        "lfr"
-@TkWidget TkListbox       "::listbox"           "lbx"
-@TkWidget TkMenubutton    "::menubutton"        "mbt"
-@TkWidget TkMessage       "::message"           "msg"
-@TkWidget TkPanedwindow   "::panedwindow"       "pwn"
-@TkWidget TkRadiobutton   "::radiobutton"       "rbt"
-@TkWidget TkScale         "::scale"             "scl"
-@TkWidget TkScrollbar     "::scrollbar"         "sbr"
-@TkWidget TkSpinbox       "::spinbox"           "sbx"
-@TkWidget TkText          "::text"              "txt"
+
+register_widget_class("Tk", TkToplevel)
+
+function TkWidget(path::Name, interp::TclInterp = TclInterp())
+    isa(path, String) || (path = String(path))
+    interp(Bool, "winfo exists", path) || argument_error(
+        "\"$path\" is not the path of an existing widget")
+    class = interp(String, "winfo class", path)
+    # TODO for Tix: class = string(interp(path, "configure -class")[4])
+    constructor = get(widget_classes, class, nothing)
+    constructor == nothing && argument_error("widget \"$path\" has unknown class \"$class\"")
+    return constructor(interp, path)
+end
 
 # Private method called to check/build the path of a child widget.
-function __widgetpath(parent::TkWidget, child::String) :: String
-    if findfirst(isequal('.'), child) === nothing
-        Tcl.error("illegal window name \"$(child)\"")
-    end
+function widget_path(parent::TkWidget, child::Union{AbstractString,Symbol})::String
+    isa(child, Union{String,SubString{String}}) || (child = String(child))
+    startswith(child, '.') && argument_error("window name \"$(child)\" must not start with a dot")
     parentpath = getpath(parent)
-    return (parentpath == "." ? "." : parentpath*".")*child
+    return ((parentpath == "." ? "." : parentpath*".")*child)
 end
 
 # Private method called to check the path of a root widget.
-function __widgetpath(path::String) :: String
-    if path[1] != '.'
-        Tcl.error("root window name must start with a dot")
-    end
-    if findnext(isequal('.'), child, 2) === nothing
-        Tcl.error("illegal root window name \"$(path)\"")
-    end
+function widget_path(path::Union{AbstractString,Symbol})::String
+    isa(path, String) || (path = String(path))
+    startswith(path, '.') || argument_error("root window name must start with a dot")
+    findnext(isequal('.'), path, nextind(path, firstindex(path))) === nothing || argument_error(
+        "illegal root window name \"$(path)\"")
     return path
 end
 
 # Private method called to create a widget.
-function __createwidget(::Type{T}, interp::TclInterp,
-                        cmd::String, path::String;
-                        kwds...) where {T<:Union{TkWidget,TkRootWidget}}
-    local objptr :: Ptr{Tcl_Obj}
+function create_widget(interp::TclInterp, cmd::String, path::String, pairs::Pair...)::TclObj
     if interp(Bool, "winfo exists", path)
         # If widget already exists, it will be simply re-used, so we just apply
         # configuration options if any.  FIXME: there must be a way to check
         # the correctness of the widget class.
-        if length(kwds) > 0
-            exec(path, "configure"; kwds...)
+        if length(pairs) > 0
+            status = interp(TclStatus, path, "configure", pairs...)
+            status == TCL_OK || throw(TclError(interp))
         end
-        objptr = __newobj(path)
+        return TclObj(path)
     else
         # Widget does not already exists, create it with configuration options.
-        if exec(TclStatus, interp, cmd, path; kwds...) != TCL_OK
-            Tcl.error(interp)
-        end
-        objptr = Tcl_GetObjResult(interp.ptr)
+        status = interp(TclStatus, cmd, path, pairs...)
+        status == TCL_OK || throw(TclError(interp))
+        return getresult(TclObj, interp)
     end
-    return TclObj{T}(objptr)
 end
 
 """
-    TkToplevel([interp], ".")
+    TkToplevel(interp=TclInterp(), ".")
 
-yields the toplevel Tk window for interpreter `interp` (or for the initial
-interpreter if this argument is omitted).  This also takes care of loading Tk
-extension in the interpreter and starting the event loop.
+Return the top-level Tk window for Tcl interpreter `interp`. This also takes care of loading
+Tk extension in the interpreter and starting the event loop.
 
 To create a new toplevel window:
 
-    TkToplevel([interp,] path; kwds...)
+    TkToplevel(interp, path, pairs...)
 
 """ TkToplevel
 
-getinterp(w::TkWidget) = w.interp
+TclInterp(w::TkWidget) = w.interp
 getpath(w::TkWidget) = w.path
-getparent(w::TkWidget) = w.parent
-getparent(::TkRootWidget) = nothing
+Base.parent(w::TkWidget) = w.parent
+Base.parent(::TkRootWidget) = nothing
 TclObj(w::TkWidget) = w.obj
-AtomicType(::Type{<:TkWidget}) = Atomic()
-__objptr(w::TkWidget) = __objptr(w.obj)
+Base.convert(::Type{TclObj}, w::TkWidget) = TclObj(w)::TclObj
+get_objptr(w::TkWidget) = get_objptr(w.obj)
 
 getpath(root::TkWidget, args::AbstractString...) =
     getpath(getpath(root), args...)
@@ -169,33 +225,36 @@ getpath(root::TkWidget, args::AbstractString...) =
 getpath(arg0::AbstractString, args::AbstractString...) =
    join(((arg0 == "." ? "" : arg0), args...), '.')
 
-Tcl.eval(w::TkWidget, args...) =
-    Tcl.eval(getinterp(w), w.obj, args...)
+Tcl.eval(w::TkWidget, args...) = Tcl.eval(TclInterp(w), w.obj, args...)
 
-exec(w::TkWidget, args...; kwds...) =
-    exec(getinterp(w), w.obj, args...; kwds...)
-
-"""
-If Tk package is not yet loaded in interpreter `interp` (or in the initial
-interpreter if this argument is missing), then:
-
-```julia
-tkstart([interp]) -> interp
-```
-
-will load Tk package and start the event loop.  The returned value is the
-interpreter into which Tk has been started.  Note that this method also takes
-care of withdrawing the root window "." to avoid its destruction as this would
-terminate the Tcl application.
+# FIXME exec(w::TkWidget, args..., pairs...) =
+# FIXME     exec(TclInterp(w), w.obj, args..., pairs...)
 
 """
-function tkstart(interp::TclInterp = getinterp()) :: TclInterp
+    tk_start(interp = TclInterp()) -> interp
+
+If Tk package is not already loaded in the interpreter `interp`, load Tk and Ttk
+packages in `interp` and start the event loop (for all interpreters).
+
+If it is detected that Tk is already loaded in the interpreter, nothing is done.
+
+!!! note
+    `tk_start` also takes care of withdrawing the root window "." to avoid its destruction
+    as this would terminate the Tcl application. Execute Tcl command `wm deiconify .` to
+    show the root window again.
+
+# See also
+
+[`Tcl.resume`](@ref) and [`TclInterp`](@ref).
+
+"""
+function tk_start(interp::TclInterp = TclInterp()) :: TclInterp
     if ! interp(Bool, "info exists tk_version")
         local status::TclStatus
         status = interp(TclStatus, "package require Tk")
         status == TCL_OK && (status = interp(TclStatus, "package require Ttk"))
         status == TCL_OK && (status = interp(TclStatus, "wm withdraw ."))
-        status == TCL_OK || Tcl.error(interp)
+        status == TCL_OK || throw(TclError(interp))
         resume()
     end
     return interp
@@ -204,42 +263,41 @@ end
 """
     Tcl.configure(w)
 
-yields all the options of Tk widget `w`, while:
+Return all the options of Tk widget `w`, while:
 
-    Tcl.configure(w, opt1=val1, opt2=val2)
+    Tcl.configure(w, opt1 => val1, opt2 => val2)
 
-change some options of widget `w`.  Options names may be specified as `String`
-or `Symbol`.  Another way to change the settings is:
+change some options of widget `w`. Options names (`opt1`, `opt2`, ...) may be specified as
+string or `Symbol`. Another way to change the settings is:
 
     w[opt1] = val1
     w[opt2] = val2
 
 """
-configure(w::TkWidget; kwds...) = exec(w, "configure"; kwds...)
+configure(w::TkWidget, pairs...) = Tcl.eval(w, "configure", pairs...)
 
 """
 
     Tcl.cget(w, opt)
 
-yields the value of the option `opt` for widget `w`.  Option `opt` may be
-specified as a `String` or as a `Symbol`.  Another way to obtain an option
-value is:
+Return the value of the option `opt` for widget `w`. Option `opt` may be specified as a
+string or as a `Symbol`. Another way to obtain an option value is:
 
     w[opt]
 
 """
-cget(w::TkWidget, opt::Name) = exec(w, "cget", "-"*string(opt))
+cget(w::TkWidget, opt::Name) = Tcl.eval(w, "cget", "-"*string(opt))
 
 Base.getindex(w::TkWidget, key::Name) = cget(w, key)
-Base.setindex!(w::TkWidget, value, key::Name) = begin
-    exec(w, "configure", "-"*string(key), value)
-    w
+function Base.setindex!(w::TkWidget, value, key::Name)
+    Tcl.eval(w, "configure", "-"*string(key), value)
+    return w
 end
 
 """
-    Tcl.grid(args...; kwds...)
-    Tcl.pack(args...; kwds...)
-    Tcl.place(args...; kwds...)
+    Tcl.grid(args..., pairs...)
+    Tcl.pack(args..., pairs...)
+    Tcl.place(args..., pairs...)
 
 communicate with one of the Tk geometry manager.  One of the arguments must be
 an instance of `TkWidget`.  For instance (assuming `top` is some frame or
@@ -257,16 +315,23 @@ function grid end
 
 for cmd in (:grid, :pack, :place)
     @eval begin
-        function $cmd(args...; kwds...)
-            for arg in args
-                if isa(arg, TkWidget)
-                    interp = getinterp(arg)
-                    return exec(interp, $(string(cmd)), args...; kwds...)
-                end
-            end
-            Tcl.error("missing a widget argument")
+        function $cmd(args...)
+            interp = common_interpreter(nothing, args...)
+            interp == nothing && argument_error("missing a widget argument")
+            return Tcl.eval(interp, $(string(cmd)), args...)
         end
     end
+end
+
+common_interpreter() = nothing
+common_interpreter(interp::Union{Nothing,TclInterp}) = interp
+common_interpreter(interp::Union{Nothing,TclInterp}, arg::Any, args...) =
+    common_interpreter(interp, args...)
+common_interpreter(::Nothing, arg::TkWidget, args...) =
+    common_interpreter(arg.interp, args...)
+function common_interpreter(interp::TclInterp, arg::TkWidget, args...)
+    pointer(interp) == pointer(arg.interp) || argument_error("not all widgets have the same interpreter")
+    return common_interpreter(interp, args...)
 end
 
 # Base.bind is overloaded because it already exists for sockets, but there
@@ -300,6 +365,6 @@ initial interpreter will be used):
 where `classname` is the name of the widget class (a string or a symbol).
 
 """
-Base.bind(arg0::TkWidget, args...) = bind(getinterp(arg0), arg0, args...)
-Base.bind(arg0::Name, args...) = bind(getinterp(), arg0, args...)
-Base.bind(interp::TclInterp, args...) = exec(interp, "bind", args...)
+Base.bind(arg0::TkWidget, args...) = bind(TclInterp(arg0), arg0, args...)
+Base.bind(arg0::Name, args...) = bind(TclInterp(), arg0, args...)
+Base.bind(interp::TclInterp, args...) = Tcl.eval(interp, "bind", args...)

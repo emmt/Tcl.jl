@@ -30,7 +30,7 @@ include("interpreters.jl")
 include("variables.jl")
 include("callbacks.jl")
 include("events.jl")
-#include("widgets.jl")
+include("widgets.jl")
 #include("dialogs.jl")
 #include("images.jl")
 
@@ -67,7 +67,7 @@ for sym in (
     :TclStatus,
     :WideInt,
 
-    # Colors.
+    # Tk colors.
     :TkColor,
     :TkGray,
     :TkRGB,
@@ -100,17 +100,22 @@ for sym in (
     :TCL_LEAVE_ERR_MSG,
 
     # Methods.
+    :cget,
     :concat,
+    :configure,
     :deletecommand,
     :do_events,
     :do_one_event,
     :eval,
     #:exec,
-    :isrunning,
     :exists,
     :getresult,
     :getvar,
+    :grid,
+    :isrunning,
     :list,
+    :pack,
+    :place,
     :quote_string,
     :resume,
     :setresult!,
@@ -118,52 +123,55 @@ for sym in (
     :suspend,
     :tcl_library,
     :tcl_version,
-    #:tkstart,
+    :tk_start,
     :unsetvar,
 
-    # Widgets.
-    #Symbol("@TkWidget"),
-    #:TkObject,
+    # Other Tk types.
     #:TkImage,
-    #:TkWidget,
-    #:TkRootWidget,
-    #:TkButton,
-    #:TkCanvas,
-    #:TkCheckbutton,
-    #:TkEntry,
-    #:TkFrame,
-    #:TkLabel,
-    #:TkLabelframe,
-    #:TkListbox,
-    #:TkMenu,
-    #:TkMenubutton,
-    #:TkMessage,
-    #:TkPanedwindow,
-    #:TkRadiobutton,
-    #:TkScale,
-    #:TkScrollbar,
-    #:TkSpinbox,
-    #:TkText,
-    #:TkToplevel,
-    #:TkWidget,
-    #:TtkButton,
-    #:TtkCheckbutton,
-    #:TtkCombobox,
-    #:TtkEntry,
-    #:TtkFrame,
-    #:TtkLabel,
-    #:TtkLabelframe,
-    #:TtkMenubutton,
-    #:TtkNotebook,
-    #:TtkPanedwindow,
-    #:TtkProgressbar,
-    #:TtkRadiobutton,
-    #:TtkScale,
-    #:TtkScrollbar,
-    #:TtkSeparator,
-    #:TtkSizegrip,
-    #:TtkSpinbox,
-    #:TtkTreeview
+    :TkObject,
+    :TkRootWidget,
+    :TkWidget,
+
+    # Tk widgets.
+    Symbol("@TkWidget"),
+    :TkButton,
+    :TkCanvas,
+    :TkCheckbutton,
+    :TkEntry,
+    :TkFrame,
+    :TkLabel,
+    :TkLabelframe,
+    :TkListbox,
+    :TkMenu,
+    :TkMenubutton,
+    :TkMessage,
+    :TkPanedwindow,
+    :TkRadiobutton,
+    :TkScale,
+    :TkScrollbar,
+    :TkSpinbox,
+    :TkText,
+    :TkToplevel,
+
+    # Ttk (Themed Tk) widgets.
+    :TtkButton,
+    :TtkCheckbutton,
+    :TtkCombobox,
+    :TtkEntry,
+    :TtkFrame,
+    :TtkLabel,
+    :TtkLabelframe,
+    :TtkMenubutton,
+    :TtkNotebook,
+    :TtkPanedwindow,
+    :TtkProgressbar,
+    :TtkRadiobutton,
+    :TtkScale,
+    :TtkScrollbar,
+    :TtkSeparator,
+    :TtkSizegrip,
+    :TtkSpinbox,
+    :TtkTreeview
     )
 
     # Import public symbols from the `Private` module, export those prefixed with `Tcl`,
@@ -172,7 +180,7 @@ for sym in (
         @eval import .Private: $sym
     end
     name = string(sym)
-    if startswith(name, r"Tcl[A-Z]|tcl_|TCL_|@?Tkk?[A-Z]")
+    if startswith(name, r"@?(Tcl|tcl_|TCL_|Tt?k|tk_)")
         @eval export $sym
     elseif VERSION ≥ v"1.11.0-DEV.469"
         @eval $(Base.Expr(:public, sym))
@@ -191,14 +199,11 @@ const __EXPORTS = (
 )
 
 import .Impl:
-    cget,
     choosecolor,
     choosedirectory,
     colorize!,
     colorize,
-    configure,
     delete,
-    deletecommand,
     findphoto,
     getheight,
     getopenfile,
@@ -206,17 +211,13 @@ import .Impl:
     getpath,
     getphotosize,
     getpixels,
-    getresult,
     getsavefile,
     getvalue,
     getvar,
     getwidth,
-    grid,
     isactive,
     isdeleted,
     messagebox,
-    pack,
-    place,
     setphotosize!,
     setpixels!,
     threshold!,

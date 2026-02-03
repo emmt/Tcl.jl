@@ -50,7 +50,7 @@ interp("package require Tk")
 ```
 
 should load Tk extension and create the "." toplevel Tk window.  But see
-[`tkstart`](@ref) method to load Tk.
+[`tk_start`](@ref) method to load Tk.
 
 """
 TclInterp(sym::Symbol) =
