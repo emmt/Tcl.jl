@@ -232,6 +232,20 @@ function _setproperty!(obj::TclObj, ::Val{:ptr}, newptr::ObjPtr)
 end
 
 """
+    Tcl.Private.get_objptr(obj::ManagedObject) -> objptr
+
+Return a pointer to the Tcl object associated with `obj`. The returned object is at least
+referenced by its parent `obj` which shall be preserved form being garbage collected while
+`objptr` is used.
+
+# See also
+
+[`TclObj`](@ref), [`Tcl.Private.ManagedObject`](@ref), and [`Tcl.Private.new_object`](@ref),
+
+"""
+get_objptr(obj::TclObj) = pointer(obj)
+
+"""
     Tcl.Private.value_type(x)
     Tcl.Private.value_type(typeof(x))
 

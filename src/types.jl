@@ -32,6 +32,9 @@ end
 
 Abstract super-type of Tcl or Tk objects which manage their reference count.
 
+Managed objects implement [`Tcl.Private.get_objptr`](@ref) to yield a pointer to their
+associated Tcl object.
+
 """
 abstract type ManagedObject end
 
