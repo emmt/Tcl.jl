@@ -45,7 +45,7 @@ macro TkWidget(_type, class, command, prefix)
             $type(interp::TclInterp, pairs::Pair...) = $type(interp, autoname($prefix), pairs...)
 
             # Make the widget callable.
-            (w::$type)(args...; kwds...) = w.interp(w.path, args...; kwds...)
+            (w::$type)(args...; kwds...) = exec(w, args...; kwds...)
 
             # Register widget class.
             register_widget_class($class, $type)
@@ -75,7 +75,7 @@ macro TkWidget(_type, class, command, prefix)
                 $type(TkWidget(parent), child, pairs...)
 
             # Make the widget callable.
-            (w::$type)(args...; kwds...) = w.interp(w.path, args...; kwds...)
+            (w::$type)(args...; kwds...) = exec(w, args...; kwds...)
 
             # Register widget class.
             register_widget_class($class, $type)
@@ -143,9 +143,9 @@ register_widget_class("Tk", TkToplevel)
 
 function TkWidget(path::Name, interp::TclInterp = TclInterp())
     isa(path, String) || (path = String(path))
-    interp(Bool, "winfo exists", path) || argument_error(
+    interp.exec(Bool, :winfo, :exists, path) || argument_error(
         "\"$path\" is not the path of an existing widget")
-    class = interp(String, "winfo class", path)
+    class = interp.exec(String, :winfo, :class, path)
     # TODO for Tix widgets, we may instead use: class = string(interp(path, "configure -class")[4])
     constructor = get(widget_classes, class, nothing)
     constructor == nothing && argument_error(
@@ -214,10 +214,9 @@ getpath(root::TkWidget, args::AbstractString...) =
 getpath(arg0::AbstractString, args::AbstractString...) =
    join(((arg0 == "." ? "" : arg0), args...), '.')
 
-Tcl.eval(w::TkWidget, args...) = Tcl.eval(TclInterp(w), w.obj, args...)
-
-# FIXME exec(w::TkWidget, args..., pairs...) =
-# FIXME     exec(TclInterp(w), w.obj, args..., pairs...)
+exec(w::TkWidget, args...) = exec(w.interp, w.obj, args...)
+exec(w::TkWidget, ::Type{T}, args...) where {T} = exec(T, w.interp, w.obj, args...)
+exec(::Type{T}, w::TkWidget, args...) where {T} = exec(T, w.interp, w.obj, args...)
 
 """
     tk_start(interp = TclInterp()) -> interp
@@ -234,7 +233,7 @@ If it is detected that Tk is already loaded in the interpreter, nothing is done.
 
 # See also
 
-[`Tcl.resume`](@ref) and [`TclInterp`](@ref).
+[`Tcl.resume`](@ref), [`TclInterp`](@ref), and [`TkWidget`](@ref).
 
 """
 function tk_start(interp::TclInterp = TclInterp()) :: TclInterp
@@ -251,51 +250,69 @@ end
 
 """
     Tcl.configure(w)
+    w(:configure)
 
-Return all the options of Tk widget `w`, while:
+Return all the options of Tk widget `w`.
 
+---
     Tcl.configure(w, opt1 => val1, opt2 => val2)
+    w(:configure, opt1 => val1, opt2 => val2)
 
-change some options of widget `w`. Options names (`opt1`, `opt2`, ...) may be specified as
-string or `Symbol`. Another way to change the settings is:
+Change some options of widget `w`. Options names (`opt1`, `opt2`, ...) may be specified as
+string or `Symbol` and shall correspond to Tk option names without the leading "-". Another
+way to change the settings is:
 
     w[opt1] = val1
     w[opt2] = val2
 
-"""
-configure(w::TkWidget, pairs...) = Tcl.eval(w, "configure", pairs...)
+# See also
+
+[`Tcl.cget`](@ref) and [`TkWidget`](@ref).
 
 """
+configure(w::TkWidget, pairs...) = exec(w, :configure, pairs...)
 
+"""
     Tcl.cget(w, opt)
 
 Return the value of the option `opt` for widget `w`. Option `opt` may be specified as a
-string or as a `Symbol`. Another way to obtain an option value is:
+string or as a `Symbol` and shall corresponds to a Tk option name without the leading "-".
+Another way to obtain an option value is:
 
     w[opt]
 
+# See also
+
+[`Tcl.configure`](@ref) and [`TkWidget`](@ref).
+
 """
-cget(w::TkWidget, opt::Name) = Tcl.eval(w, "cget", "-"*string(opt))
+cget(w::TkWidget, opt::Name) = exec(w, :cget, "-"*string(opt))
 
 Base.getindex(w::TkWidget, key::Name) = cget(w, key)
 function Base.setindex!(w::TkWidget, value, key::Name)
-    Tcl.eval(w, "configure", "-"*string(key), value)
+    exec(w, :configure, key => value)
     return w
 end
 
 """
-    Tcl.grid(args..., pairs...)
-    Tcl.pack(args..., pairs...)
-    Tcl.place(args..., pairs...)
+    Tcl.grid(args...)
+    Tcl.pack(args...)
+    Tcl.place(args...)
 
-communicate with one of the Tk geometry manager.  One of the arguments must be
-an instance of `TkWidget`.  For instance (assuming `top` is some frame or
-toplevel widget):
+Communicate with one of the Tk geometry manager. One of the arguments must be an instance of
+`TkWidget`. For example:
 
-    using Tcl
-    Tcl.pack(TkButton(top, "b1"; text="Send message",
-                      command = (args...) -> println("message sent!")),
-             side = "bottom")
+```julia
+using Tcl
+tk_start()
+top = TkToplevel()
+Tcl.exec(:wm, :title, top, "A simple example")
+btn = TkButton(top, :text => "Click me", :command => "puts \"ouch!\"")
+Tcl.pack(btn, :side => :bottom, :padx => 30, :pady => 5)
+```
+
+The call to `Tcl.list` (could also be `Tcl.quote_string` here) is to avoid that the words in
+the title be split as separate arguments.
 
 """
 function grid end
@@ -304,10 +321,11 @@ function grid end
 
 for cmd in (:grid, :pack, :place)
     @eval begin
-        function $cmd(args...)
+        $cmd(args...) = $cmd(TclObj, args...)
+        function $cmd(::Type{T}, args...) where {T}
             interp = common_interpreter(nothing, args...)
             interp == nothing && argument_error("missing a widget argument")
-            return Tcl.eval(interp, $(string(cmd)), args...)
+            return exec(T, interp, $(QuoteNode(cmd)), args...)
         end
     end
 end
@@ -328,12 +346,13 @@ end
 """
     bind(w, ...)
 
-binds events to widget `w` or yields bindings for widget `w`.  With a single
-argument
+Bind events to widget `w` or yields bindings for widget `w`.
+
+With a single argument:
 
     bind(w)
 
-yields binded sequences for widget `w`; while
+yields bindings for widget `w`; while
 
     bind(w, seq)
 
@@ -341,13 +360,13 @@ yields the specific bindings for the sequence of events `seq` and
 
     bind(w, seq, script)
 
-arranges to invoke `script` whenever any event of the sequence `seq` occurs for
-widget `w`.  For instance:
+arranges to invoke `script` whenever any event of the sequence `seq` occurs for widget `w`.
+For instance:
 
     bind(w, "<ButtonPress>", "+puts click")
 
-To deal with class bindings, the Tcl interpreter may be provided (otherwise the
-initial interpreter will be used):
+To deal with class bindings, the Tcl interpreter may be provided (otherwise the shared
+interpreter of the thread will be used):
 
     bind([interp,] classname, args...)
 
@@ -356,4 +375,4 @@ where `classname` is the name of the widget class (a string or a symbol).
 """
 Base.bind(arg0::TkWidget, args...) = bind(TclInterp(arg0), arg0, args...)
 Base.bind(arg0::Name, args...) = bind(TclInterp(), arg0, args...)
-Base.bind(interp::TclInterp, args...) = Tcl.eval(interp, "bind", args...)
+Base.bind(interp::TclInterp, args...) = exec(interp, :bind, args...)
