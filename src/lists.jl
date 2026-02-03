@@ -26,12 +26,6 @@ command.
 In the second above example, `interp` is a Tcl interpreter used to retrieve a more
 informative error message in case of error.
 
-# Pairs
-
-In `args...`, `key => val` pairs where `key` is a symbol or a string are treated specially
-by `Tcl.concat`: they give the two elements `\"-\$(key)\"` and `val` in the output list.
-This is intended for specifying Tk widget options in a readable Julia style.
-
 # See also
 
 [`Tcl.list`](@ref), [`Tcl.eval`](@ref), [`TclObj`](@ref), and [`TclInterp`](@ref).
@@ -414,22 +408,6 @@ for (jl, (c, mesg)) in (:unsafe_append_element => (:(Tcl_ListObjAppendElement),
             # not exists.
         end
     end
-end
-
-# With a pair, `unsafe_append_list` appends a pair `key => val` as a command line flag with
-# value as for Tk widgets.
-
-function unsafe_append_list(interp::InterpPtr, list::ObjPtr,
-                            (key,val)::Pair{<:Union{AbstractString,Symbol},<:Any})
-    unsafe_append_list(interp, list, String(key) => val)
-    return nothing
-end
-
-function unsafe_append_list(interp::InterpPtr, list::ObjPtr,
-                            (key,val)::Pair{String,<:Any})
-    unsafe_append_element(interp, list, "-"*string(key))
-    unsafe_append_element(interp, list, val)
-    return nothing
 end
 
 function unsafe_append_list(interp::InterpPtr, list::ObjPtr, iter::Tuple)

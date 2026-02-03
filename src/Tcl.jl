@@ -107,7 +107,7 @@ for sym in (
     :do_events,
     :do_one_event,
     :eval,
-    #:exec,
+    :exec,
     :exists,
     :getresult,
     :getvar,

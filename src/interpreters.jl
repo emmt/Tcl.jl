@@ -302,116 +302,107 @@ isactive(interp::TclInterp) = !isnull(pointer(interp)) && !iszero(Tcl_InterpActi
 
 @deprecate getinterp(args...; kwds...) TclInterp(args...; kwds...)
 
-#------------------------------------------------------------------------------
-# Evaluation of Tcl scripts.
-
-#=
+#------------------------------------------------------------------- Evaluation of scripts -
 
 """
-```julia
-Tcl.exec([T,][interp,], args...; kwds...)
-```
+    Tcl.exec(T=TclObj, interp=TclInterp(), args...) -> res::T
+    interp.exec(T=TclObj, args...) -> res::T
 
-makes a list of the arguments `args...` and keywords `kwds...` and evaluates it
-as a Tcl script.  See [`Tcl.eval`](@ref) for details about optional result type
-`T` and Tcl interpreter `interp`.
+Make a list out of the arguments `args...`, evaluate this list as a Tcl command with
+interpreter `interp`, and return a value of type `T`. Any `key => val` pair in `args...` is
+converted in the pair of arguments `-key` and `val` in the command list (note the hyphen
+before the key name).
 
-Any specified keyword, say `key=val`, is automatically converted in the pair of
-arguments `-key val` in this list (note the hyphen before the keyword name).
-To allow for option names that are Julia keywords, a leading underscore is
-stripped, if any, in `key`.  All keywords appear at the end of the list in
-unspecific order.
+The evaluation of a Tcl command stores a result or an error message in the interpreter and
+returns a status. If `T` is `TclStatus`, the status of the evaluation is returned and the
+command result may be retrieved by calling [`Tcl.getresult`](@ref). Otherwise, the command
+result is returned as a value of type `T` if the evaluation status is [`TCL_OK`](@ref) and
+an exception is thrown for any other status.
 
-Apart from the accounting of keywords, the main difference with
-[`Tcl.eval`](@ref) is that each input argument is interpreted as a different
-*word* of the Tcl script.  Using [`Tcl.eval`](@ref), [`Tcl.exec`](@ref) is
-equivalent to:
+# See also
 
-```julia
-Tcl.eval([T,][interp,], Tcl.list(args...; kwds...))
-```
+See [`Tcl.list`](@ref) for the rules to build a list (apart from the accounting of pairs).
 
-Specify `T` as [`TclStatus`](@ref), if you want to avoid throwing errors and
-call [`Tcl.getresult`](@ref) to retrieve the result.
-
-See also: [`Tcl.eval`](@ref), [`Tcl.list`](@ref), [`Tcl.getresult`](@ref).
+See [`Tcl.eval`](@ref) for another way to evaluate a Tcl script. The difference with
+[`Tcl.eval`](@ref) is that each input argument is interpreted as a different *token* of the
+Tcl command.
 
 """
-exec(args...; kwds...) =
-    exec(TclInterp(), args...; kwds...)
-
-exec(::Type{T}, args...; kwds...) where {T} =
-    exec(T, TclInterp(), args...; kwds...)
-
-exec(interp::TclInterp, args...; kwds...) =
-    exec(Any, interp, args...; kwds...)
-
-function exec(::Type{T}, interp::TclInterp, args...; kwds...) where {T}
-    length(args) ≥ 1 || throw(TclError("expecting at least one argument"))
-    listptr = C_NULL
-    __set_context(interp)
-    try
-        listptr = Tcl_IncrRefCount(__newlistobj())
-        @__build_list listptr args kwds
-        return __eval(T, interp, TclObj{List}, listptr)
-    finally
-        listptr == C_NULL || Tcl_DecrRefCount(listptr)
-         __reset_context()
+function exec(::Type{T}, interp::TclInterp, args...) where {T}
+    GC.@preserve interp begin
+        interp_ptr = checked_pointer(interp)
+        list_ptr = unsafe_new_list(unsafe_append_exec_arg, interp_ptr, args...)
+        status = Tcl_EvalObjEx(interp_ptr, Tcl_IncrRefCount(list_ptr),
+                               TCL_EVAL_DIRECT | TCL_EVAL_GLOBAL)
+        Tcl_DecrRefCount(list_ptr)
+        return unsafe_result(T, status, interp_ptr)
     end
 end
-=#
+
+# Provide optional leading arguments.
+exec(args...) = exec(TclInterp(), args...)
+exec(::Type{T}, args...) where {T} = exec(T, TclInterp(), args...)
+exec(interp::TclInterp, args...) = exec(Any, interp, args...)
+
+function unsafe_append_exec_arg(interp::InterpPtr, list::ObjPtr, arg)
+    unsafe_append_element(interp, list, arg)
+    return nothing
+end
+
+function unsafe_append_exec_arg(interp::InterpPtr, list::ObjPtr, (key,val)::Pair)
+    unsafe_append_element(interp, list, "-"*string(key))
+    unsafe_append_element(interp, list, val)
+    return nothing
+end
 
 """
-    Tcl.eval([T,][interp,], args...) -> res::Union{T,TclStatus}
-    interp([T,] args...) -> res::Union{T,TclStatus}
+    Tcl.eval(T=TclObj, interp=TclInterp(), args...) -> res::T
+    interp.eval(T=TclObj, args...) -> res::T
+    interp(T=TclObj, args...) -> res::T
 
-Concatenate arguments `args...` into a list and evaluates it as a Tcl script with
-interpreter `interp` (or in the shared interpreter of the thread if this argument is
-omitted). See [`Tcl.concat`](@ref) for details about how arguments are concatenated into a
-list.
+Concatenate arguments `args...` into a list, evaluate this list as a Tcl script with
+interpreter `interp`, and return a value of type `T`.Any `key => val` pair in `args...` is
+converted in the pair of arguments `-key` and `val` in the script list (note the hyphen
+before the key name).
 
-If optional argument `T` is omitted, the type of the returned value reflects
-that of the internal representation of the result of the script; otherwise, `T`
-specifies the type of the result (see [`getvar`](@ref) for details).  As a
-special case, when `T` is `TclStatus`, `Tcl.eval` behaves like the Tcl `catch`
-command: the script is evaluated and no exception get thrown in case of error
-but a status such as `TCL_OK` or `TCL_ERROR` is always returned and
-[`Tcl.getresult`](@ref) can be used to retrieve the value of the result (which
-is an error message if the returned status is `TCL_ERROR`).
+The evaluation of a Tcl script stores a result or an error message in the interpreter and
+returns a status. If `T` is `TclStatus`, the status of the evaluation is returned and the
+script result may be retrieved by calling [`Tcl.getresult`](@ref). Otherwise, the script
+result is returned as a value of type `T` if the evaluation status is [`TCL_OK`](@ref) and
+an exception is thrown for any other status.
 
 Use `Tcl.exec` if you want to consider each argument in `args...` as a distinct
 command argument.
 
-Specify `T` as `TclStatus`, if you want to avoid throwing errors and
-`Tcl.getresult` to retrieve the result.
+# See also
 
-See also: [`Tcl.concat`](@ref), [`Tcl.exec`](@ref), [`getvar`](@ref).
+See [`Tcl.concat`](@ref) for the rules to concatenate arguments into a list (apart from the
+accounting of pairs).
+
+See [`Tcl.exec`](@ref) for another way to execute a Tcl command where each of `args...` is
+considered as a distinct command argument.
 
 """
 Tcl.eval
 
-# Provide missing leading arguments.
+# Provide optional leading arguments.
 Tcl.eval(args...) = Tcl.eval(TclInterp(), args...)
 Tcl.eval(::Type{T}, args...) where {T} = Tcl.eval(T, TclInterp(), args...)
 Tcl.eval(interp::TclInterp, args...) = Tcl.eval(TclObj, interp, args...)
 
-function Tcl.eval(::Type{T}, interp::TclInterp) where {T}
-    throw(ArgumentError("missing script to evaluate"))
-end
-
-# Evaluate script provided as a string.
-function Tcl.eval(::Type{T}, interp::TclInterp, script::AbstractString) where {T}
-    return Tcl.eval(T, interp, string(script))
-end
-function Tcl.eval(::Type{T}, interp::TclInterp, script::String) where {T}
+# Evaluate script provided as a (symbolic) string.
+function Tcl.eval(::Type{T}, interp::TclInterp, script::FastString) where {T}
     # For a script given as a string, `Tcl_EvalEx` is slightly faster than `Tcl_Eval` (says
     # the doc.) and, more importantly, the script may contain embedded nulls.
     GC.@preserve interp script begin
         interp_ptr = checked_pointer(interp)
-        status = Tcl_EvalEx(interp_ptr, pointer(script), ncodeunits(script),
+        status = Tcl_EvalEx(interp_ptr, script, sizeof(script),
                             TCL_EVAL_DIRECT | TCL_EVAL_GLOBAL)
         return unsafe_result(T, status, interp_ptr)
     end
+end
+function Tcl.eval(::Type{T}, interp::TclInterp, script::AbstractString) where {T}
+    return Tcl.eval(T, interp, string(script))
 end
 
 # Evaluate script provided as a Tcl object.
@@ -430,12 +421,23 @@ end
 function Tcl.eval(::Type{T}, interp::TclInterp, args...) where {T}
     GC.@preserve interp begin
         interp_ptr = checked_pointer(interp)
-        list_ptr = unsafe_new_list(unsafe_append_list, interp_ptr, args...)
+        list_ptr = unsafe_new_list(unsafe_append_eval_arg, interp_ptr, args...)
         status = Tcl_EvalObjEx(interp_ptr, Tcl_IncrRefCount(list_ptr),
                                TCL_EVAL_DIRECT | TCL_EVAL_GLOBAL)
         Tcl_DecrRefCount(list_ptr)
         return unsafe_result(T, status, interp_ptr)
     end
+end
+
+function unsafe_append_eval_arg(interp::InterpPtr, list::ObjPtr, arg)
+    unsafe_append_list(interp, list, arg)
+    return nothing
+end
+
+function unsafe_append_eval_arg(interp::InterpPtr, list::ObjPtr, (key,val)::Pair)
+    unsafe_append_element(interp, list, "-"*string(key))
+    unsafe_append_element(interp, list, val)
+    return nothing
 end
 
 function unsafe_result(::Type{TclStatus}, status::TclStatus, interp::InterpPtr)
