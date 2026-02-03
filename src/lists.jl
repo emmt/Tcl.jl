@@ -46,9 +46,6 @@ for (func, append) in (:list   => :unsafe_append_element,
     end
 end
 
-_getproperty(interp::TclInterp, ::Val{:list}) = PrefixedFunction(list, interp)
-_getproperty(interp::TclInterp, ::Val{:concat}) = PrefixedFunction(concat, interp)
-
 @noinline invalid_list() =
     throw(TclError("Tcl object is not a valid list"))
 

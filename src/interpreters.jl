@@ -206,7 +206,8 @@ end
 
 #------------------------------------------------------------------ Interpreter properties -
 
-Base.propertynames(interp::TclInterp) = (:concat, :eval, :exec, :list, :ptr, :threadid)
+Base.propertynames(interp::TclInterp) = (:concat, :eval, :exec, :list, :ptr,
+                                         :result, :threadid)
 
 Base.getproperty(interp::TclInterp, key::Symbol) = _getproperty(interp, Val(key))
 _getproperty(interp::TclInterp, ::Val{:concat}) = PrefixedFunction(concat, interp)
@@ -214,6 +215,7 @@ _getproperty(interp::TclInterp, ::Val{:eval}) = PrefixedFunction(Tcl.eval, inter
 _getproperty(interp::TclInterp, ::Val{:exec}) = PrefixedFunction(exec, interp)
 _getproperty(interp::TclInterp, ::Val{:list}) = PrefixedFunction(list, interp)
 _getproperty(interp::TclInterp, ::Val{:ptr}) = getfield(interp, :ptr)
+_getproperty(interp::TclInterp, ::Val{:result}) = PrefixedFunction(getresult, interp)
 _getproperty(interp::TclInterp, ::Val{:threadid}) = getfield(interp, :threadid)
 _getproperty(interp::TclInterp, ::Val{key}) where {key} = throw(KeyError(key))
 
@@ -242,11 +244,14 @@ end
 
 """
     interp[] -> str::String
+    interp.result() -> str::String
     Tcl.getresult() -> str::String
     Tcl.getresult(interp) -> str::String
 
+    interp.result(T) -> val::T
     Tcl.getresult(T) -> val::T
     Tcl.getresult(T, interp) -> val::T
+    Tcl.getresult(interp, T) -> val::T
 
 Retrieve the result of interpreter `interp` as a value of type `T` or as a string if `T` is
 not specified. `Tcl.getresult` returns the result of the shared interpreter of the thread.
@@ -259,8 +264,10 @@ not specified. `Tcl.getresult` returns the result of the shared interpreter of t
 """
 getresult() = get(TclInterp())
 getresult(::Type{T}) where {T} = getresult(T, TclInterp())
+getresult(interp::TclInterp) = getresult(String, interp)
 
-getresult(interp::TclInterp) = get(String, interp)
+getresult(interp::TclInterp, ::Type{T}) where {T} = getresult(T, interp)
+
 function getresult(::Type{String}, interp::TclInterp)
     GC.@preserve interp begin
         return unsafe_string(Tcl_GetStringResult(interp))
@@ -338,7 +345,7 @@ The evaluation of a Tcl command stores a result (or an error message) in the int
 returns a status. The behavior of `Tcl.exec` depend on the type `T` of the expected result:
 
 * If `T` is `TclStatus`, the status of the evaluation is returned and the command result may
-  be retrieved by calling [`Tcl.getresult`](@ref).
+  be retrieved by calling [`Tcl.getresult`](@ref) or via `interp.result(...)`.
 
 * If `T` is `Nothing`, an exception is thrown if the status is not [`TCL_OK`](@ref) and
   `nothing` is returned otherwise (i.e., the result of the command is ignored).
@@ -399,7 +406,7 @@ The evaluation of a Tcl script stores a result (or an error message) in the inte
 returns a status. The behavior of `Tcl.eval` depend on the type `T` of the expected result:
 
 * If `T` is `TclStatus`, the status of the evaluation is returned and the script result may
-  be retrieved by calling [`Tcl.getresult`](@ref).
+  be retrieved by calling [`Tcl.getresult`](@ref) or via `interp.result(...)`.
 
 * If `T` is `Nothing`, an exception is thrown if the status is not [`TCL_OK`](@ref) and
   `nothing` is returned otherwise (i.e., the result of the script is ignored).
