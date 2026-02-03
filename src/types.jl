@@ -73,10 +73,21 @@ end
 # command.
 const Name = Union{AbstractString,Symbol,TclObj}
 
-# Union of types that can be converted into a `Cstring` by `ccall` without overheads.
-const FastString = Union{AbstractString,Symbol}
+"""
+    Tcl.Private.FastString
 
-#------------------------------------------------------------------------------
+Union of types of objects that can be converted into an UTF-8 `Cstring` by `ccall` without
+overheads. More specifically, for an instance `str` of this union, the following hold:
+
+* `Base.unsafe_convert(Cstring, str)` is applicable and fast.
+
+* `Base.unsafe_convert(Ptr{UInt8}, str)` and `sizeof(str)` are applicable and respectively
+  give the address of the first byte of `str` and the number of bytes in `str`.
+
+"""
+const FastString = Union{String,SubString{String},Symbol}
+
+#-------------------------------------------------------------------------------------------
 # Tk widgets and other Tk objects.
 
 abstract type TkObject     <: ManagedObject end
