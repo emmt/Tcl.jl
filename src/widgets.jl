@@ -278,14 +278,17 @@ end
 
 # `compose_widget_path` is meant to be fast and does not check the validity of the widget
 # path.
-function compose_widget_path(parent::Nothing, name::Name)
-    return String(name)::String
+function compose_widget_path(parent::Nothing, name::Name)::String
+    return String(name)
 end
-function compose_widget_path(parent::TkWidget, name::Name)
+function compose_widget_path(parent::TkWidget, name::Name)::String
     return compose_widget_path(parent.path, name)
 end
-function compose_widget_path(parent::Name, name::Name)
-    buf = IOBuffer()
+function compose_widget_path(parent::FasterString, name::FasterString)::String
+    return parent == "." ? string(".", name) : string(parent, ".", name)
+end
+function compose_widget_path(parent::Name, name::Name)::String
+    buf = IOBuffer(; sizehint = nbytes(parent) + nbytes(name) + nbytes('.'))
     # Write parent path in buffer and append a '.' separator if parent path is not "."
     # (i.e., has more than one byte).
     write(buf, parent) > 1 && write(buf, '.')
@@ -293,14 +296,16 @@ function compose_widget_path(parent::Name, name::Name)
     write(buf, name)
     return String(take!(buf))
 end
-function compose_widget_path2(parent::Name, name::Name) # FIXME this is much faster
-    # TODO Use IOBuffer?
-    root = String(parent)::String
-    name isa String || (name = String(name))::String
-    if root == "."
-        return "."*name
-    else
-        return root*"."*name
+
+nbytes(s::Union{String,SubString{String},Symbol}) = sizeof(sym)
+nbytes(c::Char) = ncodeunits(c)
+function nbytes(obj::TclObj)::Int
+    GC.@preserve obj begin
+        ptr = pointer(obj)
+        isnull(ptr) && return 0
+        len = Ref{Cint}()
+        Tcl_GetStringFromObj(ptr, len)
+        return Int(len[])
     end
 end
 
