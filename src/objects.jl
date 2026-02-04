@@ -79,6 +79,42 @@ function Base.convert(::Type{T}, obj::TclObj) where {T}
     end
 end
 
+Base.:(==)(A::TclObj, B::TclObj) = isequal(A, B)
+Base.:(==)(A::TclObj, B::AbstractString) = isequal(A, B)
+Base.:(==)(A::AbstractString, B::TclObj) = isequal(A, B)
+
+function Base.isequal(A::TclObj, B::TclObj)
+    # TODO Optimize depending on internal representation?
+    GC.@preserve A B begin
+        A_ptr = pointer(A)
+        B_ptr = pointer(B)
+        (A_ptr == B_ptr) && return true
+        (isnull(A_ptr) || isnull(B_ptr)) && return false
+        A_len = Ref{Cint}()
+        A_buf = Tcl_GetStringFromObj(A_ptr, A_len)
+        B_len = Ref{Cint}()
+        B_buf = Tcl_GetStringFromObj(B_ptr, B_len)
+        (A_len[] == B_len[]) || return false
+        return iszero(unsafe_memcmp(A_buf, B_buf, B_len[]))
+    end
+end
+
+Base.isequal(A::TclObj, B::AbstractString) = isequal(A, String(B)::String)
+
+Base.isequal(A::AbstractString, B::TclObj) = isequal(B, A)
+
+function Base.isequal(A::TclObj, B::FastString)
+    GC.@preserve A B begin
+        A_ptr = pointer(A)
+        isnull(A_ptr) && return false
+        A_len = Ref{Cint}()
+        A_buf = Tcl_GetStringFromObj(A_ptr, A_len)
+        B_len = sizeof(B) # number of bytes in B
+        (A_len[] == B_len) || return false
+        return iszero(unsafe_memcmp(A_buf, B, B_len))
+    end
+end
+
 # Extend base methods for objects.
 function Base.summary(io::IO, obj::TclObj)
     print(io, "TclObj: ")

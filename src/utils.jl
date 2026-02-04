@@ -129,6 +129,11 @@ assert_nonnull(ptr::Ptr) = isnull(ptr) ? throw_null_pointer(ptr) : nothing
 @noinline throw_null_pointer(::Type{Ptr{T}}) where {T} =
     throw(ArgumentError("invalid NULL pointer to object of type `$T`"))
 
+function unsafe_memcmp(a, b, nbytes)
+    # NOTE `Ptr{UInt8}`, not `Ptr{Cvoid}`, to have it works for `FastString`.
+    return @ccall memcmp(a::Ptr{UInt8}, b::Ptr{UInt8}, nbytes::Csize_t)::Cint
+end
+
 #---------------------------------------------------------------------------- Quote string -
 
 """
