@@ -42,7 +42,7 @@ macro TkWidget(_type, class, command, prefix)
             # Provide optional arguments.
             $type(pairs::Pair...) = $type(TclInterp(), pairs...)
             $type(name::Name, pairs::Pair...) = $type(TclInterp(), name, pairs...)
-            $type(interp::TclInterp, pairs::Pair...) = $type(interp, autoname($prefix), pairs...)
+            $type(interp::TclInterp, pairs::Pair...) = $type(interp, auto_name($prefix), pairs...)
 
             # Make the widget callable.
             (w::$type)(args...; kwds...) = exec(w, args...; kwds...)
@@ -68,7 +68,7 @@ macro TkWidget(_type, class, command, prefix)
 
             # Provide optional arguments.
             $type(parent::Union{TkWidget,Name}, pairs::Pair...) =
-                $type(parent, autoname($prefix), pairs...)
+                $type(parent, auto_name($prefix), pairs...)
 
             # Get widget for parent.
             $type(parent::Name, child::Name, pairs::Pair...) =

@@ -1,6 +1,6 @@
 """
-    Tcl.CallBack(f, name=Tcl.autoname("jl_func_"), interp=TclInterp()) -> callback
-    Tcl.CallBack(f, interp=TclInterp(), name=Tcl.autoname("jl_func_")) -> callback
+    Tcl.CallBack(f, name=Tcl.auto_name("jl_func_"), interp=TclInterp()) -> callback
+    Tcl.CallBack(f, interp=TclInterp(), name=Tcl.auto_name("jl_func_")) -> callback
 
 Create a command implemented by the function `f` in Tcl interpreter `interp`. The command is
 initially named `name` (the command may be renamed).
@@ -34,7 +34,7 @@ interpreter.
 
 # See also
 
-[`Tcl.deletecommand`](@ref), [`Tcl.autoname`](@ref), and [`TclStatus`](@ref).
+[`Tcl.deletecommand`](@ref), [`Tcl.auto_name`](@ref), and [`TclStatus`](@ref).
 
 """
 function Callback(func::Function,
@@ -60,7 +60,7 @@ end
 Callback(func::Function, interp::TclInterp, name::Name = callback_default_name()) =
     Callback(func, name, interp)
 
-callback_default_name() = autoname("jl_func_")
+callback_default_name() = auto_name("jl_func_")
 
 Base.propertynames(f::Callback) = (:interp, :token, :func, :fullname)
 function Base.getproperty(f::Callback, key::Symbol)

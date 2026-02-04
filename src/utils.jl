@@ -181,20 +181,21 @@ end
 #------------------------------------------------------------------------ Automatic names -
 
 """
-    Tcl.Private.autoname(pfx = "jl_auto_")
+    Tcl.Private.auto_name(pfx = "jl_auto_")
 
-Return a unique with given prefix. The result is a string of the form `pfx#` where `#` is a
-unique number.
+Return a unique name with given prefix. The result is a string of the form `pfx#` where `#`
+is a unique number.
 
 """
-function autoname(pfx::AbstractString = "jl_auto_")
-    global autoname_counter
-    n = autoname_counter[] + 𝟙
-    autoname_counter[] = n
+function auto_name(pfx::AbstractString = "jl_auto_")
+    global auto_name_dict
+    T = valtype(auto_name_dict)
+    n = get(auto_name_dict, pfx, zero(T)) + one(T)
+    auto_name_dict[pfx] = n
     return pfx*string(n)
 end
 
-const autoname_counter = Ref{UInt64}(0)
+const auto_name_dict = Dict{String,UInt64}()
 
 #-------------------------------------------------------------------------- Tcl type names -
 
