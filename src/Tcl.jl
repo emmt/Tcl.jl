@@ -20,6 +20,10 @@ using Neutrals
 if !isdefined(Base, :Memory)
     const Memory{T} = Vector{T}
 end
+if !isdefined(Base, :isnothing)
+    isnothing(::Any) = false
+    isnothing(::Nothing) = true
+end
 
 include("glue.jl")
 include("types.jl")
