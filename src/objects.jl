@@ -115,6 +115,18 @@ function Base.isequal(A::TclObj, B::FastString)
     end
 end
 
+# TODO check print(io, obj)
+function Base.write(io::IO, obj::TclObj)
+    return GC.@preserve obj unsafe_write(io, pointer(obj))
+end
+
+function Base.unsafe_write(io::IO, objptr::ObjPtr)
+    isnull(objptr) && return 0
+    len = Ref{Cint}()
+    buf = Tcl_GetStringFromObj(objptr, len)
+    return Int(unsafe_write(io, buf, len[]))::Int
+end
+
 # Extend base methods for objects.
 function Base.summary(io::IO, obj::TclObj)
     print(io, "TclObj: ")

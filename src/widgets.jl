@@ -27,22 +27,22 @@ macro TkWidget(_type, class, command, prefix)
         quote
             struct $type <: TkRootWidget
                 interp::TclInterp
-                path::String
-                obj::TclObj
+                path::TclObj # Tk window path and Tcl widget command
                 function $type(interp::TclInterp, name::Name, pairs::Pair...)
                     # It is sufficient to ensure that Tk is loaded for root widgets because
                     # other widgets must have a parent.
                     tk_start(interp)
-                    path = widget_path(name)
-                    obj = create_widget(interp, $command, path, pairs...)
-                    return new(interp, path, obj)
+                    path = create_widget(
+                        $type, interp, $command, widget_path(name), pairs...)
+                    return new(interp, path)
                 end
             end
 
             # Provide optional arguments.
             $type(pairs::Pair...) = $type(TclInterp(), pairs...)
             $type(name::Name, pairs::Pair...) = $type(TclInterp(), name, pairs...)
-            $type(interp::TclInterp, pairs::Pair...) = $type(interp, auto_name($prefix), pairs...)
+            $type(interp::TclInterp, pairs::Pair...) =
+                $type(interp, widget_auto_name(interp, nothing, $prefix), pairs...)
 
             # Make the widget callable.
             (w::$type)(args...; kwds...) = exec(w, args...; kwds...)
@@ -56,19 +56,18 @@ macro TkWidget(_type, class, command, prefix)
             struct $type <: TkWidget
                 parent::TkWidget
                 interp::TclInterp
-                path::String
-                obj::TclObj
+                path::TclObj # Tk window path and Tcl widget command
                 function $type(parent::TkWidget, child::Name, pairs::Pair...)
                     interp = parent.interp
-                    path = widget_path(parent, child)
-                    obj = create_widget(interp, $command, path, pairs...)
-                    return new(parent, interp, path, obj)
+                    path = create_widget(
+                        $type, interp, $command, widget_path(parent, child), pairs...)
+                    return new(parent, interp, path)
                 end
             end
 
             # Provide optional arguments.
             $type(parent::Union{TkWidget,Name}, pairs::Pair...) =
-                $type(parent, auto_name($prefix), pairs...)
+                $type(parent, widget_auto_name(interp, parent, $prefix), pairs...)
 
             # Get widget for parent.
             $type(parent::Name, child::Name, pairs::Pair...) =
@@ -94,6 +93,30 @@ function register_widget_class(class::String, ::Type{T}) where {T<:TkWidget}
         widget_classes[class] = T
     end
     return nothing
+end
+
+const auto_name_counter = UInt64[]
+
+function widget_auto_name(interp::TclInterp, parent::Union{TkWidget,Nothing},
+                          prefix::String)
+    root = isnothing(parent) ? nothing : String(parent.path)::String
+    while true
+        name = auto_name(prefix)
+        path = compose_widget_path(root, name)
+        interp.exec(Bool, :winfo, :exists, path) || return name
+    end
+end
+
+function widget_constructor_from_path(interp::TclInterp, path::Name)
+    return widget_constructor_from_class(winfo_class(interp, path))
+end
+
+function widget_constructor_from_class(class::Name)
+    # In the database of widget classes, the class is a string.
+    class isa String || (class = String(class)::String)
+    constructor = get(widget_classes, class, nothing)
+    isnothing(constructor) && argument_error("unregistered widget class \"$class\"")
+    return constructor
 end
 
 # Top-level widgets.
@@ -141,50 +164,166 @@ end
 # Window "." has a special class in Tk.
 register_widget_class("Tk", TkToplevel)
 
-function TkWidget(path::Name, interp::TclInterp = TclInterp())
-    isa(path, String) || (path = String(path))
-    interp.exec(Bool, :winfo, :exists, path) || argument_error(
-        "\"$path\" is not the path of an existing widget")
-    class = interp.exec(String, :winfo, :class, path)
+"""
+    TkWidget(interp=TclInterp(), path)
+
+Return a widget for the given Tk window `path` in interpreter `interp`. The type of the
+widget is inferred from the class of the Tk window.
+
+"""
+TkWidget(path::Name, interp::TclInterp = TclInterp()) = TkWidget(interp, path)
+function TkWidget(interp::TclInterp, path::Name)
+    # The following requires that `path` be a Tcl object or a string, not a symbol.
+    (path isa Union{AbstractString,TclObj}) || (path = String(path)::String)
+    winfo_exists(interp, path) || argument_error(
+        "\"$path\" is not the path of an existing Tk widget")
+    # Now we can get the widget class and hence find its registered constructor.
+    return _TkWidget(widget_constructor_from_path(interp, path), interp, path)
+end
+
+# Private method to dispatch on constructor `T`.
+function _TkWidget(::Type{T}, interp::TclInterp, path::Name) where {T<:TkWidget}
+    # Retrieve parent path.
+    parent = winfo_parent(interp, path)
+    # Top-level widgets have no parents.
+    parent ∈ ("", ".") && return T(interp, path)
+    # For other widgets, we need to create all ancestors.
+    return T(TkWidget(interp, parent), winfo_name(interp, path))
+end
+
+winfo_exists(w::TkWidget) = winfo_exists(w.interp, w.path)
+winfo_exists(interp::TclInterp, path::Name) = interp.exec(Bool, :winfo, :exists, path)
+
+winfo_parent(w::TkWidget) = winfo_parent(w.interp, w.path)
+winfo_parent(interp::TclInterp, path::Name) = interp.exec(:winfo, :parent, path)
+
+winfo_name(w::TkWidget) = winfo_name(w.interp, w.path)
+winfo_name(interp::TclInterp, path::Name) = interp.exec(:winfo, :name, path)
+
+winfo_class(w::TkWidget) = winfo_class(w.interp, w.path)
+function winfo_class(interp::TclInterp, path::Name)
+    # `winfo class .` yields the name of the application which is not what we want. So, we
+    # must specifically consider the case of the "." window.
+    return winfo_isroot(path) ? TclObj(:Toplevel) : interp.exec(:winfo, :class, path)
     # TODO for Tix widgets, we may instead use: class = string(interp(path, "configure -class")[4])
-    constructor = get(widget_classes, class, nothing)
-    constructor == nothing && argument_error(
-        "widget \"$path\" has unregistered class \"$class\"")
-    return constructor(interp, path)
 end
 
-# Private method called to check/build the path of a child widget.
-function widget_path(parent::TkWidget, child::Union{AbstractString,Symbol})::String
-    isa(child, Union{String,SubString{String}}) || (child = String(child))
-    startswith(child, '.') && argument_error("window name \"$(child)\" must not start with a dot")
-    parentpath = getpath(parent)
-    return ((parentpath == "." ? "." : parentpath*".")*child)
+"""
+    Tcl.Private.winfo_isroot(w) -> bool
+
+Return whether `w` is the Tk root widget of window path.
+
+This is to cope with that, in many situations, the case of the "." window must be considered
+specifically. For example, `winfo parent .` yields an empty result while `winfo class .`
+yields the name of the application.
+
+"""
+winfo_isroot(path::Symbol) = (path == :(.))
+winfo_isroot(path::Name) = path == "."
+winfo_isroot(w::TkToplevel) = winfo_isroot(w.path)
+winfo_isroot(w::TkWidget) = false
+
+"""
+   Tcl.Private.widget_path(top, children...) -> path::String
+
+Return a checked Tk window path.
+
+"""
+widget_path(w::TkWidget) = String(w.path)::String # TODO Base.abspath?
+
+function widget_path(parent::TkWidget, name::Name)::String
+    # Assume parent's path is valid and just check the child name.
+    return compose_widget_path(parent.path, widget_name(name))
 end
 
-# Private method called to check the path of a root widget.
-function widget_path(path::Union{AbstractString,Symbol})::String
-    isa(path, String) || (path = String(path))
-    startswith(path, '.') || argument_error("root window name must start with a dot")
-    findnext(isequal('.'), path, nextind(path, firstindex(path))) === nothing || argument_error(
-        "illegal root window name \"$(path)\"")
-    return path
+function widget_path(top::Name, children::Name...)::String
+    dot = UInt8('.')
+    buf = IOBuffer()
+    start = buf.ptr
+    write(buf, top)
+    stop = buf.size
+    index = start - 1
+    for i in start:stop
+        if buf.data[i] == dot
+            index = i
+        end
+    end
+    index == start || argument_error(
+        "top widget name must start with a dot and contain no other dots")
+    for child in children
+        write(buf, dot) # write separator
+        write_widget_child_name(buf, child)
+    end
+    return String(take!(buf))
+end
+
+# Write and check widget child name.
+function write_widget_child_name(buf::IOBuffer, name::Name)
+    dot = UInt8('.')
+    start = buf.ptr
+    write(buf, name)
+    stop = buf.size
+    stop ≥ start || argument_error("invalid empty widget child name")
+    for i in start:stop
+        buf.data[i] == dot && argument_error(
+            "widget child name must not contains any dots")
+    end
+    return buf
+end
+
+# Check and convert widget child name.
+function widget_name(name::Name)
+    return String(take!(write_widget_child_name(IOBuffer(), name)))
+end
+
+# `compose_widget_path` is meant to be fast and does not check the validity of the widget
+# path.
+function compose_widget_path(parent::Nothing, name::Name)
+    return String(name)::String
+end
+function compose_widget_path(parent::TkWidget, name::Name)
+    return compose_widget_path(parent.path, name)
+end
+function compose_widget_path(parent::Name, name::Name)
+    buf = IOBuffer()
+    # Write parent path in buffer and append a '.' separator if parent path is not "."
+    # (i.e., has more than one byte).
+    write(buf, parent) > 1 && write(buf, '.')
+    # Append children name and return resulting string.
+    write(buf, name)
+    return String(take!(buf))
+end
+function compose_widget_path2(parent::Name, name::Name) # FIXME this is much faster
+    # TODO Use IOBuffer?
+    root = String(parent)::String
+    name isa String || (name = String(name))::String
+    if root == "."
+        return "."*name
+    else
+        return root*"."*name
+    end
 end
 
 # Private method called to create a widget.
-function create_widget(interp::TclInterp, cmd::String, path::String, pairs::Pair...)::TclObj
-    if interp(Bool, "winfo exists", path)
+function create_widget(::Type{T}, interp::TclInterp, cmd::Name, path::Name,
+                       pairs::Pair...) where {T}
+    if winfo_exists(interp, path)
         # If widget already exists, it will be simply re-used, so we just apply
         # configuration options if any.
+        W = widget_constructor_from_path(interp, path)
+        W === T || argument_error(
+            "attempt to call constructor `$T` on a Tk widget of type `$W`")
+        widget = TclObj(path)
         if length(pairs) > 0
-            status = interp(TclStatus, path, "configure", pairs...)
+            status = interp.exec(TclStatus, widget, :configure, pairs...)
             status == TCL_OK || throw(TclError(interp))
         end
-        return TclObj(path)
+        return widget
     else
         # Widget does not already exists, create it with configuration options.
-        status = interp(TclStatus, cmd, path, pairs...)
+        status = interp.exec(TclStatus, cmd, path, pairs...)
         status == TCL_OK || throw(TclError(interp))
-        return getresult(TclObj, interp)
+        return interp.result(TclObj)
     end
 end
 
@@ -194,29 +333,36 @@ end
 Return the top-level Tk window for Tcl interpreter `interp`. This also takes care of loading
 Tk extension in the interpreter and starting the event loop.
 
-To create a new toplevel window:
+To create a new top-level window:
 
     TkToplevel(interp, path, pairs...)
 
 """ TkToplevel
 
+# Accessors.
 TclInterp(w::TkWidget) = w.interp
-getpath(w::TkWidget) = w.path
 Base.parent(w::TkWidget) = w.parent
 Base.parent(::TkRootWidget) = nothing
-TclObj(w::TkWidget) = w.obj
+TclObj(w::TkWidget) = w.path
 Base.convert(::Type{TclObj}, w::TkWidget) = TclObj(w)::TclObj
-get_objptr(w::TkWidget) = get_objptr(w.obj)
+get_objptr(w::TkWidget) = get_objptr(w.path) # used in `exec`
 
-getpath(root::TkWidget, args::AbstractString...) =
-    getpath(getpath(root), args...)
+exec(w::TkWidget, args...) = exec(w.interp, w.path, args...)
+exec(w::TkWidget, ::Type{T}, args...) where {T} = exec(T, w.interp, w.path, args...)
+exec(::Type{T}, w::TkWidget, args...) where {T} = exec(T, w.interp, w.path, args...)
 
-getpath(arg0::AbstractString, args::AbstractString...) =
-   join(((arg0 == "." ? "" : arg0), args...), '.')
+# We want to have the object type and path both printed in the REPL but want
+# only the object path with the `string` method or for string interpolation.
+# Note that: "$w" calls `string(w)` while "anything $w" calls `show(io, w)`.
 
-exec(w::TkWidget, args...) = exec(w.interp, w.obj, args...)
-exec(w::TkWidget, ::Type{T}, args...) where {T} = exec(T, w.interp, w.obj, args...)
-exec(::Type{T}, w::TkWidget, args...) where {T} = exec(T, w.interp, w.obj, args...)
+function Base.show(io::IO, ::MIME"text/plain", w::T) where {T<:TkWidget}
+    print(io, T, "(\"")
+    write(io, w.path)
+    print(io, "\")")
+    return nothing
+end
+
+Base.show(io::IO, w::TkObject) = write(io, w.path)
 
 """
     tk_start(interp = TclInterp()) -> interp

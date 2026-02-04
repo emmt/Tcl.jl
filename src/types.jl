@@ -100,15 +100,6 @@ mutable struct TkImage{T} <: TkObject
     path::String
 end
 
-# We want to have the object type and path both printed in the REPL but want
-# only the object path with the `string` method or for string interpolation.
-# Note that: "$w" calls `string(w)` while "anything $w" calls `show(io, w)`.
-
-Base.show(io::IO, ::MIME"text/plain", w::T) where {T<:TkObject} =
-    print(io, "$T(\"$(string(w))\")")
-
-Base.show(io::IO, w::TkObject) = print(io, getpath(w))
-
 #------------------------------------------------------------------------------
 # Colors
 
