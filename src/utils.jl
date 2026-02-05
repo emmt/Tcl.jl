@@ -213,8 +213,8 @@ Return the symbolic type name of Tcl object pointer `ptr`. The result can be:
 
 - `:string` for an unspecific object type (i.e., null type pointer null).
 
-- `:int`, `:double`, `:bytearray`, `:list`, `:bytecode`, etc. for an object
-  with a specific
+- `:boolean`, `:booleanString`, `:int`, `:double`, `:wideInt`, `:bignum`, `:bytearray`,
+  `:list`, `:bytecode`, etc. for an object with a specific internal representation.
 
 !!! warning
     The function is *unsafe* as `ptr` may be null and otherwise must be valid for the

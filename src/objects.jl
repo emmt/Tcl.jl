@@ -153,7 +153,7 @@ end
 
 function show_value(io::IO, obj::TclObj)
     type = obj.type
-    if type == :int
+    if type ∈ (:int, :wideInt)
         print(io, convert(WideInt, obj))
     elseif type == :double
         print(io, convert(Cdouble, obj))
@@ -201,6 +201,8 @@ function show_value(io::IO, obj::TclObj)
             end
         end
         print(io, ",)")
+    elseif type == :booleanString
+        write(io, obj)
     elseif type == :null
         print(io, "#= NULL =#")
     else
