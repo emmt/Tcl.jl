@@ -26,6 +26,7 @@ if !isdefined(Base, :isnothing)
 end
 
 include("libtcl.jl")
+include("libtk.jl")
 include("types.jl")
 include("utils.jl")
 include("objects.jl")
