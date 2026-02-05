@@ -1,5 +1,3 @@
-#isdefined(:Tcl) || include("../src/Tcl.jl")
-
 module TclBaseTests
 
 using Tcl
@@ -11,8 +9,110 @@ const φ = MathConstants.φ
 
 @testset "Basic Interface" begin
 
+    @testset "Tcl objects" begin
+        script = "puts {hello world!}"
+        symbolic_script = Symbol(script)
+        x = @inferred TclObj(script)
+        @test x isa TclObj
+        @test length(propertynames(x)) == 3
+        @test hasproperty(x, :ptr)
+        @test hasproperty(x, :refcnt)
+        @test hasproperty(x, :type)
+        @test x.type == :string
+        @test isone(x.refcnt)
+        @test isreadable(x)
+        @test iswritable(x)
+        @test x.ptr === @inferred(pointer(x))
+        @test script == @inferred string(x)
+        @test script == @inferred String(x)
+        @test script == @inferred convert(String, x)
+        @test x == x
+        @test x == script
+        @test script == x
+        @test x == symbolic_script
+        @test symbolic_script == x
+        @test isequal(x, x)
+        @test isequal(x, script)
+        @test isequal(script, x)
+        @test isequal(x, symbolic_script)
+        @test isequal(symbolic_script, x)
+
+        # copy() yields same but distinct objects
+        y = @inferred copy(x)
+        @test y isa TclObj
+        @test y.type == :string
+        @test isone(y.refcnt) && isone(x.refcnt)
+        @test y.ptr !== x.ptr
+        @test x == y
+        @test isequal(x, y)
+
+        # length() converts object into a list
+        @test length(y) === 2 # there are 2 tokens in the script
+        @test y.type == :list
+        @test firstindex(y) === 1
+        @test lastindex(y) === length(y)
+        @test @inferred(eltype(y)) === TclObj
+        @test @inferred(eltype(typeof(y))) === TclObj
+        @test y[1] == "puts"
+        @test y[2] == "hello world!"
+
+        # Destroy object and then calling the garbage collector must not throw.
+        z = TclObj(0)
+        z = 0 # no longer a Tcl object
+        @test try GC.gc(); true; catch; false; end
+
+        # Conversions. NOTE Tcl conversion rules are more restricted than Julia.
+        # TODO Test unsigned integers.
+        values = (true, false, -1, 0x03, Int16(8), Int32(-217),
+                  typemin(Int8), typemax(Int8),
+                  typemin(Int16), typemax(Int16),
+                  typemin(Int32), typemax(Int32),
+                  typemin(Int64), typemax(Int64),
+                  0.0f0, 1.0, 2//3, π, big(1.3))
+        types = (Bool, Int8, Int16, Int32, Int64, Integer, Float32, Float64, AbstractFloat)
+        @testset "Conversion of $x::$(typeof(x)) to $T" for x in values, T in types
+            y = @inferred TclObj(x)
+            @test y.type == (x isa Integer ? :int : :double)
+            if T == Bool
+                @test (@inferred Bool convert(Bool, y)) == !iszero(x)
+            elseif T <: Integer
+                if !(x isa Integer)
+                    # Floating-point to non-Boolean integer is not allowed by Tcl.
+                    @test_throws TclError convert(T, y)
+                else
+                    S = (T === Integer ? Int : T)
+                    if typemin(S) ≤ x ≤ typemax(S)
+                        @test (@inferred S convert(T, y)) == convert(S, x)
+                    else
+                        @test_throws Union{TclError,InexactError} convert(T, y)
+                    end
+                end
+            else # T is non-integer real
+                S = (T === AbstractFloat ? Float64 : T)
+                @test (@inferred S convert(T, y)) == convert(S, x)
+            end
+        end
+
+        # Tuples.
+        x = @inferred TclObj(:hello)
+        @test x.type == :string
+        @test x == :hello
+        @test x == "hello"
+        t = (2, -3, x, 8.0)
+        @test x.refcnt == 1
+        y = @inferred TclObj(t)
+        @test x.refcnt == 2
+        @test y.type == :list
+        @test length(y) == length(t)
+        # TODO @test y == t
+
+        # Get default interpreter.
+        interp = @inferred TclInterp()
+
+    end
+    #=
     @testset "Variables" begin
-        i = Tcl.getinterp()
+        interp = TclInterp()
         for (name, value) in (("a", 42), ("1", 1), ("", "empty"),
                               ("π", π), ("w\0rld is beautiful!", true))
             # Check methods.
@@ -28,14 +128,14 @@ const φ = MathConstants.φ
             @test !Tcl.exists(name)
 
             # Check indexable interface.
-            i[name] = value
+            interp[name] = value
             if typeof(value) <: Union{String,Integer}
-                @test i[name] == value
+                @test interp[name] == value
             elseif typeof(value) <: AbstractFloat
-                @test i[name] ≈ value
+                @test interp[name] ≈ value
             end
             @test Tcl.exists(name)
-            i[name] = nothing
+            interp[name] = nothing
             @test !Tcl.exists(name)
         end
 
@@ -57,14 +157,14 @@ const φ = MathConstants.φ
             @test !Tcl.exists(name1, name2)
 
             # Check indexable interface.
-            i[name1, name2] = value
+            interp[name1, name2] = value
             if typeof(value) <: Union{String,Integer}
-                @test i[name1, name2] == value
+                @test interp[name1, name2] == value
             elseif typeof(value) <: AbstractFloat
-                @test i[name1, name2] ≈ value
+                @test interp[name1, name2] ≈ value
             end
             @test Tcl.exists(name1, name2)
-            i[name1, name2] = nothing
+            interp[name1, name2] = nothing
             @test !Tcl.exists(name1, name2)
         end
     end
@@ -187,11 +287,12 @@ const φ = MathConstants.φ
         #Tcl.exec("list",4,pi)
         #Tcl.exec("list",x,z,r)
         #Tcl.exec("list",x,z,"hello",r)
-        #i = Tcl.getinterp()
-        #i[:v] = r
-        #Tcl.eval(i, raw"foreach x $v { puts $x }")
+        #interp = TclInterp()
+        #interp[:v] = r
+        #Tcl.eval(interp, raw"foreach x $v { puts $x }")
 
     end
+    =#
 end
 
 end

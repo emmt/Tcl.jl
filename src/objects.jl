@@ -80,8 +80,8 @@ function Base.convert(::Type{T}, obj::TclObj) where {T}
 end
 
 Base.:(==)(A::TclObj, B::TclObj) = isequal(A, B)
-Base.:(==)(A::TclObj, B::AbstractString) = isequal(A, B)
-Base.:(==)(A::AbstractString, B::TclObj) = isequal(A, B)
+Base.:(==)(A::TclObj, B::Union{AbstractString,Symbol}) = isequal(A, B)
+Base.:(==)(A::Union{AbstractString,Symbol}, B::TclObj) = isequal(A, B)
 
 function Base.isequal(A::TclObj, B::TclObj)
     # TODO Optimize depending on internal representation?
@@ -99,9 +99,9 @@ function Base.isequal(A::TclObj, B::TclObj)
     end
 end
 
-Base.isequal(A::TclObj, B::AbstractString) = isequal(A, String(B)::String)
+Base.isequal(A::Union{AbstractString,Symbol}, B::TclObj) = isequal(B, A)
 
-Base.isequal(A::AbstractString, B::TclObj) = isequal(B, A)
+Base.isequal(A::TclObj, B::AbstractString) = isequal(A, String(B)::String)
 
 function Base.isequal(A::TclObj, B::FastString)
     GC.@preserve A B begin
