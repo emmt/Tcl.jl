@@ -87,6 +87,10 @@ overheads. More specifically, for an instance `str` of this union, the following
 """
 const FastString = Union{String,SubString{String},Symbol}
 
+# Union of types for which `string(x...)` is faster than writing in an `IOBuffer` or calling
+# `sprint`.
+const FasterString = Union{#=Char,=# String, SubString{String}, Symbol}
+
 #-------------------------------------------------------------------------------------------
 # Tk widgets and other Tk objects.
 
