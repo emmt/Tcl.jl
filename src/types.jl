@@ -98,11 +98,15 @@ abstract type TkObject     <: ManagedObject end
 abstract type TkWidget     <: TkObject      end
 abstract type TkRootWidget <: TkWidget      end
 
-# An image is parameterized by the image type (capitalized).
-mutable struct TkImage{T} <: TkObject
+# An image is parameterized by the symbolic image type.
+mutable struct TkImage{T}
     interp::TclInterp
-    path::String
+    name::TclObj
 end
+
+const TkBitmap = TkImage{:bitmap}
+const TkPhoto = TkImage{:photo}
+const TkPixmap = TkImage{:pixmap}
 
 #------------------------------------------------------------------------------
 # Colors
