@@ -327,7 +327,7 @@ function Tcl_SetStringObj(obj, str, len)
 end
 
 function Tcl_GetString(obj)
-    @ccall libtcl.Tcl_GetStringFromObj(obj::Ptr{Tcl_Obj})::Cstring
+    @ccall libtcl.Tcl_GetString(obj::Ptr{Tcl_Obj})::Cstring
 end
 
 function Tcl_GetStringFromObj(obj, lenPtr)
