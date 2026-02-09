@@ -51,7 +51,7 @@ end
 
 Base.IteratorSize(::Type{TclObj}) = Base.HasLength()
 function Base.length(list::TclObj)
-    len = Ref{Cint}()
+    len = Ref{Tcl_Size}()
     status = Tcl_ListObjLength(null(InterpPtr), list, len)
     status == TCL_OK || invalid_list()
     return Int(len[])::Int
@@ -164,7 +164,7 @@ end
 
 unsafe_get_list_elements(list::ObjPtr) = unsafe_get_list_elements(null(InterpPtr), list)
 function unsafe_get_list_elements(interp::InterpPtr, list::ObjPtr)
-    objc = Ref{Cint}()
+    objc = Ref{Tcl_Size}()
     objv = Ref{Ptr{ObjPtr}}()
     status = Tcl_ListObjGetElements(interp, list, objc, objv)
     status == TCL_OK || unsafe_error(interp, "failed to retrieve Tcl list elements")

@@ -90,9 +90,9 @@ function Base.isequal(A::TclObj, B::TclObj)
         B_ptr = pointer(B)
         (A_ptr == B_ptr) && return true
         (isnull(A_ptr) || isnull(B_ptr)) && return false
-        A_len = Ref{Cint}()
+        A_len = Ref{Tcl_Size}()
         A_buf = Tcl_GetStringFromObj(A_ptr, A_len)
-        B_len = Ref{Cint}()
+        B_len = Ref{Tcl_Size}()
         B_buf = Tcl_GetStringFromObj(B_ptr, B_len)
         (A_len[] == B_len[]) || return false
         return iszero(unsafe_memcmp(A_buf, B_buf, B_len[]))
@@ -107,7 +107,7 @@ function Base.isequal(A::TclObj, B::FastString)
     GC.@preserve A B begin
         A_ptr = pointer(A)
         isnull(A_ptr) && return false
-        A_len = Ref{Cint}()
+        A_len = Ref{Tcl_Size}()
         A_buf = Tcl_GetStringFromObj(A_ptr, A_len)
         B_len = sizeof(B) # number of bytes in B
         (A_len[] == B_len) || return false
@@ -122,7 +122,7 @@ end
 
 function Base.unsafe_write(io::IO, objptr::ObjPtr)
     isnull(objptr) && return 0
-    len = Ref{Cint}()
+    len = Ref{Tcl_Size}()
     buf = Tcl_GetStringFromObj(objptr, len)
     return Int(unsafe_write(io, buf, len[]))::Int
 end
@@ -160,7 +160,7 @@ function show_value(io::IO, obj::TclObj)
     elseif type == :bytearray
         print(io, "UInt8[")
         GC.@preserve obj begin
-            len = Ref{Cint}()
+            len = Ref{Tcl_Size}()
             ptr = Tcl_GetByteArrayFromObj(obj, len)
             len = Int(len[])::Int
             if len ≤ 10
@@ -383,7 +383,7 @@ function new_object(str::Union{String,SubString{String}})
 end
 function unsafe_get(::Type{String}, obj::ObjPtr)
     # NOTE `unsafe_string` catches that `ptr` must not be null so we do not check that.
-    len = Ref{Cint}()
+    len = Ref{Tcl_Size}()
     return unsafe_string(Tcl_GetStringFromObj(obj, len), len[])
 end
 #
@@ -524,7 +524,7 @@ function unsafe_get(::Type{T}, interp::InterpPtr,
     return unsafe_get(T, obj) # `interp` not needed
 end
 function unsafe_get(::Type{T}, obj::ObjPtr) where {T<:Union{Vector{UInt8},Memory{UInt8}}}
-    len = Ref{Cint}()
+    len = Ref{Tcl_Size}()
     ptr = Tcl_GetByteArrayFromObj(obj, len)
     len = Int(len[])::Int
     arr = T(undef, len)

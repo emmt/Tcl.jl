@@ -303,7 +303,7 @@ function nbytes(obj::TclObj)::Int
     GC.@preserve obj begin
         ptr = pointer(obj)
         isnull(ptr) && return 0
-        len = Ref{Cint}()
+        len = Ref{Tcl_Size}()
         Tcl_GetStringFromObj(ptr, len)
         return Int(len[])
     end
