@@ -431,9 +431,8 @@ end
 
 #--------------------------------------------------------------- Evaluation of Tcl scripts -
 
-function Tcl_Eval(interp, script)
-    @ccall libtcl.Tcl_Eval(interp::Ptr{Tcl_Interp}, script::Cstring)::TclStatus
-end
+# NOTE `Tcl_Eval` becomes a macro in Tcl 9.
+Tcl_Eval(interp, script) = Tcl_EvalEx(interp, script, -1, 0)
 
 function Tcl_EvalFile(interp, fileName)
     @ccall libtcl.Tcl_EvalFile(interp::Ptr{Tcl_Interp}, fileName::Cstring)::TclStatus
