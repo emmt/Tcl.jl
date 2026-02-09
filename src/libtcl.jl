@@ -420,6 +420,10 @@ function Tcl_GetObjResult(interp)
     @ccall libtcl.Tcl_GetObjResult(interp::Ptr{Tcl_Interp})::Ptr{Tcl_Obj}
 end
 
+function Tcl_ResetResult(interp)
+    @ccall libtcl.Tcl_ResetResult(interp::Ptr{Tcl_Interp})::Cvoid
+end
+
 # Reference counting.
 
 function Tcl_Preserve(data)
