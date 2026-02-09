@@ -520,9 +520,10 @@ const TCL_APPEND_VALUE   = Cint(4)
 const TCL_LIST_ELEMENT   = Cint(8)
 const TCL_LEAVE_ERR_MSG  = Cint(0x200)
 
-function Tcl_GetVar(interp, name, flags)
-    @ccall libtcl.Tcl_GetVar(interp::Ptr{Tcl_Interp}, name::Cstring, flags::Cint)::Cstring
-end
+# NOTE `Tcl_GetVar`, `Tcl_SetVar`, and `Tcl_UnsetVar` are macros since Tcl 9.
+Tcl_GetVar(interp, name, flags) = Tcl_GetVar(interp, name, C_NULL, flags)
+Tcl_SetVar(interp, name, value, flags) = Tcl_SetVar2(interp, name, C_NULL, value, flags)
+Tcl_UnsetVar(interp, name, flags) = Tcl_UnsetVar2(interp, name, C_NULL, flags)
 
 function Tcl_GetVar2(interp, part1, part2, flags)
     @ccall libtcl.Tcl_GetVar2(interp::Ptr{Tcl_Interp}, part1::Cstring, part2::Cstring,
@@ -539,11 +540,6 @@ function Tcl_ObjGetVar2(interp, part1, part2, flags)
                                  part2::Ptr{Tcl_Obj}, flags::Cint)::Ptr{Tcl_Obj}
 end
 
-function Tcl_SetVar(interp, name, value, flags)
-    @ccall libtcl.Tcl_SetVar(interp::Ptr{Tcl_Interp}, name::Cstring,
-                              value::Cstring, flags::Cint)::Cstring
-end
-
 function Tcl_SetVar2(interp, part1, part2, value, flags)
     @ccall libtcl.Tcl_SetVar2(interp::Ptr{Tcl_Interp}, part1::Cstring, part2::Cstring,
                               value::Cstring, flags::Cint)::Cstring
@@ -558,11 +554,6 @@ function Tcl_ObjSetVar2(interp, part1, part2, value, flags)
     @ccall libtcl.Tcl_ObjSetVar2(interp::Ptr{Tcl_Interp}, part1::Ptr{Tcl_Obj},
                                  part2::Ptr{Tcl_Obj}, value::Ptr{Tcl_Obj},
                                  flags::Cint)::Ptr{Tcl_Obj}
-end
-
-function Tcl_UnsetVar(interp, name, flags)
-    @ccall libtcl.Tcl_UnsetVar(interp::Ptr{Tcl_Interp}, name::Cstring,
-                               flags::Cint)::TclStatus
 end
 
 function Tcl_UnsetVar2(interp, part1, part2, flags)
