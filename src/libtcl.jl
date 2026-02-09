@@ -407,11 +407,6 @@ function Tcl_SetObjResult(interp, obj)
     @ccall libtcl.Tcl_SetObjResult(interp::Ptr{Tcl_Interp}, obj::Ptr{Tcl_Obj})::Cvoid
 end
 
-function Tcl_SetResult(interp, result, freeProc)
-    @ccall libtcl.Tcl_SetResult(interp::Ptr{Tcl_Interp}, result::Cstring,
-                                freeProc::Ptr{Tcl_FreeProc})::Cvoid
-end
-
 function Tcl_GetStringResult(interp)
     return Tcl_GetString(Tcl_GetObjResult(interp))
 end

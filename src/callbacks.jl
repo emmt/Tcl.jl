@@ -102,7 +102,7 @@ function eval_command(fptr::ClientData, iptr::Ptr{Tcl_Interp},
         # Get the callback object and dispatch on it.
         return eval_command(unsafe_pointer_to_objref(fptr), iptr, objc, objv)::TclStatus
     catch ex
-        Tcl_SetResult(iptr, "(callback error) " * get_error_message(ex), TCL_VOLATILE)
+        Tcl_SetObjResult(iptr, new_object("(callback error) " * get_error_message(ex)))
         return TCL_ERROR
     end
 end

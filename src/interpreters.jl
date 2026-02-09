@@ -292,23 +292,18 @@ If not specified, `interp` is the shared interpreter of the calling thread.
 """
 setresult!(val) = setresult!(TclInterp(), val)
 
-# To set Tcl interpreter result, we can call `Tcl_SetObjResult` for any object, or
-# `Tcl_SetResult` for string results with no embedded nulls. Julia strings are immutable but
-# are volatile. Not sure whether symbols are volatile or not. In doubt, we always use
-# `TCL_VOLATILE`.
+# To set Tcl interpreter result, we call `Tcl_SetObjResult` for any object, as
+# `Tcl_SetResult` is a macro since Tcl 9.
 
-setresult!(interp::TclInterp, val::FastString) =
-    Tcl_SetResult(interp, val, TCL_VOLATILE)
+setresult!(interp::TclInterp, result::TclObj) =
+    Tcl_SetObjResult(interp, result)
 
-setresult!(interp::TclInterp, val::TclObj) =
-    Tcl_SetObjResult(interp, val)
-
-function setresult!(interp::TclInterp, val)
+function setresult!(interp::TclInterp, result)
     # Here we save creating a mutable `TclObj` structure to temporarily wrap the new Tcl
     # object.
     GC.@preserve interp begin
         interp_ptr = checked_pointer(interp) # this may throw
-        result_ptr = new_object(val) # this may throw
+        result_ptr = new_object(result) # this may throw
         if true
             # As can be seen in `generic/tclResult.c`, `Tcl_SetObjResult` does manage the
             # reference count of its object argument so it is OK to directly pass a
