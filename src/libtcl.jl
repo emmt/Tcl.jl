@@ -19,6 +19,10 @@
 # - Convert to a `Bool` Boolean values returned as `Cint` by Tcl. It is sufficient to
 #   do `!iszero(bool))`.
 
+# Version for which this file was built.
+const TCL_MAJOR_VERSION = 9
+const TCL_MINOR_VERSION = 0
+
 """
     TclStatus
 
@@ -74,6 +78,9 @@ const TCL_EVAL_INVOKE   = Cint(0x080000)
 const TCL_CANCEL_UNWIND = Cint(0x100000)
 const TCL_EVAL_NOERR    = Cint(0x200000)
 
+# Integer type for indices and sizes (since Tcl 9).
+const Tcl_Size = TCL_MAJOR_VERSION ≥ 9 ? Cptrdiff_t : Cint
+
 # Tcl wide integer is 64-bit integer.
 const WideInt = Int64
 
@@ -112,6 +119,7 @@ struct Tcl_ObjType
     dupIntRepProc::Ptr{Tcl_DupInternalRepProc}
     updateStringProc::Ptr{Tcl_UpdateStringProc}
     setFromAnyProc::Ptr{Tcl_SetFromAnyProc}
+    # NOTE there are more fields below since Tcl 9. But we do not access them directly.
 end
 
 # Define constants for the types and offsets of all fields of `Tcl_ObjType`.
@@ -151,6 +159,11 @@ typedef struct Tcl_Obj {
             void *ptr;
             unsigned long value;
         } ptrAndLongRep;
+        // Since Tcl 9:
+        struct {
+            void *ptr;
+            Tcl_Size size;
+        } ptrAndSize;
     } internalRep;
 } Tcl_Obj;
 ```
@@ -168,7 +181,8 @@ end
 # Tuple of possible types in `internalRep` union.
 const Tcl_Obj_internalRep_types = (Clong, Cdouble, Ptr{Cvoid}, WideInt,
                                    Tuple{Ptr{Cvoid}, Ptr{Cvoid}},
-                                   Tuple{Ptr{Cvoid}, Culong})
+                                   Tuple{Ptr{Cvoid}, Culong},
+                                   Tuple{Ptr{Cvoid}, Tcl_Size})
 
 # Define constants for the types and offsets of all fields but the last ones.
 for (index, name) in enumerate(fieldnames(FakeObj{Nothing,0}))
@@ -306,11 +320,11 @@ end
 # Strings.
 
 function Tcl_NewStringObj(str, len)
-    @ccall libtcl.Tcl_NewStringObj(str::Ptr{UInt8}, len::Cint)::Ptr{Tcl_Obj}
+    @ccall libtcl.Tcl_NewStringObj(str::Ptr{UInt8}, len::Tcl_Size)::Ptr{Tcl_Obj}
 end
 
 function Tcl_SetStringObj(obj, str, len)
-    @ccall libtcl.Tcl_SetStringObj(obj::Ptr{Tcl_Obj}, str::Ptr{UInt8}, len::Cint)::Cvoid
+    @ccall libtcl.Tcl_SetStringObj(obj::Ptr{Tcl_Obj}, str::Ptr{UInt8}, len::Tcl_Size)::Cvoid
 end
 
 function Tcl_GetString(obj)
@@ -318,7 +332,7 @@ function Tcl_GetString(obj)
 end
 
 function Tcl_GetStringFromObj(obj, lenPtr)
-    @ccall libtcl.Tcl_GetStringFromObj(obj::Ptr{Tcl_Obj}, lenPtr::Ptr{Cint})::Ptr{UInt8}
+    @ccall libtcl.Tcl_GetStringFromObj(obj::Ptr{Tcl_Obj}, lenPtr::Ptr{Tcl_Size})::Ptr{UInt8}
 end
 
 # Multi-precision integers. TODO "Bignum" => :BigInt
@@ -344,21 +358,22 @@ end
 # Byte arrays.
 
 function Tcl_NewByteArrayObj(bytes, numBytes)
-    @ccall libtcl.Tcl_NewByteArrayObj(bytes::Ptr{Cuchar}, numBytes::Cint)::Ptr{Tcl_Obj}
+    @ccall libtcl.Tcl_NewByteArrayObj(bytes::Ptr{Cuchar}, numBytes::Tcl_Size)::Ptr{Tcl_Obj}
 end
 
 function Tcl_GetByteArrayFromObj(objPtr, numBytesPtr)
     @ccall libtcl.Tcl_GetByteArrayFromObj(objPtr::Ptr{Tcl_Obj},
-                                          numBytesPtr::Ptr{Cint})::Ptr{UInt8}
+                                          numBytesPtr::Ptr{Tcl_Size})::Ptr{UInt8}
 end
 
 function Tcl_SetByteArrayLength(objPtr, numBytes)
-    @ccall libtcl.Tcl_SetByteArrayLength(objPtr::Ptr{Tcl_Obj}, numBytes::Cint)::Ptr{UInt8}
+    @ccall libtcl.Tcl_SetByteArrayLength(objPtr::Ptr{Tcl_Obj},
+                                         numBytes::Tcl_Size)::Ptr{UInt8}
 end
 
 function Tcl_SetByteArrayObj(objPtr, bytes, numBytes)
     @ccall libtcl.Tcl_SetByteArrayObj(objPtr::Ptr{Tcl_Obj}, bytes::Ptr{Cuchar},
-                                      numBytes::Cint)::Cvoid
+                                      numBytes::Tcl_Size)::Cvoid
 end
 
 #------------------------------------------------------------------------ Tcl interpreters -
@@ -399,7 +414,7 @@ function Tcl_SetResult(interp, result, freeProc)
 end
 
 function Tcl_GetStringResult(interp)
-    @ccall libtcl.Tcl_GetStringResult(interp::Ptr{Tcl_Interp})::Cstring
+    return Tcl_GetString(Tcl_GetObjResult(interp))
 end
 
 function Tcl_GetObjResult(interp)
@@ -427,8 +442,8 @@ function Tcl_EvalFile(interp, fileName)
 end
 
 function Tcl_EvalEx(interp, script, numBytes, flags)
-    @ccall libtcl.Tcl_EvalEx(interp::Ptr{Tcl_Interp}, script::Ptr{UInt8}, numBytes::Cint,
-                             flags::Cint)::TclStatus
+    @ccall libtcl.Tcl_EvalEx(interp::Ptr{Tcl_Interp}, script::Ptr{UInt8},
+                             numBytes::Tcl_Size, flags::Cint)::TclStatus
 end
 
 function Tcl_EvalObjEx(interp, obj, flags)
@@ -437,7 +452,7 @@ function Tcl_EvalObjEx(interp, obj, flags)
 end
 
 function Tcl_EvalObjv(interp, objc, objv, flags)
-    @ccall libtcl.Tcl_EvalObjv(interp::Ptr{Tcl_Interp}, objc::Cint,
+    @ccall libtcl.Tcl_EvalObjv(interp::Ptr{Tcl_Interp}, objc::Tcl_Size,
                                objv::Ptr{Ptr{Tcl_Obj}}, flags::Cint)::TclStatus
 end
 
@@ -563,11 +578,11 @@ end
 # object to a list. In principle, non-temporary objects cannot be modified.
 
 function Tcl_NewListObj(objc, objv)
-    @ccall libtcl.Tcl_NewListObj(objc::Cint, objv::Ptr{Ptr{Tcl_Obj}})::Ptr{Tcl_Obj}
+    @ccall libtcl.Tcl_NewListObj(objc::Tcl_Size, objv::Ptr{Ptr{Tcl_Obj}})::Ptr{Tcl_Obj}
 end
 
 function Tcl_SetListObj(list, objc, objv)
-    @ccall libtcl.Tcl_SetListObj(list::Ptr{Tcl_Obj}, objc::Cint,
+    @ccall libtcl.Tcl_SetListObj(list::Ptr{Tcl_Obj}, objc::Tcl_Size,
                                  objv::Ptr{Ptr{Tcl_Obj}})::Cvoid
 end
 
@@ -583,22 +598,22 @@ end
 
 function Tcl_ListObjGetElements(interp, listPtr, objcPtr, objvPtr)
     @ccall libtcl.Tcl_ListObjGetElements(interp::Ptr{Tcl_Interp}, listPtr::Ptr{Tcl_Obj},
-                                         objcPtr::Ptr{Cint},
+                                         objcPtr::Ptr{Tcl_Size},
                                          objvPtr::Ptr{Ptr{Ptr{Tcl_Obj}}})::TclStatus
 end
 
 function Tcl_ListObjLength(interp, list, lengthPtr)
     @ccall libtcl.Tcl_ListObjLength(interp::Ptr{Tcl_Interp}, list::Ptr{Tcl_Obj},
-                                    lengthPtr::Ptr{Cint})::TclStatus
+                                    lengthPtr::Ptr{Tcl_Size})::TclStatus
 end
 
 function Tcl_ListObjIndex(interp, list, index, objPtrPtr)
     @ccall libtcl.Tcl_ListObjIndex(interp::Ptr{Tcl_Interp}, list::Ptr{Tcl_Obj},
-                                   index::Cint, objPtrPtr::Ptr{Ptr{Tcl_Obj}})::TclStatus
+                                   index::Tcl_Size, objPtrPtr::Ptr{Ptr{Tcl_Obj}})::TclStatus
 end
 
 function Tcl_ListObjReplace(interp, list, first, count, objc, objv)
     @ccall libtcl.Tcl_ListObjReplace(interp::Ptr{Tcl_Interp}, list::Ptr{Tcl_Obj},
-                                     first::Cint, count::Cint, objc::Cint,
+                                     first::Tcl_Size, count::Tcl_Size, objc::Tcl_Size,
                                      objv::Ptr{Ptr{Tcl_Obj}})::TclStatus
 end
