@@ -98,16 +98,6 @@ function Tcl_GetVersion(major, minor, patchLevel, type)
                                  type::Ptr{Cint})::Cvoid
 end
 
-#------------------------------------------------------------- Inference and introspection -
-
-# Return the least multiple of `b` that is greater or equal `a`. `a` and `b` must be
-# non-negative.
-roundup(a::Integer, b::Integer) = roundup(promote(a, b)...)
-roundup(a::T, b::T) where {T<:Integer} = div(b - one(T) + a, b)*b
-
-# Return the alignment in a C structure of an object of type `T`.
-alignment(::Type{T}) where {T} = fieldoffset(Tuple{UInt8,T}, 2)
-
 #----------------------------------------------------------------------------- Tcl objects -
 
 """
