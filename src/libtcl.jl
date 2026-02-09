@@ -91,7 +91,6 @@ const ClientData = Ptr{Cvoid}
 abstract type Tcl_Obj end
 abstract type Tcl_Interp end
 abstract type Tcl_Command_ end
-abstract type mp_int end
 
 # Token used by Tcl to identify an object command.
 const Tcl_Command = Ptr{Tcl_Command_}
@@ -338,21 +337,21 @@ end
 # Multi-precision integers. TODO "Bignum" => :BigInt
 
 function Tcl_NewBignumObj(value)
-    @ccall libtcl.Tcl_NewBignumObj(value::Ptr{mp_int})::Ptr{Tcl_Obj}
+    @ccall libtcl.Tcl_NewBignumObj(value::Ptr{Cvoid})::Ptr{Tcl_Obj}
 end
 
 function Tcl_SetBignumObj(obj, value)
-    @ccall libtcl.Tcl_SetBignumObj(obj::Ptr{Tcl_Obj}, value::Ptr{mp_int})::Cvoid
+    @ccall libtcl.Tcl_SetBignumObj(obj::Ptr{Tcl_Obj}, value::Ptr{Cvoid})::Cvoid
 end
 
 function Tcl_GetBignumFromObj(interp, obj, value)
     @ccall libtcl.Tcl_GetBignumFromObj(interp::Ptr{Tcl_Interp}, obj::Ptr{Tcl_Obj},
-                                       value::Ptr{mp_int})::TclStatus
+                                       value::Ptr{Cvoid})::TclStatus
 end
 
 function Tcl_TakeBignumFromObj(interp, obj, value)
     @ccall libtcl.Tcl_TakeBignumFromObj(interp::Ptr{Tcl_Interp}, obj::Ptr{Tcl_Obj},
-                                        value::Ptr{mp_int})::TclStatus
+                                        value::Ptr{Cvoid})::TclStatus
 end
 
 # Byte arrays.
