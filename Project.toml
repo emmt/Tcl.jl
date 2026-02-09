@@ -14,9 +14,9 @@ Tk_jll = "056b5f69-f28f-5060-ad8a-df43647a2b5c"
 [compat]
 CEnum = "0.5.0"
 Neutrals = "0.3.5"
-Tcl_jll = "8.6.14"
+Tcl_jll = "9.0.3"
 Test = "<0.0.1, 1"
-Tk_jll = "8.6.12"
+Tk_jll = "9.0.3"
 julia = "1.5"
 
 [extras]
