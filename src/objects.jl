@@ -156,7 +156,9 @@ function Base.show(io::IO, obj::TclObj)
     print(io, ")")
 end
 
-function show_value(io::IO, obj::TclObj)
+function show_value(io::IO, obj::TclObj; maxlen::Integer=50)
+    maxlen = max(3, Int(maxlen)::Int)
+    halfmaxlen = div(maxlen - 1, 2)
     type = obj.type
     if type ∈ (:int, :wideInt)
         print(io, convert(WideInt, obj))
@@ -168,18 +170,18 @@ function show_value(io::IO, obj::TclObj)
             len = Ref{Tcl_Size}()
             ptr = Tcl_GetByteArrayFromObj(obj, len)
             len = Int(len[])::Int
-            if len ≤ 10
+            if len ≤ maxlen
                 for i in 1:len
                     i > 1 && print(io, ", ")
                     show(io, unsafe_load(ptr, i))
                 end
             else
-                for i in 1:5
+                for i in 1:halfmaxlen
                     i > 1 && print(io, ", ")
                     show(io, unsafe_load(ptr, i))
                 end
                 print(io, ", ...")
-                for i in len-4:len
+                for i in len-halfmaxlen+1:len
                     print(io, ", ")
                     show(io, unsafe_load(ptr, i))
                 end
@@ -189,18 +191,18 @@ function show_value(io::IO, obj::TclObj)
     elseif type == :list
         print(io, "(")
         len = length(obj)
-        if len ≤ 10
+        if len ≤ maxlen
             for i in 1:len
                 i > 1 && print(io, ", ")
                 show_value(io, obj[i])
             end
         else
-            for i in 1:5
+            for i in 1:halfmaxlen
                 i > 1 && print(io, ", ")
                 show_value(io, obj[i])
             end
             print(io, ", ...")
-            for i in len-4:len
+            for i in len-halfmaxlen+1:len
                 print(io, ", ")
                 show_value(io, obj[i])
             end
