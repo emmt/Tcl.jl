@@ -201,7 +201,7 @@ function show_value(io::IO, obj::TclObj)
             end
         end
         print(io, ",)")
-    elseif type == :booleanString
+    elseif type == :boolean
         write(io, obj)
     elseif type == :null
         print(io, "#= NULL =#")

@@ -56,18 +56,18 @@ const φ = MathConstants.φ
         @test y[1] == "puts"
         @test y[2] == "hello world!"
 
-        # `booleanString` type.
+        # `boolean` type.
         x = @inferred TclObj("true")
         @test x.type == :string
         @test @inferred(repr(x)) == "TclObj(\"true\")"
         @test convert(Bool, x) === true
-        @test x.type == :booleanString
+        @test x.type == :boolean
         @test @inferred(repr(x)) == "TclObj(true)"
         x = @inferred TclObj("false")
         @test x.type == :string
         @test @inferred(repr(x)) == "TclObj(\"false\")"
         @test convert(Bool, x) === false
-        @test x.type == :booleanString
+        @test x.type == :boolean
         @test @inferred(repr(x)) == "TclObj(false)"
 
         # Destroy object and then calling the garbage collector must not throw.

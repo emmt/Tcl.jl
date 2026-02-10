@@ -213,8 +213,8 @@ Return the symbolic type name of Tcl object pointer `ptr`. The result can be:
 
 - `:string` for an unspecific object type (i.e., null type pointer null).
 
-- `:boolean`, `:booleanString`, `:int`, `:double`, `:wideInt`, `:bignum`, `:bytearray`,
-  `:list`, `:bytecode`, etc. for an object with a specific internal representation.
+- `:boolean`, `:int`, `:double`, `:wideInt`, `:bignum`, `:bytearray`, `:list`, `:bytecode`,
+  etc. for an object with a specific internal representation.
 
 !!! warning
     The function is *unsafe* as `ptr` may be null and otherwise must be valid for the
@@ -249,6 +249,7 @@ end
         namePtr = unsafe_load(Ptr{Tcl_ObjType_name_type}(typePtr + Tcl_ObjType_name_offset))
         isnull(namePtr) && unexpected_null("Tcl object type name")
         sym = Symbol(unsafe_string(namePtr))
+        sym === :booleanString && (sym = :boolean) # deal with oddities
     end
     push!(_known_types, (typePtr, sym))
     return sym
