@@ -530,7 +530,7 @@ const TCL_LIST_ELEMENT   = Cint(8)
 const TCL_LEAVE_ERR_MSG  = Cint(0x200)
 
 # NOTE `Tcl_GetVar`, `Tcl_SetVar`, and `Tcl_UnsetVar` are macros since Tcl 9.
-Tcl_GetVar(interp, name, flags) = Tcl_GetVar(interp, name, C_NULL, flags)
+Tcl_GetVar(interp, name, flags) = Tcl_GetVar2(interp, name, C_NULL, flags)
 Tcl_SetVar(interp, name, value, flags) = Tcl_SetVar2(interp, name, C_NULL, value, flags)
 Tcl_UnsetVar(interp, name, flags) = Tcl_UnsetVar2(interp, name, C_NULL, flags)
 
