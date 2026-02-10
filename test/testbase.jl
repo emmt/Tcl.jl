@@ -84,7 +84,11 @@ const φ = MathConstants.φ
     types = (Bool, Int8, Int16, Int32, Int64, Integer, Float32, Float64, AbstractFloat)
     @testset "Conversion of $x::$(typeof(x)) to $T" for x in values, T in types
         y = @inferred TclObj(x)
-        @test y.type == (x isa Integer ? :int : :double)
+        if x isa Integer
+            @test y.type ∈ (:int, :wideInt)
+        else
+            @test y.type == :double
+        end
         if T == Bool
             @test (@inferred Bool convert(Bool, y)) == !iszero(x)
         elseif T <: Integer
