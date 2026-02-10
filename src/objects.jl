@@ -115,7 +115,12 @@ function Base.isequal(A::TclObj, B::FastString)
     end
 end
 
-# TODO check print(io, obj)
+# Extend `print` so that string interpolation for Tcl objects works as in Tcl scripts.
+function Base.print(io::IO, obj::TclObj)
+    write(io, obj)
+    return nothing
+end
+
 function Base.write(io::IO, obj::TclObj)
     return GC.@preserve obj unsafe_write(io, pointer(obj))
 end
