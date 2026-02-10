@@ -219,6 +219,71 @@ end
     end
 
 end
+
+@testset "Tcl Lists" begin
+    # Tcl "list".
+    wa = ("", 1, "hello world!", (true, false), -3.75, π)
+    wf = (1, "hello", "world!", true, false, -3.75, π) # "concat" version
+    wb = @inferred TclObj Tcl.list(wa...)
+    wc = @inferred TclObj TclObj(wa)
+    @test wb.type == :list
+    @test wc.type == :list
+    @test @inferred(length(wb)) == length(wa)
+    @test @inferred(length(wc)) == length(wa)
+    @test wb == wc
+    @test all(wb .== wc)
+    @test all([wb[i] == TclObj(wa[i]) for i in 1:length(wa)])
+    @test all([wc[i] == TclObj(wa[i]) for i in 1:length(wa)])
+    @test wb[4].type == :list
+    @test wc[4].type == :list
+    @test wb[4][1] == TclObj(wa[4][1])
+    @test wc[4][2] == TclObj(wa[4][2])
+
+    # Set index in list.
+    wb[1] = 3
+    wb[3] = wc[4]
+    @test @inferred(TclObj, wb[1]) == TclObj(3)
+    @test @inferred(TclObj, wb[3]) == @inferred(TclObj, wc[4])
+
+    # Tcl "concat".
+    wd = @inferred TclObj Tcl.concat(wa...)
+    @test wd.type == :list
+    @test @inferred(length(wd)) == length(wf)
+    @test all([wd[i] == TclObj(wf[i]) for i in 1:length(wf)])
+
+    #
+    #lst5 = Tcl.list(π, 1, "hello", 2:6)
+    #@test length(lst5) == 4
+    #@test lst5[1] ≈ π
+    #@test lst5[2] == 1
+    #@test lst5[3] == "hello"
+    #@test all(lst5[4] .== 2:6)
+    #push!(lst5, sqrt(2))
+    #@test length(lst5) == 5
+    #@test lst5[end] ≈ sqrt(2)
+    #@test all(lst5[4:end][1] .== 2:6)
+    #@test lst5[0] == nothing
+    #@test lst5[end+1] == nothing
+    #A = lst5[[1 2; 3 4; 5 6]]
+    #@test size(A) == (3, 2)
+    #@test A[1,1] == lst5[1]
+    #@test A[1,2] == lst5[2]
+    #@test A[2,1] == lst5[3]
+    #@test A[2,2] == lst5[4]
+    #@test A[3,1] == lst5[5]
+    #@test A[3,2] == lst5[6]
+
+    #yc = Tcl.exec("list",x,z)
+    #r = Tcl.exec(TclObj,"list",4.6,pi)
+    #q = Tcl.exec(TclObj,"list",4,pi)
+    #Tcl.exec("list",4,pi)
+    #Tcl.exec("list",x,z,r)
+    #Tcl.exec("list",x,z,"hello",r)
+    #interp = TclInterp()
+    #interp[:v] = r
+    #Tcl.eval(interp, raw"foreach x $v { puts $x }")
+
+end
 #=
 
     @testset "Scalars" begin
@@ -259,91 +324,6 @@ end
         end
     end
 
-    @testset "Lists" begin
-        wa = ["", "false", "hello world!", "caleçon espiègle"]
-        wb = Tcl.exec(TclObj, "list", wa...)
-        wc = Tcl.getvalue(wb)
-        @test all(wc .== wa)
-        @test eltype(wc) <: String
-
-        xa = [false,true,0,1,2,3]
-        xb = Tcl.exec(TclObj, "list", xa...)
-        xc = Tcl.getvalue(xb)
-        @test all(xc .== xa)
-        @test eltype(xc) <: Integer
-
-        ya = [-4,6,-7]
-        yb = Tcl.exec(TclObj, "list", ya...)
-        yc = Tcl.getvalue(yb)
-        @test all(yc .== ya)
-        @test eltype(yc) <: Integer
-
-        za = [-1.0, 0.0, 1.0, -4.2, π, sqrt(2), φ]
-        zb = Tcl.exec(TclObj, "list", za...)
-        zc = Tcl.getvalue(zb)
-        @test all(zc .≈ za)
-        @test all(zc[1:3] .== za[1:3]) # no loss of precision?
-        @test eltype(zc) <: AbstractFloat
-
-        lst1 = Tcl.exec("list",xb,yb)
-        @test eltype(lst1) <: Vector{<:Integer}
-        @test all(lst1[1] == xa)
-        @test all(lst1[2] == ya)
-
-        lst2 = Tcl.exec("list",xb,"hello")
-        @test typeof(lst2) == Vector{Any}
-        @test all(lst2[1] .== xc)
-        @test all(lst2[2] == "hello")
-
-        lst3 = Tcl.exec("list",xb,yb,zb)
-        @test typeof(lst3) == Vector{Any}
-        @test all(lst3[1] .== xc)
-        @test all(lst3[2] .== yc)
-        @test all(lst3[3] .== zc)
-
-        lst2b = Tcl.exec(TclObj,"list",xb,"hello")
-        lst3b = Tcl.exec(TclObj,"list",xb,yb,zb)
-        lst4 = Tcl.exec("list",lst2b,lst3b)
-        @test typeof(lst4) == Vector{Any}
-        @test length(lst4) == 2
-        @test all(lst4[1][1] .== xc)
-        @test all(lst4[1][2] == "hello")
-        @test all(lst4[2][1] .== xc)
-        @test all(lst4[2][2] .== yc)
-        @test all(lst4[2][3] .== zc)
-
-        lst5 = Tcl.list(π, 1, "hello", 2:6)
-        @test length(lst5) == 4
-        @test lst5[1] ≈ π
-        @test lst5[2] == 1
-        @test lst5[3] == "hello"
-        @test all(lst5[4] .== 2:6)
-        push!(lst5, sqrt(2))
-        @test length(lst5) == 5
-        @test lst5[end] ≈ sqrt(2)
-        @test all(lst5[4:end][1] .== 2:6)
-        @test lst5[0] == nothing
-        @test lst5[end+1] == nothing
-        A = lst5[[1 2; 3 4; 5 6]]
-        @test size(A) == (3, 2)
-        @test A[1,1] == lst5[1]
-        @test A[1,2] == lst5[2]
-        @test A[2,1] == lst5[3]
-        @test A[2,2] == lst5[4]
-        @test A[3,1] == lst5[5]
-        @test A[3,2] == lst5[6]
-
-        #yc = Tcl.exec("list",x,z)
-        #r = Tcl.exec(TclObj,"list",4.6,pi)
-        #q = Tcl.exec(TclObj,"list",4,pi)
-        #Tcl.exec("list",4,pi)
-        #Tcl.exec("list",x,z,r)
-        #Tcl.exec("list",x,z,"hello",r)
-        #interp = TclInterp()
-        #interp[:v] = r
-        #Tcl.eval(interp, raw"foreach x $v { puts $x }")
-
-    end
     =#
 
 end # module
