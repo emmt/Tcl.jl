@@ -372,10 +372,7 @@ Base.show(io::IO, w::TkObject) = write(io, w.path)
 """
     tk_start(interp = TclInterp()) -> interp
 
-If Tk package is not already loaded in the interpreter `interp`, load Tk and Ttk
-packages in `interp` and start the event loop (for all interpreters).
-
-If it is detected that Tk is already loaded in the interpreter, nothing is done.
+Load Tk and Ttk packages in `interp` and start the event loop (for all interpreters).
 
 !!! note
     `tk_start` also takes care of withdrawing the root window "." to avoid its destruction
@@ -388,14 +385,12 @@ If it is detected that Tk is already loaded in the interpreter, nothing is done.
 
 """
 function tk_start(interp::TclInterp = TclInterp()) :: TclInterp
-    if ! interp(Bool, "info exists tk_version")
-        local status::TclStatus
-        status = interp(TclStatus, "package require Tk")
-        status == TCL_OK && (status = interp(TclStatus, "package require Ttk"))
-        status == TCL_OK && (status = interp(TclStatus, "wm withdraw ."))
-        status == TCL_OK || throw(TclError(interp))
-        resume()
-    end
+    local status::TclStatus
+    status = interp(TclStatus, "package require Tk")
+    status == TCL_OK && (status = interp(TclStatus, "package require Ttk"))
+    status == TCL_OK && (status = interp(TclStatus, "wm withdraw ."))
+    status == TCL_OK || throw(TclError(interp))
+    isrunning() || resume()
     return interp
 end
 
