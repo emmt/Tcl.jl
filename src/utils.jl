@@ -10,9 +10,9 @@ Return the full version of the Tcl C library.
 function tcl_version()
     major, minor, patch, rtype = tcl_version(Tuple)
     if rtype == TCL_ALPHA_RELEASE
-        return VersionNumber(major, minor, patch, ("beta",))
-    elseif rtype == TCL_BETA_RELEASE
         return VersionNumber(major, minor, patch, ("alpha",))
+    elseif rtype == TCL_BETA_RELEASE
+        return VersionNumber(major, minor, patch, ("beta",))
     elseif rtype != TCL_FINAL_RELEASE
         @warn "unknown Tcl release type $rtype"
     end
