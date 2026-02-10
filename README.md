@@ -1,7 +1,7 @@
 # Julia interface to Tcl/Tk
 
 [![License](http://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat)](LICENSE.md)
-[![Build Status](https://travis-ci.org/emmt/Tcl.jl.svg?branch=master)](https://travis-ci.org/emmt/Tcl.jl)
+[![Build Status](https://github.com/emmt/Tcl.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/emmt/Tcl.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
 This package provides an optimized Julia interface to
 [Tcl/Tk](http://www.tcl.tk/).
