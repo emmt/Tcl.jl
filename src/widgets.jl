@@ -297,7 +297,7 @@ function compose_widget_path(parent::Name, name::Name)::String
     return String(take!(buf))
 end
 
-nbytes(s::Union{String,SubString{String},Symbol}) = sizeof(sym)
+nbytes(s::Union{String,SubString{String},Symbol}) = sizeof(s)
 nbytes(c::Char) = ncodeunits(c)
 function nbytes(obj::TclObj)::Int
     GC.@preserve obj begin
