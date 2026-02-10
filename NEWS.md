@@ -23,6 +23,10 @@ Versioning](https://semver.org).
 
 - `Tcl.setresult` has been replaced by `Tcl.setresult!`.
 
+- Tcl/Tk options `-key val` in scripts or commands are produced by `key => val` pairs in
+  Julia code where `key` is a string, a symbol, or a Tcl object. Previously it was done for
+  keywords in function calls but, then, `key` cannot be a reserved Julia keyword.
+
 ### Fixed
 
 - Raw pointers in C calls are protected by having their owner object preserved from being
