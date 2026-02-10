@@ -41,26 +41,3 @@ open(path, "a") do io
     println(io, "const TCL_MAJOR_VERSION = $(major)")
     println(io, "const TCL_MINOR_VERSION = $(minor)")
 end
-if use_artifacts
-    # With Tcl/Tk artifacts, global variable `tcl_library` must be initialized to the
-    # directory of `init.tcl` before calling `Tcl_Init` and global variable `tk_library`
-    # must be initialized to the directory of `tk.tcl` before calling `Tk_Init`.
-    if major < 9
-        # Starting with Tcl 9, scripts may be embedded as a zip file-system in the libraries
-        # so we only check whether the scripts exist for older Tcl versions.
-        tcl_library = joinpath(dirname(dirname(Deps.Tcl_jll.libtcl_path)), "lib", "tcl$(major).$(minor)")
-        tcl_init = joinpath(tcl_library, "init.tcl")
-        isfile(tcl_init) || error("Tcl initialization script `init.tcl` not found in `$tcl_library`")
-        tk_library = joinpath(dirname(dirname(Deps.Tk_jll.libtk_path)), "lib", "tk$(major).$(minor)")
-        tk_init = joinpath(tk_library, "tk.tcl")
-        isfile(tk_init) || error("Tk initialization script `tk.tcl` not found in `$tk_library`")
-    end
-    open(path, "a") do io
-        println(io, "")
-        println(io, "# Directory where is Tcl initialization script `init.tcl`.")
-        println(io, "const TCL_LIBRARY = joinpath(dirname(dirname(Tcl_jll.libtcl_path)), \"lib\", \"tcl\$(TCL_MAJOR_VERSION).\$(TCL_MINOR_VERSION)\")")
-        println(io, "")
-        println(io, "# Directory where is Tk initialization script `tk.tcl`.")
-        println(io, "const TK_LIBRARY = joinpath(dirname(dirname(Tk_jll.libtk_path)), \"lib\", \"tk\$(TCL_MAJOR_VERSION).\$(TCL_MINOR_VERSION)\")")
-    end
-end

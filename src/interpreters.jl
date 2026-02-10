@@ -93,18 +93,22 @@ function _TclInterp()
     isnull(interp) && throw(TclError("unable to create Tcl interpreter"))
     try
         # Initialize Tcl interpreter to find Tcl library scripts.
-        if isdefined(@__MODULE__, :TCL_LIBRARY)
-            @info "Set `tcl_library` to \"$TCL_LIBRARY\""
-            ptr = Tcl_SetVar(interp, "tcl_library", TCL_LIBRARY, TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
+        if isdefined(@__MODULE__, :Tcl_jll)
+            tcl_library = joinpath(dirname(dirname(Tcl_jll.libtcl_path)), "lib",
+                                   "tcl$(TCL_MAJOR_VERSION).$(TCL_MINOR_VERSION)")
+            @info "Set `tcl_library` to \"$(tcl_library)\""
+            ptr = Tcl_SetVar(interp, "tcl_library", tcl_library, TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
             isnull(ptr) && @warn "Unable to set `tcl_library`: $(unsafe_string_result(interp))"
         end
         status = @ccall libtcl.Tcl_Init(interp::Ptr{Tcl_Interp})::TclStatus
         status == TCL_OK || @warn "Unable to initialize Tcl interpreter: $(unsafe_string_result(interp))"
 
         # Initialize Tcl interpreter to find Tk library scripts.
-        if isdefined(@__MODULE__, :TK_LIBRARY)
-            @info "Set `tk_library` to \"$TK_LIBRARY\""
-            ptr = Tcl_SetVar(interp, "tk_library", TK_LIBRARY, TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
+        if isdefined(@__MODULE__, :Tk_jll)
+            tk_library = joinpath(dirname(dirname(Tk_jll.libtk_path)), "lib",
+                                  "tk$(TCL_MAJOR_VERSION).$(TCL_MINOR_VERSION)")
+            @info "Set `tk_library` to \"$(tk_library)\""
+            ptr = Tcl_SetVar(interp, "tk_library", tk_library, TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
             isnull(ptr) && @warn "Unable to set `tk_library`: $(unsafe_string_result(interp))"
         end
         if TCL_MAJOR_VERSION >= 9
