@@ -7,181 +7,181 @@ using Test
 const π = MathConstants.π
 const φ = MathConstants.φ
 
-@testset "Basic Interface" begin
+@testset "Tcl Objects" begin
+    script = "puts {hello world!}"
+    symbolic_script = Symbol(script)
+    x = @inferred TclObj(script)
+    @test x isa TclObj
+    @test length(propertynames(x)) == 3
+    @test hasproperty(x, :ptr)
+    @test hasproperty(x, :refcnt)
+    @test hasproperty(x, :type)
+    @test x.type == :string
+    @test isone(x.refcnt)
+    @test isreadable(x)
+    @test iswritable(x)
+    @test x.ptr === @inferred(pointer(x))
+    @test script == @inferred string(x)
+    @test script == @inferred String(x)
+    @test script == @inferred convert(String, x)
+    @test x == x
+    @test x == script
+    @test script == x
+    @test x == symbolic_script
+    @test symbolic_script == x
+    @test isequal(x, x)
+    @test isequal(x, script)
+    @test isequal(script, x)
+    @test isequal(x, symbolic_script)
+    @test isequal(symbolic_script, x)
 
-    @testset "Tcl objects" begin
-        script = "puts {hello world!}"
-        symbolic_script = Symbol(script)
-        x = @inferred TclObj(script)
-        @test x isa TclObj
-        @test length(propertynames(x)) == 3
-        @test hasproperty(x, :ptr)
-        @test hasproperty(x, :refcnt)
-        @test hasproperty(x, :type)
-        @test x.type == :string
-        @test isone(x.refcnt)
-        @test isreadable(x)
-        @test iswritable(x)
-        @test x.ptr === @inferred(pointer(x))
-        @test script == @inferred string(x)
-        @test script == @inferred String(x)
-        @test script == @inferred convert(String, x)
-        @test x == x
-        @test x == script
-        @test script == x
-        @test x == symbolic_script
-        @test symbolic_script == x
-        @test isequal(x, x)
-        @test isequal(x, script)
-        @test isequal(script, x)
-        @test isequal(x, symbolic_script)
-        @test isequal(symbolic_script, x)
+    # copy() yields same but distinct objects
+    y = @inferred copy(x)
+    @test y isa TclObj
+    @test y.type == :string
+    @test isone(y.refcnt) && isone(x.refcnt)
+    @test y.ptr !== x.ptr
+    @test x == y
+    @test isequal(x, y)
 
-        # copy() yields same but distinct objects
-        y = @inferred copy(x)
-        @test y isa TclObj
-        @test y.type == :string
-        @test isone(y.refcnt) && isone(x.refcnt)
-        @test y.ptr !== x.ptr
-        @test x == y
-        @test isequal(x, y)
+    # length() converts object into a list
+    @test length(y) === 2 # there are 2 tokens in the script
+    @test y.type == :list
+    @test firstindex(y) === 1
+    @test lastindex(y) === length(y)
+    @test @inferred(eltype(y)) === TclObj
+    @test @inferred(eltype(typeof(y))) === TclObj
+    @test y[1] == "puts"
+    @test y[2] == "hello world!"
 
-        # length() converts object into a list
-        @test length(y) === 2 # there are 2 tokens in the script
-        @test y.type == :list
-        @test firstindex(y) === 1
-        @test lastindex(y) === length(y)
-        @test @inferred(eltype(y)) === TclObj
-        @test @inferred(eltype(typeof(y))) === TclObj
-        @test y[1] == "puts"
-        @test y[2] == "hello world!"
+    # `boolean` type.
+    x = @inferred TclObj("true")
+    @test x.type == :string
+    @test @inferred(repr(x)) == "TclObj(\"true\")"
+    @test convert(Bool, x) === true
+    @test x.type == :boolean
+    @test @inferred(repr(x)) == "TclObj(true)"
+    x = @inferred TclObj("false")
+    @test x.type == :string
+    @test @inferred(repr(x)) == "TclObj(\"false\")"
+    @test convert(Bool, x) === false
+    @test x.type == :boolean
+    @test @inferred(repr(x)) == "TclObj(false)"
 
-        # `boolean` type.
-        x = @inferred TclObj("true")
-        @test x.type == :string
-        @test @inferred(repr(x)) == "TclObj(\"true\")"
-        @test convert(Bool, x) === true
-        @test x.type == :boolean
-        @test @inferred(repr(x)) == "TclObj(true)"
-        x = @inferred TclObj("false")
-        @test x.type == :string
-        @test @inferred(repr(x)) == "TclObj(\"false\")"
-        @test convert(Bool, x) === false
-        @test x.type == :boolean
-        @test @inferred(repr(x)) == "TclObj(false)"
+    # Destroy object and then calling the garbage collector must not throw.
+    z = TclObj(0)
+    z = 0 # no longer a Tcl object
+    @test try GC.gc(); true; catch; false; end
 
-        # Destroy object and then calling the garbage collector must not throw.
-        z = TclObj(0)
-        z = 0 # no longer a Tcl object
-        @test try GC.gc(); true; catch; false; end
-
-        # Conversions. NOTE Tcl conversion rules are more restricted than Julia.
-        # TODO Test unsigned integers.
-        values = (true, false, -1, 0x03, Int16(8), Int32(-217),
-                  typemin(Int8), typemax(Int8),
-                  typemin(Int16), typemax(Int16),
-                  typemin(Int32), typemax(Int32),
-                  typemin(Int64), typemax(Int64),
-                  0.0f0, 1.0, 2//3, π, big(1.3))
-        types = (Bool, Int8, Int16, Int32, Int64, Integer, Float32, Float64, AbstractFloat)
-        @testset "Conversion of $x::$(typeof(x)) to $T" for x in values, T in types
-            y = @inferred TclObj(x)
-            @test y.type == (x isa Integer ? :int : :double)
-            if T == Bool
-                @test (@inferred Bool convert(Bool, y)) == !iszero(x)
-            elseif T <: Integer
-                if !(x isa Integer)
-                    # Floating-point to non-Boolean integer is not allowed by Tcl.
-                    @test_throws TclError convert(T, y)
+    # Conversions. NOTE Tcl conversion rules are more restricted than Julia.
+    # TODO Test unsigned integers.
+    values = (true, false, -1, 0x03, Int16(8), Int32(-217),
+              typemin(Int8), typemax(Int8),
+              typemin(Int16), typemax(Int16),
+              typemin(Int32), typemax(Int32),
+              typemin(Int64), typemax(Int64),
+              0.0f0, 1.0, 2//3, π, big(1.3))
+    types = (Bool, Int8, Int16, Int32, Int64, Integer, Float32, Float64, AbstractFloat)
+    @testset "Conversion of $x::$(typeof(x)) to $T" for x in values, T in types
+        y = @inferred TclObj(x)
+        @test y.type == (x isa Integer ? :int : :double)
+        if T == Bool
+            @test (@inferred Bool convert(Bool, y)) == !iszero(x)
+        elseif T <: Integer
+            if !(x isa Integer)
+                # Floating-point to non-Boolean integer is not allowed by Tcl.
+                @test_throws TclError convert(T, y)
+            else
+                S = (T === Integer ? Int : T)
+                if typemin(S) ≤ x ≤ typemax(S)
+                    @test (@inferred S convert(T, y)) == convert(S, x)
                 else
-                    S = (T === Integer ? Int : T)
-                    if typemin(S) ≤ x ≤ typemax(S)
-                        @test (@inferred S convert(T, y)) == convert(S, x)
-                    else
-                        @test_throws Union{TclError,InexactError} convert(T, y)
-                    end
+                    @test_throws Union{TclError,InexactError} convert(T, y)
                 end
-            else # T is non-integer real
-                S = (T === AbstractFloat ? Float64 : T)
-                @test (@inferred S convert(T, y)) == convert(S, x)
             end
-        end
-
-        # Tuples.
-        x = @inferred TclObj(:hello)
-        @test x.type == :string
-        @test x == :hello
-        @test x == "hello"
-        t = (2, -3, x, 8.0)
-        @test x.refcnt == 1
-        y = @inferred TclObj(t)
-        @test x.refcnt == 2
-        @test y.type == :list
-        @test length(y) == length(t)
-        # TODO @test y == t
-
-        # Get default interpreter.
-        interp = @inferred TclInterp()
-
-    end
-    #=
-    @testset "Variables" begin
-        interp = TclInterp()
-        for (name, value) in (("a", 42), ("1", 1), ("", "empty"),
-                              ("π", π), ("w\0rld is beautiful!", true))
-            # Check methods.
-            Tcl.exec(TclStatus, "array", "unset", name)
-            Tcl.setvar(name, value)
-            if typeof(value) <: Union{String,Integer}
-                @test Tcl.getvar(name) == value
-            elseif typeof(value) <: AbstractFloat
-                @test Tcl.getvar(name) ≈ value
-            end
-            @test Tcl.exists(name)
-            Tcl.unsetvar(name)
-            @test !Tcl.exists(name)
-
-            # Check indexable interface.
-            interp[name] = value
-            if typeof(value) <: Union{String,Integer}
-                @test interp[name] == value
-            elseif typeof(value) <: AbstractFloat
-                @test interp[name] ≈ value
-            end
-            @test Tcl.exists(name)
-            interp[name] = nothing
-            @test !Tcl.exists(name)
-        end
-
-        for (name1, name2, value) in (("a", "i", 42),
-                                      ("1", "2", 12),
-                                      ("", "", "really empty"),
-                                      ("π", "φ", π),
-                                      ("w\0rld is", "beautiful!", true))
-            # Check methods.
-            Tcl.unsetvar(name1, nocomplain=true)
-            Tcl.setvar(name1, name2, value)
-            if typeof(value) <: Union{String,Integer}
-                @test Tcl.getvar(name1, name2) == value
-            elseif typeof(value) <: AbstractFloat
-                @test Tcl.getvar(name1, name2) ≈ value
-            end
-            @test Tcl.exists(name1, name2)
-            Tcl.unsetvar(name1, name2)
-            @test !Tcl.exists(name1, name2)
-
-            # Check indexable interface.
-            interp[name1, name2] = value
-            if typeof(value) <: Union{String,Integer}
-                @test interp[name1, name2] == value
-            elseif typeof(value) <: AbstractFloat
-                @test interp[name1, name2] ≈ value
-            end
-            @test Tcl.exists(name1, name2)
-            interp[name1, name2] = nothing
-            @test !Tcl.exists(name1, name2)
+        else # T is non-integer real
+            S = (T === AbstractFloat ? Float64 : T)
+            @test (@inferred S convert(T, y)) == convert(S, x)
         end
     end
+
+    # Tuples.
+    x = @inferred TclObj(:hello)
+    @test x.type == :string
+    @test x == :hello
+    @test x == "hello"
+    t = (2, -3, x, 8.0)
+    @test x.refcnt == 1
+    y = @inferred TclObj(t)
+    @test x.refcnt == 2
+    @test y.type == :list
+    @test length(y) == length(t)
+    # TODO @test y == t
+
+end
+
+@testset "Tcl Variables" begin
+    # Get default interpreter.
+    interp = @inferred TclInterp()
+
+    for (name, value) in (("a", 42), ("1", 1), ("", "empty"),
+                          ("π", π), ("world is beautiful!", true))
+        # Check methods.
+        @inferred TclStatus Tcl.exec(TclStatus, "array", "unset", name)
+        key = Symbol(name)
+        @inferred Nothing Tcl.setvar(name, value)
+        T = typeof(value)
+        obj = @inferred TclObj Tcl.getvar(name)
+        @test @inferred(TclObj, interp[name]) == obj
+        @test @inferred(TclObj, interp[key]) == obj
+        if value isa Union{String,Integer}
+            @test @inferred(T, Tcl.getvar(T, name)) == value
+        elseif value isa AbstractFloat
+            @test @inferred(T, Tcl.getvar(T, name)) ≈ value
+        end
+        @test Tcl.exists(name)
+        @test haskey(interp, name)
+        @test haskey(interp, key)
+        Tcl.unsetvar(name)
+        @test !Tcl.exists(name)
+        @test !haskey(interp, name)
+        @test !haskey(interp, key)
+
+        # TODO delete a variable
+    end
+
+    for (part1, part2, value) in (("a", "i", 42),
+                                  ("1", "2", 12),
+                                  ("", "", "really empty"),
+                                  ("π", "φ", π),
+                                  ("world is", "beautiful!", true))
+        # Check methods.
+        Tcl.unsetvar(part1, nocomplain=true)
+        @test_throws TclError Tcl.unsetvar(part1)
+        key1 = Symbol(part1)
+        key2 = Symbol(part2)
+        @inferred Nothing Tcl.setvar(part1, part2, value)
+        T = typeof(value)
+        obj = @inferred TclObj Tcl.getvar(part1, part2)
+        @test @inferred(TclObj, interp[part1, part2]) == obj
+        @test @inferred(TclObj, interp[key1, key2]) == obj
+        @test @inferred(TclObj, interp["$(part1)($(part2))"]) == obj
+        if value isa Union{String,Integer}
+            @test @inferred(T, Tcl.getvar(T, part1, part2)) == value
+        elseif value isa AbstractFloat
+            @test @inferred(T, Tcl.getvar(T, part1, part2)) ≈ value
+        end
+        @test Tcl.exists(part1, part2)
+        @test haskey(interp, part1, part2)
+        @test haskey(interp, key1, key2)
+        Tcl.unsetvar(part1, part2)
+        @test !Tcl.exists(part1, part2)
+        @test !haskey(interp, part1, part2)
+        @test !haskey(interp, key1, key2)
+    end
+
+end
+#=
 
     @testset "Scalars" begin
         var = "x"
@@ -307,6 +307,5 @@ const φ = MathConstants.φ
 
     end
     =#
-end
 
-end
+end # module
