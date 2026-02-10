@@ -19,10 +19,6 @@
 # - Convert to a `Bool` Boolean values returned as `Cint` by Tcl. It is sufficient to
 #   do `!iszero(bool))`.
 
-# Version for which this file was built.
-const TCL_MAJOR_VERSION = 9
-const TCL_MINOR_VERSION = 0
-
 """
     TclStatus
 

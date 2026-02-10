@@ -92,104 +92,36 @@ function _TclInterp()
     interp = Tcl_CreateInterp()
     isnull(interp) && throw(TclError("unable to create Tcl interpreter"))
     try
-        script = generate_pre_init_script()
-        if Tcl_Eval(interp, script) != TCL_OK
-            @warn "Unable to evaluate Tcl pre-initialization script: $(getresult(interp))"
-        elseif Tcl_Init(interp) != TCL_OK
-            @warn "Unable to initialize Tcl interpreter"
+        # Initialize Tcl interpreter to find Tcl library scripts.
+        if isdefined(@__MODULE__, :TCL_LIBRARY)
+            @info "Set `tcl_library` to \"$TCL_LIBRARY\""
+            ptr = Tcl_SetVar(interp, "tcl_library", TCL_LIBRARY, TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
+            isnull(ptr) && @warn "Unable to set `tcl_library`: $(unsafe_string_result(interp))"
         end
-        @info unsafe_string(Tcl_GetVar(interp, "auto_path", TCL_GLOBAL_ONLY))
+        status = @ccall libtcl.Tcl_Init(interp::Ptr{Tcl_Interp})::TclStatus
+        status == TCL_OK || @warn "Unable to initialize Tcl interpreter: $(unsafe_string_result(interp))"
+
+        # Initialize Tcl interpreter to find Tk library scripts.
+        if isdefined(@__MODULE__, :TK_LIBRARY)
+            @info "Set `tk_library` to \"$TK_LIBRARY\""
+            ptr = Tcl_SetVar(interp, "tk_library", TK_LIBRARY, TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
+            isnull(ptr) && @warn "Unable to set `tk_library`: $(unsafe_string_result(interp))"
+        end
+        if TCL_MAJOR_VERSION >= 9
+            # In Tcl/Tk 9, library scripts are embedded in the dynamic library via zipfs.
+            # Tcl mounts its own zipfs automatically, but we must mount Tk's.
+            status = @ccall libtcl.TclZipfs_Mount(
+                interp::Ptr{Tcl_Interp}, Tk_jll.libtk_path::Cstring, "//zipfs:/lib/tk"::Cstring,
+                C_NULL::Cstring)::TclStatus
+            status == TCL_OK || @warn "Unable to mount Tk zipfs: $(unsafe_string_result(interp))"
+        end
+        status = @ccall libtk.Tk_Init(interp::Ptr{Tcl_Interp})::TclStatus
+        status == TCL_OK || @warn "Unable to initialize Tk interpreter: $(unsafe_string(Tcl_GetStringResult(interp)))"
     catch
         Tcl_DeleteInterp(interp)
         rethrow()
     end
     return _TclInterp(interp) # call inner constructor
-end
-
-# NOTE Following to Tcl doc. (read `man 3tcl auto_path`) and to the `init.tcl` script. We
-# set global Tcl variable `tcl_library` to be the directory where is the `init.tcl` script
-# of the Tcl artifact and the global Tcl variable `env(TCLLIBPATH)` to the ordered list
-# (first Tcl, then Tk) of directories where file `pkgIndex.tcl` can be found.
-function generate_pre_init_script()
-    # Empty script and list of `auto_path` directories.
-    script = String[]
-    auto_path = String[]
-    (major, minor, patch, release) = tcl_version(Tuple)
-
-    # Start with Tcl library.
-    tcl_subdir = joinpath("lib", "tcl$(major).$(minor)")
-    tcl_library = abspath(Tcl_jll.artifact_dir, tcl_subdir)
-    if !isdir(tcl_library)
-        @warn "Tcl library directory \"$(tcl_subdir)\" not found in the artifact directory"
-    else
-        update_auto_path!(auto_path, tcl_library)
-        if !isfile(joinpath(tcl_library, "init.tcl"))
-            @warn "Tcl \"init.tcl\" not found in sub-directory \"$(tcl_subdir)\" of the artifact directory"
-        else
-            push!(script, "set tcl_library $(quote_string(tcl_library))")
-        end
-    end
-
-    # Add Tk library. Global variable `tk_library` will only be set when `Tk` is loaded.
-    tk_subdir = joinpath("lib", "tk$(major).$(minor)")
-    tk_library = abspath(Tk_jll.artifact_dir, tk_subdir)
-    if !isdir(tk_library)
-        @warn "Tk library directory \"$(tk_subdir)\" not found in the artifact directory"
-    else
-        update_auto_path!(auto_path, tk_library)
-    end
-
-    # Register the list of directories to initially have in `auto_path` via the global
-    # `env(TCLLIBPATH)`.
-    if haskey(ENV, "TCLLIBPATH")
-        @warn "Environment variable `TCLLIBPATH` must be reset to Tcl/Tk artifact directories"
-        delete!(ENV, "TCLLIBPATH")
-    end
-    push!(script, "set env(TCLLIBPATH) {}")
-    for dir in auto_path
-        push!(script, "lappend env(TCLLIBPATH) $(quote_string(dir))")
-    end
-
-    return join(script, "\n")
-end
-
-function update_auto_path!(auto_path::Vector{String}, library::AbstractString)
-    isdir(library) || return auto_path
-    library ∈ auto_path || push!(auto_path, library)
-    isabspath(library) || return auto_path
-    parent = dirname(library)
-    isdir(parent) || return auto_path
-    parent ∈ auto_path || push!(auto_path, parent)
-    # Starting at parent directory, e.g. "$(Tcl_jll.artifact_dir)/lib", append any directory
-    # where a file `tclIndex` is found and which is not already in the list (nor its
-    # parent).
-    for dir in search_tclIndex(parent)
-        dir ∈ auto_path && continue
-        dirname(dir) ∈ auto_path || push!(auto_path, dir)
-    end
-    return auto_path
-end
-
-function search_tclIndex(dirs::AbstractString...)
-    list = String[]
-    for dir in dirs
-        search_tclIndex!(list, abspath(dir))
-    end
-    return unique!(sort!(list))
-end
-
-function search_tclIndex!(list::Vector{String}, dir::AbstractString)
-    for name in readdir(dir; sort=false, join=false)
-        if name == "tclIndex"
-            dir ∈ list || push!(list, dir)
-        else
-            path = joinpath(dir, name)
-            if isdir(path)
-                search_tclIndex!(list, path)
-            end
-        end
-    end
-    return list
 end
 
 # Make a Tcl interpreter callable.
@@ -477,6 +409,9 @@ function unsafe_append_eval_arg(interp::InterpPtr, list::ObjPtr, (key,val)::Pair
     unsafe_append_element(interp, list, val)
     return nothing
 end
+
+unsafe_string_result(interp::Union{TclInterp,InterpPtr}) =
+    unsafe_string(Tcl_GetStringResult(interp))
 
 function unsafe_result(::Type{TclStatus}, status::TclStatus, interp::InterpPtr)
     return status

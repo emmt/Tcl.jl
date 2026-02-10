@@ -6,6 +6,7 @@ version = "0.1.0"
 CEnum = "fa961155-64e5-5f13-b03f-caf6b980ea82"
 ColorTypes = "3da002f7-5984-5a60-b8a6-cbb66c0b333f"
 FixedPointNumbers = "53c48c17-4a7d-5ca2-90c5-79b7896eea93"
+Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
 Neutrals = "789cc80b-6f9a-47a7-8588-bb01047265c3"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Tcl_jll = "9fc9b8dd-f768-5d0d-bb0b-e65961e00eb6"
@@ -13,10 +14,11 @@ Tk_jll = "056b5f69-f28f-5060-ad8a-df43647a2b5c"
 
 [compat]
 CEnum = "0.5.0"
+Libdl = "<0.0.1, 1"
 Neutrals = "0.3.5"
-Tcl_jll = "9.0.3"
+Tcl_jll = "8.6, 9.0"
 Test = "<0.0.1, 1"
-Tk_jll = "9.0.3"
+Tk_jll = "8.6, 9.0"
 julia = "1.5"
 
 [extras]

@@ -37,7 +37,9 @@ Versioning](https://semver.org).
 
 ## Changed
 
-- Artifacts `Tcl_jll` and `Tk_jll` are used instead of system libraries.
+- By default, the package uses artifacts `Tcl_jll` and `Tk_jll`. To use other libraries, one
+  can set the environment variables `ENV["JL_TLIBTCL"]` and `ENV["JL_TLIBTK"]` to the
+  absolute paths of these libraries before calling `pkg> update Tcl` and `pkg> build Tcl`.
 
 - `Tcl.doevents` has been deprecated and replaced by `Tcl.do_events` which returns the
   number of processed events.

@@ -12,8 +12,6 @@ using Base
 module Private
 
 import ..Tcl
-using Tcl_jll
-using Tk_jll
 using CEnum
 using Neutrals
 
@@ -25,6 +23,7 @@ if !isdefined(Base, :isnothing)
     isnothing(::Nothing) = true
 end
 
+include(joinpath("..", "deps", "deps.jl"))
 include("libtcl.jl")
 include("libtk.jl")
 include("types.jl")
@@ -40,10 +39,10 @@ include("widgets.jl")
 #include("images.jl")
 
 function __init__()
-    # Many things do not work properly (e.g., freeing a Tcl object yields a segmentation
-    # fault) if no interpreter has been created, so we always create an initial Tcl
-    # interpreter for this thread.
-    _ = TclInterp(:shared)
+    # Many things do not work properly (segmentation fault when freeing a Tcl object,
+    # initialization of Tcl interpreters, etc.) if Tcl internals (encodings, sub-systems,
+    # etc.) are not properly initialized. This is done by the following call.
+    @ccall libtcl.Tcl_FindExecutable(joinpath(Sys.BINDIR, "julia")::Cstring)::Cvoid
 
     # The table of known types is updated while objects of new types are created because
     # seeking for an existing type is much faster than creating the mutable TclObj
@@ -81,6 +80,11 @@ for sym in (
     :TkBGRA,
     :TkARGB,
     :TkABGR,
+
+    # Version.
+    :TCL_VERSION,
+    :TCL_MAJOR_VERSION,
+    :TCL_MINOR_VERSION,
 
     # Status constants.
     :TCL_OK,
