@@ -37,6 +37,11 @@ for (name, decl) in ((:name,)         => (:(name::Name),),
         function Base.getindex(interp::TclInterp, $(decl...))
             return getvar(interp, $(name...))
         end
+
+        function Base.getindex(interp::TclInterp, ::Type{T}, $(decl...)) where {T}
+            return getvar(T, interp, $(name...))
+        end
+
         function Base.setindex!(interp::TclInterp, value, $(decl...))
             setvar(Nothing, interp, $(name...), value)
             return interp
@@ -51,20 +56,24 @@ for (name, decl) in ((:name,)         => (:(name::Name),),
 end
 
 """
-    Tcl.getvar([T=TclObj,][interp,] part1[, part2])
+    Tcl.getvar([T=TclObj,][interp=TclInterp(),] name) -> val::T
+    Tcl.getvar([T=TclObj,][interp=TclInterp(),] part1, part2) -> val::T
 
-Return the value of the global variable `part1` or `part1(part2)` in Tcl interpreter
-`interp` or in the shared interpreter of the calling thread if this argument is omitted.
+    interp[name] -> val::TclObj
+    interp[part1, part2] -> val::TclObj
 
-Optional argument `T` (`Any` by default) can be used to specify the type of the returned
+    interp[T::Type, name] -> val::T
+    interp[T::Type, part1, part2] -> val::T
+
+Return the value of the global variable `name` or `part1(part2)` in Tcl interpreter `interp`
+or in the shared interpreter of the calling thread if this argument is omitted.
+
+Optional argument `T` (`TclObj` by default) can be used to specify the type of the returned
 value. Some possibilities are:
 
-* If `T` is `Any`, the type of the returned value is determined so as to best
-  reflect that of the Tcl variable.
-
-* If `T` is `TclObj`, a managed Tcl object is returned. This is the most efficient if the
-  returned value is intended to be put in a Tcl list or to be an argument of a Tcl script or
-  command.
+* If `T` is `TclObj` (the default), a managed Tcl object is returned. This is the most
+  efficient if the returned value is intended to be used in a Tcl list or as an argument of
+  a Tcl script or command.
 
 * If `T` is `Bool`, a boolean value is returned.
 
@@ -77,16 +86,12 @@ value. Some possibilities are:
 
 * If `T <: AbstractFloat`, a floating-point value of type `T` is returned.
 
-* If `T` is `Vector`, a vector of values is returned (the Tcl object is converted into a
-  list if necessary).
+Note that, except if `T` is `TclObj`, a conversion of the Tcl object stored by the variable
+may be needed.
 
-* `TclObj` to get a managed Tcl object;
+# See also
 
-Note that, except if `T` is `Any` or `TclObj`, a conversion of the Tcl object stored by the
-variable may be needed.
-
-
-See also: [`Tcl.exists`](@ref), [`Tcl.setvar`](@ref), [`Tcl.unsetvar`](@ref).
+[`Tcl.exists`](@ref), [`Tcl.setvar`](@ref), and [`Tcl.unsetvar`](@ref).
 
 """
 function getvar end
