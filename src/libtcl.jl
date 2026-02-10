@@ -309,15 +309,26 @@ for (name, type) in ("Boolean" => :Cint,
     mutator = Symbol("Tcl_Set",name,"Obj")
     accessor = Symbol("Tcl_Get",name,"FromObj")
     @eval begin
-        function $creator(val)
-            @ccall libtcl.$creator(val::$type)::Ptr{Tcl_Obj}
-        end
-        function $mutator(obj, val)
-            @ccall libtcl.$mutator(obj::Ptr{Tcl_Obj}, val::$type)::Cvoid
-        end
         function $accessor(interp, obj, ptr)
             @ccall libtcl.$accessor(interp::Ptr{Tcl_Interp}, obj::Ptr{Tcl_Obj},
                                     ptr::Ptr{$type})::TclStatus
+        end
+    end
+    # Since Tcl 9, some creators/mutators are macros based on the `WideInt` creator/mutator.
+    if TCL_MAJOR_VERSION < 9 || !(name ∈ ("Boolean", "Int", "Long"))
+        @eval begin
+            function $creator(val)
+                @ccall libtcl.$creator(val::$type)::Ptr{Tcl_Obj}
+            end
+            function $mutator(obj, val)
+                @ccall libtcl.$mutator(obj::Ptr{Tcl_Obj}, val::$type)::Cvoid
+            end
+        end
+    else
+        arg = (name == "Boolean" ? :(!iszero(val)) : :(val))
+        @eval begin
+            $creator(val) = Tcl_NewWideIntObj($arg)
+            $mutator(obj, val) = Tcl_SetWideIntObj(obj, $arg)
         end
     end
 end
