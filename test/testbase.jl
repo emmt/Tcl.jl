@@ -96,7 +96,7 @@ const φ = MathConstants.φ
                 # Floating-point to non-Boolean integer is not allowed by Tcl.
                 @test_throws TclError convert(T, y)
             else
-                S = (T === Integer ? Int : T)
+                S = (isconcretetype(T) ? T : Tcl.WideInt)
                 if typemin(S) ≤ x ≤ typemax(S)
                     @test (@inferred S convert(T, y)) == convert(S, x)
                 else
