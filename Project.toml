@@ -11,6 +11,7 @@ Neutrals = "789cc80b-6f9a-47a7-8588-bb01047265c3"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Tcl_jll = "9fc9b8dd-f768-5d0d-bb0b-e65961e00eb6"
 Tk_jll = "056b5f69-f28f-5060-ad8a-df43647a2b5c"
+UnsetIndex = "cc9ef2aa-5034-4aa9-a69b-c36694cce9f8"
 
 [compat]
 CEnum = "0.5.0"
@@ -19,6 +20,7 @@ Neutrals = "0.3.5"
 Tcl_jll = "8.6, 9.0"
 Test = "<0.0.1, 1"
 Tk_jll = "8.6, 9.0"
+UnsetIndex = "0.1.2"
 julia = "1.5"
 
 [extras]

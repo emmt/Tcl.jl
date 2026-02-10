@@ -126,19 +126,28 @@ end
 
     for (name, value) in (("a", 42), ("1", 1), ("", "empty"),
                           ("π", π), ("world is beautiful!", true))
-        # Check methods.
+
+        # First unset variable.
         @inferred TclStatus Tcl.exec(TclStatus, "array", "unset", name)
         key = Symbol(name)
+
+        # Set variable.
         @inferred Nothing Tcl.setvar(name, value)
+
+        # Get variable.
         T = typeof(value)
         obj = @inferred TclObj Tcl.getvar(name)
         @test @inferred(TclObj, interp[name]) == obj
         @test @inferred(TclObj, interp[key]) == obj
         if value isa Union{String,Integer}
             @test @inferred(T, Tcl.getvar(T, name)) == value
+            @test @inferred(T, interp[T, name]) == value
         elseif value isa AbstractFloat
             @test @inferred(T, Tcl.getvar(T, name)) ≈ value
+            @test @inferred(T, interp[T, name]) ≈ value
         end
+
+        # Test existence and delete variable.
         @test Tcl.exists(name)
         @test haskey(interp, name)
         @test haskey(interp, key)
@@ -147,7 +156,18 @@ end
         @test !haskey(interp, name)
         @test !haskey(interp, key)
 
-        # TODO delete a variable
+        # Delete with `delete!`.
+        interp[name] = value
+        @test haskey(interp, name)
+        delete!(interp, name)
+        @test !haskey(interp, name)
+
+        # Delete with `unset`.
+        interp[name] = value
+        @test haskey(interp, name)
+        interp[name] = unset
+        @test !haskey(interp, name)
+
     end
 
     for (part1, part2, value) in (("a", "i", 42),
@@ -155,11 +175,13 @@ end
                                   ("", "", "really empty"),
                                   ("π", "φ", π),
                                   ("world is", "beautiful!", true))
-        # Check methods.
+        # First unset variable.
         Tcl.unsetvar(part1, nocomplain=true)
         @test_throws TclError Tcl.unsetvar(part1)
         key1 = Symbol(part1)
         key2 = Symbol(part2)
+
+        # Set variable.
         @inferred Nothing Tcl.setvar(part1, part2, value)
         T = typeof(value)
         obj = @inferred TclObj Tcl.getvar(part1, part2)
@@ -168,9 +190,13 @@ end
         @test @inferred(TclObj, interp["$(part1)($(part2))"]) == obj
         if value isa Union{String,Integer}
             @test @inferred(T, Tcl.getvar(T, part1, part2)) == value
+            @test @inferred(T, interp[T, part1, part2]) == value
         elseif value isa AbstractFloat
             @test @inferred(T, Tcl.getvar(T, part1, part2)) ≈ value
+            @test @inferred(T, interp[T, part1, part2]) ≈ value
         end
+
+        # Test existence and delete variable.
         @test Tcl.exists(part1, part2)
         @test haskey(interp, part1, part2)
         @test haskey(interp, key1, key2)
@@ -178,6 +204,18 @@ end
         @test !Tcl.exists(part1, part2)
         @test !haskey(interp, part1, part2)
         @test !haskey(interp, key1, key2)
+
+        # Delete with `delete!`.
+        interp[part1, part2] = value
+        @test haskey(interp, part1, part2)
+        delete!(interp, part1, part2)
+        @test !haskey(interp, part1, part2)
+
+        # Delete with `unset`.
+        interp[part1, part2] = value
+        @test haskey(interp, part1, part2)
+        interp[part1, part2] = unset
+        @test !haskey(interp, part1, part2)
     end
 
 end

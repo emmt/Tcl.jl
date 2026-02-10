@@ -14,6 +14,7 @@ module Private
 import ..Tcl
 using CEnum
 using Neutrals
+using UnsetIndex: Unset, unset
 
 if !isdefined(Base, :Memory)
     const Memory{T} = Vector{T}
@@ -200,6 +201,10 @@ for sym in (
         @eval $(Base.Expr(:public, sym))
     end
 end
+
+# Re-export from UnsetIndex.
+using UnsetIndex
+export unset
 
 #=
 const __EXPORTS = (

@@ -55,3 +55,8 @@ Versioning](https://semver.org).
 
 - `Tcl.quote_string(str)` yields a proper double-quoted string that can be inserted directly
   in Tcl scripts.
+
+- A Tcl variable may be unset (or deleted) by meany different means (at the user
+  convenience). For example: `Tcl.unset(interp, name)`, `Base.delete!(interp, name)`, or
+  `interp[name] = unset` (where `unset` is the singleton provided by the `UnsetIndex`
+  package and exported by the `Tcl` package).

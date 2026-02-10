@@ -1,8 +1,8 @@
 """
-    Tcl.exists([interp,] name)
+    Tcl.exists(interp=TclInterp(), name)
     haskey(interp, name)
 
-    Tcl.exists([interp,] part1, part2)
+    Tcl.exists(interp=TclInterp(), part1, part2)
     haskey(interp, (part1, part2))
 
 Return whether global variable `name` or `part1(part2)` is defined in Tcl interpreter
@@ -47,8 +47,7 @@ for (name, decl) in ((:name,)         => (:(name::Name),),
             return interp
         end
 
-        # TODO Replace `nothing` by `unset` of the `UnsetIndex` package.
-        function Base.setindex!(interp::TclInterp, ::Nothing, $(decl...))
+        function Base.setindex!(interp::TclInterp, ::Unset, $(decl...))
             unsetvar(interp, $(name...); nocomplain=true)
             return interp
         end
@@ -145,16 +144,19 @@ variable_name(name::Name) = string(name)
 variable_name(part1::Name, part2::Name) = "$(part1)($(part2))"
 
 """
-    Tcl.setvar([interp,] name, value) -> nothing
+    Tcl.setvar(interp=TclInterp(), name, value) -> nothing
     interp[name] = value
 
-    Tcl.setvar([interp,] part1, part2, value) -> nothing
+    Tcl.setvar(interp=TclInterp(), part1, part2, value) -> nothing
     interp[part1, part2] = value
 
-    Tcl.setvar(T, [interp,] part1, part2, value) -> val::T
+    Tcl.setvar(T, interp=TclInterp(), part1, part2, value) -> val::T
 
 Set global variable `name` or `part1(part2)` to be `value` in Tcl interpreter `interp` or in
 the shared interpreter of the calling thread if this argument is omitted.
+
+The Tcl variable is deleted if `value` is `unset`, the singleton provided by the
+`UnsetIndex` package and exported by the `Tcl` package.
 
 In the last case, the new value of the variable is returned as an instance of type `T` (can
 be `TclObj`). The new value may be different from `value` because of trace(s) associated to
@@ -181,6 +183,10 @@ for (name, decl) in ((:name,)         => (:(name::Name),),
         function setvar(interp::TclInterp, $(decl...), value; kwds...)
             return setvar(Nothing, interp, $(name...), value; kwds...)
         end
+        function setvar(interp::TclInterp, $(decl...), ::Unset; kwds...)
+            return unsetvar(interp, $(name...); nocomplain=true, kwds...)
+        end
+
         function setvar(::Type{T}, interp::TclInterp, $(decl...), value;
                         flags::Integer = setvar_default_flags) where {T}
             # Preserve the interpreter from being garbage collected to ensure the validity
@@ -210,11 +216,18 @@ for (name, decl) in ((:name,)         => (:(name::Name),),
 end
 
 """
-    Tcl.unsetvar([interp,] name)
-    Tcl.unsetvar([interp,] part1, part2)
+    Tcl.unsetvar(interp=TclInterp(), name)
+    Tcl.unsetvar(interp=TclInterp(), part1, part2)
+
+    interp[name] = unset
+    interp[part1, part2] = unset
+
+    delete!(interp, name) -> interp
+    delete!(interp, part1, part2) -> interp
 
 Delete global variable `name` or `part1(part2)` in Tcl interpreter `interp` or in the shared
-interpreter of the thread if this argument is omitted.
+interpreter of the thread if this argument is omitted. Above, `unset` is the singleton
+provided by the `UnsetIndex` package and exported by the `Tcl` package.
 
 # Keywords
 
@@ -234,10 +247,10 @@ function unsetvar_default_flags(nocomplain::Bool)
     return nocomplain ? TCL_GLOBAL_ONLY : (TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
 end
 
-for (name, (decl, unset)) in ((:name,)         => ((:(name::Name),),
-                                                   :(Tcl_UnsetVar)),
-                              (:part1, :part2) => ((:(part1::Name), :(part2::Name)),
-                                                   :(Tcl_UnsetVar2)))
+for (name, (decl, func)) in ((:name,)         => ((:(name::Name),),
+                                                  :(Tcl_UnsetVar)),
+                             (:part1, :part2) => ((:(part1::Name), :(part2::Name)),
+                                                  :(Tcl_UnsetVar2)))
     @eval begin
 
         unsetvar($(decl...); kwds...) = unsetvar(TclInterp(), $(name...); kwds...)
@@ -245,9 +258,14 @@ for (name, (decl, unset)) in ((:name,)         => ((:(name::Name),),
         # In <tcl.h> unsetting a variable requires its name part(s) as string(s).
         function unsetvar(interp::TclInterp, $(decl...); nocomplain::Bool = false,
                           flags::Integer = unsetvar_default_flags(nocomplain))
-            status = $unset(interp, $(name...), flags)
+            status = $func(interp, $(name...), flags)
             status == TCL_OK || nocomplain || unsetvar_error(interp, $(name...), flags)
             return nothing
+        end
+
+        function Base.delete!(interp::TclInterp, $(decl...))
+            unsetvar(interp, $(name...); nocomplain=true)
+            return interp
         end
 
         @noinline function unsetvar_error(interp::TclInterp, $(decl...), flags::Integer)
