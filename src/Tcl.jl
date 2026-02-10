@@ -39,6 +39,11 @@ include("widgets.jl")
 #include("images.jl")
 
 function __init__()
+    # Check that package was built with the same version as the dynamic library.
+    version = tcl_version()
+    TCL_VERSION == version || error(
+        "`Tcl` package was built for Tcl $(TCL_VERSION) while loaded library has version $(version)")
+
     # Many things do not work properly (segmentation fault when freeing a Tcl object,
     # initialization of Tcl interpreters, etc.) if Tcl internals (encodings, sub-systems,
     # etc.) are not properly initialized. This is done by the following call.
