@@ -115,6 +115,7 @@ for sym in (
     :TCL_LEAVE_ERR_MSG,
 
     # Methods.
+    :bool,
     :cget,
     :concat,
     :configure,

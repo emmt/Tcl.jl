@@ -7,6 +7,47 @@ using Test
 const π = MathConstants.π
 const φ = MathConstants.φ
 
+@testset "Utilities" begin
+    @test @inferred(Bool, Tcl.bool(true)) === true
+    @test @inferred(Bool, Tcl.bool(false)) === false
+    @test @inferred(Bool, Tcl.bool("0")) === false
+    @test @inferred(Bool, Tcl.bool("0.0")) === false
+    @test @inferred(Bool, Tcl.bool(0)) === false
+    @test @inferred(Bool, Tcl.bool(0x00)) === false
+    @test @inferred(Bool, Tcl.bool(0//1)) === false
+    @test @inferred(Bool, Tcl.bool(0.0)) === false
+    @test @inferred(Bool, Tcl.bool(-0.0)) === false
+    @test @inferred(Bool, Tcl.bool(1)) === true
+    @test @inferred(Bool, Tcl.bool(-1234)) === true
+    @test @inferred(Bool, Tcl.bool(π)) === true
+    @test @inferred(Bool, Tcl.bool(Inf)) === true
+    @test @inferred(Bool, Tcl.bool("1")) === true
+    @test @inferred(Bool, Tcl.bool("4.2")) === true
+    @test @inferred(Bool, Tcl.bool(:true)) === true
+    @test @inferred(Bool, Tcl.bool(:True)) === true
+    @test @inferred(Bool, Tcl.bool(:TRUE)) === true
+    @test @inferred(Bool, Tcl.bool(:yes)) === true
+    @test @inferred(Bool, Tcl.bool(:Yes)) === true
+    @test @inferred(Bool, Tcl.bool(:YES)) === true
+    @test @inferred(Bool, Tcl.bool(:on)) === true
+    @test @inferred(Bool, Tcl.bool(:On)) === true
+    @test @inferred(Bool, Tcl.bool(:ON)) === true
+    @test @inferred(Bool, Tcl.bool(:false)) === false
+    @test @inferred(Bool, Tcl.bool(:False)) === false
+    @test @inferred(Bool, Tcl.bool(:FALSE)) === false
+    @test @inferred(Bool, Tcl.bool(:no)) === false
+    @test @inferred(Bool, Tcl.bool(:No)) === false
+    @test @inferred(Bool, Tcl.bool(:NO)) === false
+    @test @inferred(Bool, Tcl.bool(:off)) === false
+    @test @inferred(Bool, Tcl.bool(:Off)) === false
+    @test @inferred(Bool, Tcl.bool(:OFF)) === false
+    @test_throws ArgumentError Tcl.bool("")
+    @test_throws ArgumentError Tcl.bool("oui")
+    @test_throws ArgumentError Tcl.bool("maybe")
+    @test @inferred(Bool, Tcl.bool(TclObj(true))) === true
+    @test @inferred(Bool, Tcl.bool(TclObj(false))) === false
+end
+
 @testset "Tcl Objects" begin
     script = "puts {hello world!}"
     symbolic_script = Symbol(script)

@@ -183,6 +183,27 @@ function quote_string(str::AbstractString)
     return String(take!(io))
 end
 
+#-------------------------------------------------------------------------------- Booleans -
+
+"""
+    Tcl.bool(x) -> t::Bool
+
+Convert `x` to a Boolean value according to Tcl rules.
+
+"""
+bool(x::Bool) = x
+bool(x::Real) = !iszero(x)
+bool(obj::TclObj) = convert(Bool, obj)
+bool(s::Symbol) = bool(String(s))
+function bool(s::AbstractString)
+    x = tryparse(Float64, s)
+    isnothing(x) || return bool(x)
+    t = lowercase(s)
+    t ∈ ("true", "yes", "on") && return true
+    t ∈ ("false", "no", "off") && return false
+    argument_error("`s` in not a valid Tcl Boolean string")
+end
+
 #------------------------------------------------------------------------ Automatic names -
 
 """
