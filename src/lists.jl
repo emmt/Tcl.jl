@@ -19,9 +19,8 @@ function list end
     Tcl.concat(args...) -> lst
     interp.concat(args...) -> lst
 
-Build a list of Tcl objects obtained by concatenating the elements of the arguments
-`arg...` each being considered as a list. This mimics the behavior of the Tcl `concat`
-command.
+Build a list of Tcl objects obtained by concatenating the elements of the arguments `arg...`
+each being considered as a list. This mimics the behavior of the Tcl `concat` command.
 
 In the second above example, `interp` is a Tcl interpreter used to retrieve a more
 informative error message in case of error.
@@ -164,10 +163,12 @@ end
 
 unsafe_get_list_elements(list::ObjPtr) = unsafe_get_list_elements(null(InterpPtr), list)
 function unsafe_get_list_elements(interp::InterpPtr, list::ObjPtr)
-    objc = Ref{Tcl_Size}()
-    objv = Ref{Ptr{ObjPtr}}()
-    status = Tcl_ListObjGetElements(interp, list, objc, objv)
-    status == TCL_OK || unsafe_error(interp, "failed to retrieve Tcl list elements")
+    objc = Ref(zero(Tcl_Size))
+    objv = Ref(null(Ptr{ObjPtr}))
+    if !isnull(list)
+        status = Tcl_ListObjGetElements(interp, list, objc, objv)
+        status == TCL_OK || unsafe_error(interp, "failed to retrieve Tcl list elements")
+    end
     return Int(objc[])::Int, objv[]
 end
 
