@@ -79,13 +79,18 @@ function Base.convert(::Type{T}, obj::TclObj) where {T}
     end
 end
 for type in (isdefined(Base, :Memory) ? (:Vector, :Memory) : (:Vector,))
-    @eval function Base.convert(::Type{$type{T}}, obj::TclObj) where {T}
-        len = length(obj)
-        vec = $type{T}(undef, len)
-        for i in 1:len
-            vec[i] = obj[i]
+    @eval begin
+        Base.convert(::Type{$type{T}}, obj::TclObj) where {T} = $type{T}(obj)::$type{T}
+        function Base.$type{T}(list::TclObj) where {T}
+            GC.@preserve list begin
+                objc, objv = unsafe_get_list_elements(pointer(list))
+                vec = $type{T}(undef, objc)
+                for i in 𝟙:objc
+                    vec[i] = unsafe_get(T, unsafe_load(objv, i))
+                end
+                return vec
+            end
         end
-        return vec
     end
 end
 
