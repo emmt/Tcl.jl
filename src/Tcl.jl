@@ -36,7 +36,7 @@ include("variables.jl")
 include("callbacks.jl")
 include("events.jl")
 include("widgets.jl")
-#include("dialogs.jl")
+include("dialogs.jl")
 #include("images.jl")
 
 function __init__()
@@ -187,7 +187,14 @@ for sym in (
     :TtkSeparator,
     :TtkSizegrip,
     :TtkSpinbox,
-    :TtkTreeview
+    :TtkTreeview,
+
+    # Tk dialogs.
+    :tk_chooseColor,
+    :tk_chooseDirectory,
+    :tk_getOpenFile,
+    :tk_getSaveFile,
+    :tk_messageBox,
     )
 
     # Import public symbols from the `Private` module, export those prefixed with `Tcl`,
