@@ -111,78 +111,35 @@ const TkPixmap = TkImage{:pixmap}
 #------------------------------------------------------------------------------
 # Colors
 
-abstract type TkColor end
+abstract type TkColor{T} end
 
-struct TkGray{T} <: TkColor
+struct TkGray{T} <: TkColor{T}
     gray::T
 end
 
-struct TkRGB{T} <: TkColor
+struct TkRGB{T} <: TkColor{T}
     r::T; g::T; b::T
 end
 
-struct TkBGR{T} <: TkColor
+struct TkBGR{T} <: TkColor{T}
     b::T; g::T; r::T
 end
 
-struct TkRGBA{T} <: TkColor
+struct TkRGBA{T} <: TkColor{T}
     r::T; g::T; b::T; a::T
 end
 
-struct TkBGRA{T} <: TkColor
+struct TkBGRA{T} <: TkColor{T}
     b::T; g::T; r::T; a::T
 end
 
-struct TkARGB{T} <: TkColor
+struct TkARGB{T} <: TkColor{T}
     a::T; r::T; g::T; b::T
 end
 
-struct TkABGR{T} <: TkColor
+struct TkABGR{T} <: TkColor{T}
     a::T; b::T; g::T; r::T
 end
 
 const TkColorsWithAlpha{T} = Union{TkRGBA{T},TkBGRA{T},TkARGB{T},TkABGR{T}}
 const TkColors{T} = Union{TkRGB{T},TkBGR{T},TkColorsWithAlpha{T}}
-
-gray(c::TkGray{T}) where T = c.gray
-red(c::TkColors{T}) where T = c.r
-green(c::TkColors{T}) where T = c.g
-blue(c::TkColors{T}) where T = c.b
-alpha(c::TkColorsWithAlpha{T}) where T = c.a
-
-Base.show(io::IO, ::MIME"text/plain", c::TkGray{T}) where {T} =
-    print(io,"TkGray{",T,"}(",gray(c),")")
-
-Base.show(io::IO, ::MIME"text/plain", c::TkRGB{T}) where {T} =
-    print(io,"TkRGB{",T,"}(",red(c),",",green(c),",",blue(c),")")
-
-Base.show(io::IO, ::MIME"text/plain", c::TkBGR{T}) where {T} =
-    print(io,"TkRGB{",T,"}(",blue(c),",",green(c),",",red(c),")")
-
-Base.show(io::IO, ::MIME"text/plain", c::TkRGBA{T}) where {T} =
-    print(io,"TkRGBA{",T,"}(",red(c),",",green(c),",",blue(c),",",alpha(c),")")
-
-Base.show(io::IO, ::MIME"text/plain", c::TkBGRA{T}) where {T} =
-    print(io,"TkRGBA{",T,"}(",blue(c),",",green(c),",",red(c),",",alpha(c),")")
-
-Base.show(io::IO, ::MIME"text/plain", c::TkARGB{T}) where {T} =
-    print(io,"TkARGB{",T,"}(",alpha(c),",",red(c),",",green(c),",",blue(c),")")
-
-Base.show(io::IO, ::MIME"text/plain", c::TkABGR{T}) where {T} =
-    print(io,"TkARGB{",T,"}(",alpha(c),",",blue(c),",",green(c),",",red(c),")")
-
-# Extend Base.show for passing colors to Tk (the alpha component, if any, is
-# ignored).
-Base.show(io::IO, c::TkGray{T}) where {T<:Union{UInt8,UInt16}} =
-    (s = _hex(gray(c)); print(io, "#", s, s, s))
-Base.show(io::IO, c::TkColors{T}) where {T<:Union{UInt8,UInt16}} =
-    print(io, "#", _hex(red(c)), _hex(green(c)), _hex(blue(c)))
-Base.show(io::IO, c::TkColors{T}) where {T<:Union{UInt32,UInt64}} =
-    print(io, "#", _hex16(red(c)), _hex16(green(c)), _hex16(blue(c)))
-
-_hex(x::UInt8)  = string(x; base=16, pad=2)
-_hex(x::UInt16) = string(x; base=16, pad=4)
-_hex(x::UInt32) = string(x; base=16, pad=8)
-_hex(x::UInt64) = string(x; base=16, pad=16)
-_hex16(x::UInt32) = _hex((x >> 16)%UInt16)
-_hex16(x::UInt64) = _hex((x >> 48)%UInt16)
