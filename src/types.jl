@@ -107,39 +107,3 @@ end
 const TkBitmap = TkImage{:bitmap}
 const TkPhoto = TkImage{:photo}
 const TkPixmap = TkImage{:pixmap}
-
-#------------------------------------------------------------------------------
-# Colors
-
-abstract type TkColor{T} end
-
-struct TkGray{T} <: TkColor{T}
-    gray::T
-end
-
-struct TkRGB{T} <: TkColor{T}
-    r::T; g::T; b::T
-end
-
-struct TkBGR{T} <: TkColor{T}
-    b::T; g::T; r::T
-end
-
-struct TkRGBA{T} <: TkColor{T}
-    r::T; g::T; b::T; a::T
-end
-
-struct TkBGRA{T} <: TkColor{T}
-    b::T; g::T; r::T; a::T
-end
-
-struct TkARGB{T} <: TkColor{T}
-    a::T; r::T; g::T; b::T
-end
-
-struct TkABGR{T} <: TkColor{T}
-    a::T; b::T; g::T; r::T
-end
-
-const TkColorsWithAlpha{T} = Union{TkRGBA{T},TkBGRA{T},TkARGB{T},TkABGR{T}}
-const TkColors{T} = Union{TkRGB{T},TkBGR{T},TkColorsWithAlpha{T}}

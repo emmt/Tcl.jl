@@ -1,6 +1,7 @@
 module TclBaseTests
 
 using Tcl
+using Colors
 using Test
 
 # We need some irrational constants.
@@ -162,6 +163,10 @@ end
     @test y.type == :list
     @test length(y) == length(t)
     # TODO @test y == t
+
+    # Colors.
+    c = @inferred TclObj TclObj(colorant"pink")
+    @test TclObj(colorant"red") ∈ ("#FF0000", "#ff0000")
 end
 
 @testset "Tcl Variables" begin

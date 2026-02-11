@@ -12,6 +12,8 @@ using Base
 module Private
 
 import ..Tcl
+
+using Colors
 using CEnum
 using Neutrals
 using UnsetIndex: Unset, unset
@@ -77,16 +79,6 @@ for sym in (
     :TclObj,
     :TclStatus,
     :WideInt,
-
-    # Tk colors.
-    :TkColor,
-    :TkGray,
-    :TkRGB,
-    :TkBGR,
-    :TkRGBA,
-    :TkBGRA,
-    :TkARGB,
-    :TkABGR,
 
     # Version.
     :TCL_VERSION,
