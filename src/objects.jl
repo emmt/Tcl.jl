@@ -78,6 +78,16 @@ function Base.convert(::Type{T}, obj::TclObj) where {T}
         return convert(T, val)::T
     end
 end
+for type in (isdefined(Base, :Memory) ? (:Vector, :Memory) : (:Vector,))
+    @eval function Base.convert(::Type{$type{T}}, obj::TclObj) where {T}
+        len = length(obj)
+        vec = $type{T}(undef, len)
+        for i in 1:len
+            vec[i] = obj[i]
+        end
+        return vec
+    end
+end
 
 Base.:(==)(A::TclObj, B::TclObj) = isequal(A, B)
 Base.:(==)(A::TclObj, B::Union{AbstractString,Symbol}) = isequal(A, B)

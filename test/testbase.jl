@@ -162,7 +162,6 @@ end
     @test y.type == :list
     @test length(y) == length(t)
     # TODO @test y == t
-
 end
 
 @testset "Tcl Variables" begin
@@ -295,6 +294,14 @@ end
     @test wd.type == :list
     @test @inferred(length(wd)) == length(wf)
     @test all([wd[i] == TclObj(wf[i]) for i in 1:length(wf)])
+
+    # List to vectors.
+    t = (-1:3...,)
+    o = @inferred TclObj TclObj(t)
+    v = @inferred Vector{Int16} convert(Vector{Int16}, o)
+    @test Tuple(v) == t
+    v = @inferred Vector{String} convert(Vector{String}, o)
+    @test Tuple(v) == map(string, t)
 
     #
     #lst5 = Tcl.list(π, 1, "hello", 2:6)
