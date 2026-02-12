@@ -162,6 +162,7 @@ _getproperty(img::TkImage, ::Val{key}) where {key} = throw(KeyError(key))
 
 #----------------------------------------------------------- Abstract array API for images -
 
+# 32-bit RGBA is the pixel format used by Tk for its photo images.
 Base.eltype(::Type{<:TkPhoto}) = RGBA{N0f8}
 
 Base.ndims(img::TkImage) = ndims(typeof(img))
@@ -184,11 +185,11 @@ Base.size(img::TkImage, i::Integer) =
     i ≥ 3 ? 1 : throw(BoundsError("out of bounds dimension index"))
 
 function Base.getindex(img::TkPhoto, ::Colon, ::Colon)
-    return read_image(Matrix{RGBA{N0f8}}, img)
+    return read_image(Matrix{eltype(img)}, img)
 end
 
 function Base.getindex(img::TkPhoto, xrng::ViewRange, yrng::ViewRange)
-    return read_image(Matrix{RGBA{N0f8}}, img, xrng, yrng)
+    return read_image(Matrix{eltype(img)}, img, xrng, yrng)
 end
 
 function Base.getindex(img::TkPhoto, x::Integer, y::Integer)
@@ -395,70 +396,77 @@ function unsafe_load_pixel(::Type{T}, block::ImageBlock,
 end
 
 function unsafe_copy(::Type{Array{T,2}}, block::ImageBlock) where {T<:Colorant}
-    width  = Int(block.width)::Int
+    # Pointer to first pixel in red channel (always N0f8 format for each component).
+    ptr = Ptr{N0f8}(block.pointer) + block.offset[1]
+
+    # Don't have alpha channel?
+    no_alpha_channel = block.offset[4] < 0
+
+    # Offset to other channels (relative to red).
+    green_off = block.offset[2] - block.offset[1]
+    blue_off  = block.offset[3] - block.offset[1]
+    alpha_off = no_alpha_channel ? 0 : block.offset[4] - block.offset[1]
+
+    # Other block parameters.
+    width  = Int(block.width )::Int
     height = Int(block.height)::Int
-    pitch  = Int(block.pitch)::Int
-    step = Int(block.step)::Int
-    ptr = Ptr{N0f8}(block.pointer) # always N0f8 format for each component
-    arr = Array{T}(undef, width, height) # allocate destination
-    red_off, green_off, blue_off, alpha_off = block.offset
-    if red_off == green_off == blue_off
+    pitch  = Int(block.pitch )::Int
+    step   = Int(block.step  )::Int
+
+    # Allocate destination.
+    arr = Array{T}(undef, width, height)
+
+    # Copy image block according to its format.
+    generic_rgba = false # 4-channel image in unspecific order?
+    if green_off == blue_off == 0
         # Gray image.
-        if alpha_off < 0
+        if no_alpha_channel
             # Gray image (no alpha channel).
-            unsafe_copy!(arr, Ptr{Gray{N0f8}}(ptr + red_off),
-                         width, height, pitch, step)
+            unsafe_copy!(arr, Ptr{Gray{N0f8}}(ptr), width, height, pitch, step)
         else
             # Gray image with alpha channel.
-            unsafe_copy_gray_alpha!(arr, ptr + red_off, ptr + alpha_off,
-                                    width, height, pitch, step)
+            unsafe_copy_gray_alpha!(arr, ptr, ptr + alpha_off, width, height, pitch, step)
         end
-    elseif green_off == red_off + 1 && blue_off == red_off + 2
-        if alpha_off < 0
+    elseif green_off == 1 && blue_off == 2
+        if no_alpha_channel
             # RGB storage order (no alpha channel).
-            unsafe_copy!(arr, Ptr{RGB{N0f8}}(ptr + red_off),
-                         width, height, pitch, step)
-        elseif alpha_off == red_off + 3
+            unsafe_copy!(arr, Ptr{RGB{N0f8}}(ptr), width, height, pitch, step)
+        elseif alpha_off == 3
             # RGBA storage order.
-            unsafe_copy!(arr, Ptr{RGBA{N0f8}}(ptr + red_off),
-                         width, height, pitch, step)
-        elseif red_off == alpha_off + 1
+            unsafe_copy!(arr, Ptr{RGBA{N0f8}}(ptr), width, height, pitch, step)
+        elseif alpha_off == -1
             # ARGB storage order.
             unsafe_copy!(arr, Ptr{ARGB{N0f8}}(ptr + alpha_off),
                          width, height, pitch, step)
         else
             # 4-channel image in unspecific order.
-            unsafe_copy_rgba!(arr, ptr + red_off, ptr + green_off,
-                              ptr + blue_off, ptr + alpha_off,
-                              width, height, pitch, step)
+            generic_rgba = true
         end
-    elseif green_off == blue_off + 1 && red_off == blue_off + 2
-        if alpha_off < 0
+    elseif green_off == -1 && blue_off == -2
+        if no_alpha_channel
             # BGR storage order (no alpha channel).
-            unsafe_copy!(arr, Ptr{BGR{N0f8}}(ptr + blue_off),
-                         width, height, pitch, step)
-        elseif alpha_off == blue_off + 3
+            unsafe_copy!(arr, Ptr{BGR{N0f8}}(ptr + blue_off), width, height, pitch, step)
+        elseif alpha_off == 1
             # BGRA storage order.
-            unsafe_copy!(arr, Ptr{BGRA{N0f8}}(ptr + blue_off),
-                         width, height, pitch, step)
-        elseif blue_off == alpha_off + 1
+            unsafe_copy!(arr, Ptr{BGRA{N0f8}}(ptr + blue_off), width, height, pitch, step)
+        elseif alpha_off == -3
             # ABGR storage order.
-            unsafe_copy!(arr, Ptr{ABGR{N0f8}}(ptr + alpha_off),
-                         width, height, pitch, step)
+            unsafe_copy!(arr, Ptr{ABGR{N0f8}}(ptr + alpha_off), width, height, pitch, step)
         else
             # 4-channel image in unspecific order.
-            unsafe_copy_rgba!(arr, ptr + red_off, ptr + green_off,
-                              ptr + blue_off, ptr + alpha_off,
-                              width, height, pitch, step)
+            generic_rgba = true
         end
-    elseif alpha_off < 0
+    elseif no_alpha_channel
         # 3-channel image in unspecific order.
-        unsafe_copy_rgb!(arr, ptr + red_off, ptr + green_off,
-                         ptr + blue_off, width, height, pitch, step)
+        unsafe_copy_rgb!(arr, ptr, ptr + green_off, ptr + blue_off,
+                         width, height, pitch, step)
     else
         # 4-channel image in unspecific order.
-        unsafe_copy_rgba!(arr, ptr + red_off, ptr + green_off,
-                          ptr + blue_off, ptr + alpha_off,
+        generic_rgba = true
+    end
+    if generic_rgba
+        # 4-channel image in unspecific order.
+        unsafe_copy_rgba!(arr, ptr, ptr + green_off, ptr + blue_off, ptr + alpha_off,
                           width, height, pitch, step)
     end
     return arr
