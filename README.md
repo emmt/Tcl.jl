@@ -4,24 +4,32 @@
 [![Build Status](https://github.com/emmt/Tcl.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/emmt/Tcl.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/emmt/Tcl.jl/graph/badge.svg?token=2ZyJuZeh71)](https://codecov.io/gh/emmt/Tcl.jl)
 
-This package provides an optimized Julia interface to
-[Tcl/Tk](http://www.tcl.tk/).
+This package provides an optimized Julia interface to [Tcl/Tk](http://www.tcl.tk/).
 
 # Features
 
-* As many Tcl interpreters as needed can be started.  At least one is always
-  there and serves as the default interpreter.
+* As many Tcl interpreters as needed can be started. At least one per thread is
+  automatically created when needed and serves as the default interpreter for the thread.
 
 * Reading/writing a Tcl variable is as easy as:
 
   ```julia
   interp[var]             # read Tcl variable value
   interp[var] = val       # set Tcl variable value
-  interp[var] = nothing   # unset Tcl variable
+  interp[var] = unset     # unset Tcl variable
+  delete!(interp, var)    # idem
   ```
 
-  where `interp` is a Tcl interpreter, `var` is the name of the Tcl variable
-  and `val` is its value.
+  where `interp` is a Tcl interpreter, `var` is the name of the Tcl variable and `val` is
+  its value. Variable name can also be given in 2 parts:
+
+  ```julia
+  interp[part1,part2]             # read Tcl array value
+  interp[part1,part2] = val       # set Tcl array value
+  interp[part1,part2] = unset     # unset Tcl array
+  delete!(interp, part1, part2)   # idem
+  ```
+
 
 * Consistent conversion between Tcl internal representation of values and Julia
   types.  That is to say, evaluating a Tcl script or getting the value of a Tcl
@@ -47,36 +55,34 @@ This package provides an optimized Julia interface to
   interp(script)           # idem
   ```
 
-* A number of wrappers are provided to symplify the use of widgets.
+* A number of wrappers are provided to simplify the use of widgets.
 
-* Julia arrays can be used to set Tk images and conversely.  A number of
-  methods are provided to apply pseudo-colormaps or retrieve colorplanes or
-  alpha channel.  Temporaries and copies are avoided.
+* Julia arrays can be used to set Tk images and conversely. A number of methods are provided
+  to apply pseudo-colormaps or retrieve colorplanes or alpha channel. Temporaries and copies
+  are avoided.
 
 * Julia functions may be used as Tk callbacks.
 
 
 # Alternatives
 
-There exists [another Julia Tk package](http://github.com/JuliaGraphics/Tk.jl)
-but with different design choices and some issues I wanted to avoid (for
-instance, X conflict with PyPlot when using Gtk backend, Qt backend is OK).
-This is why I started this project.  I would be very happy if, eventually, the
-two projects merge.
+There exists [another Julia Tk package](http://github.com/JuliaGraphics/Tk.jl) but with
+different design choices and some issues I wanted to avoid (for instance, X conflict with
+PyPlot when using Gtk backend, Qt backend is OK). This is why I started this project. I
+would be very happy if, eventually, the two projects merge.
 
 
 # Installation
 
-Tcl.jl is not yet an [offical Julia package](https://pkg.julialang.org/) but it
-is easy to install from the REPL of Julia's package
-manager<sup>[[pkg]](#pkg)</sup> as follows:
+Tcl.jl is not yet an [offical Julia package](https://pkg.julialang.org/) but it is easy to
+install from the REPL of Julia's package manager<sup>[[pkg]](#pkg)</sup> as follows:
 
 ```julia
 pkg> add https://github.com/emmt/Tcl.jl.git
 ```
 
-where `pkg>` represents the package manager prompt and `https` protocol has
-been assumed; if `ssh` is more suitable for you, then:
+where `pkg>` represents the package manager prompt and `https` protocol has been assumed; if
+`ssh` is more suitable for you, then:
 
 ```julia
 pkg> add git@github.com:emmt/Tcl.jl.git
