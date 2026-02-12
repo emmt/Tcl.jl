@@ -13,9 +13,12 @@ module Private
 
 import ..Tcl
 
-using Colors
 using CEnum
+using ColorTypes
+using Colors
+using FixedPointNumbers
 using Neutrals
+using TypeUtils
 using UnsetIndex: Unset, unset
 
 if !isdefined(Base, :Memory)
@@ -40,7 +43,7 @@ include("events.jl")
 include("colors.jl")
 include("widgets.jl")
 include("dialogs.jl")
-#include("images.jl")
+include("images.jl")
 
 function __init__()
     # Check that package was built with the same version as the dynamic library.
@@ -135,14 +138,13 @@ for sym in (
     :tk_start,
     :unsetvar,
 
-    # Other Tk types.
-    #:TkImage,
-    :TkObject,
-    :TkRootWidget,
-    :TkWidget,
+    # Tk images.
+    :TkBitmap,
+    :TkImage,
+    :TkPhoto,
+    :TkPixmap,
 
     # Tk widgets.
-    Symbol("@TkWidget"),
     :TkButton,
     :TkCanvas,
     :TkCheckbutton,
@@ -156,11 +158,14 @@ for sym in (
     :TkMessage,
     :TkPanedwindow,
     :TkRadiobutton,
+    :TkRootWidget,
     :TkScale,
     :TkScrollbar,
     :TkSpinbox,
     :TkText,
     :TkToplevel,
+    :TkWidget,
+    Symbol("@TkWidget"),
 
     # Ttk (Themed Tk) widgets.
     :TtkButton,

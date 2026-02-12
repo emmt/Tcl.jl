@@ -391,7 +391,7 @@ for (jl, (c, mesg)) in (:unsafe_append_element => (:(Tcl_ListObjAppendElement),
             return nothing
         end
 
-        function $jl(interp::InterpPtr, list::ObjPtr, obj::ManagedObject)
+        function $jl(interp::InterpPtr, list::ObjPtr, obj::WrappedObject)
             GC.@preserve obj begin
                 $jl(interp, list, get_objptr(obj))
             end

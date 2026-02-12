@@ -38,7 +38,7 @@ macro TkWidget(_type, class, command, prefix)
                 end
             end
 
-            # Provide optional arguments.
+            # Supply optional arguments.
             $type(pairs::Pair...) = $type(TclInterp(), pairs...)
             $type(name::Name, pairs::Pair...) = $type(TclInterp(), name, pairs...)
             $type(interp::TclInterp, pairs::Pair...) =
@@ -51,7 +51,7 @@ macro TkWidget(_type, class, command, prefix)
             register_widget_class($class, $type)
         end
     else
-        # Other (top-level) widget.
+        # Non-root widget.
         quote
             struct $type <: TkWidget
                 parent::TkWidget
@@ -65,13 +65,19 @@ macro TkWidget(_type, class, command, prefix)
                 end
             end
 
-            # Provide optional arguments.
-            $type(parent::Union{TkWidget,Name}, pairs::Pair...) =
-                $type(parent, widget_auto_name(interp, parent, $prefix), pairs...)
+            # Supply widget name arguments.
+            $type(parent::TkWidget, pairs::Pair...) =
+                $type(parent, widget_auto_name(parent.interp, parent, $prefix), pairs...)
 
-            # Get widget for parent.
+            # Recover parent widget from its name.
             $type(parent::Name, child::Name, pairs::Pair...) =
                 $type(TkWidget(parent), child, pairs...)
+            $type(parent::Name, pairs::Pair...) =
+                $type(TkWidget(parent), pairs...)
+            $type(interp::TclInterp, parent::Name, child::Name, pairs::Pair...) =
+                $type(TkWidget(interp, parent), child, pairs...)
+            $type(interp::TclInterp, parent::Name, pairs::Pair...) =
+                $type(TkWidget(interp, parent), pairs...)
 
             # Make the widget callable.
             (w::$type)(args...; kwds...) = exec(w, args...; kwds...)

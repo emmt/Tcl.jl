@@ -28,20 +28,20 @@ mutable struct TclInterp
 end
 
 """
-    ManagedObject
+    WrappedObject
 
-Abstract super-type of Tcl or Tk objects which manage their reference count.
+Abstract super-type of Julia objects that reflect or wrap a Tcl object.
 
-Managed objects implement [`Tcl.Private.get_objptr`](@ref) to yield a pointer to their
+Such objects implement [`Tcl.Private.get_objptr`](@ref) to yield a pointer to their
 associated Tcl object.
 
 """
-abstract type ManagedObject end
+abstract type WrappedObject end
 
 # Structure to store a pointer to a Tcl object. (Even though the address should not be
 # modified, it is mutable because immutable objects cannot be finalized.) The constructor
 # will refuse to build a managed Tcl object with a NULL address.
-mutable struct TclObj <: ManagedObject
+mutable struct TclObj <: WrappedObject
     ptr::ObjPtr
     global _TclObj
     function _TclObj(ptr::ObjPtr)
@@ -94,16 +94,45 @@ const FasterString = Union{#=Char,=# String, SubString{String}, Symbol}
 #-------------------------------------------------------------------------------------------
 # Tk widgets and other Tk objects.
 
-abstract type TkObject     <: ManagedObject end
-abstract type TkWidget     <: TkObject      end
+abstract type TkWidget     <: WrappedObject end
 abstract type TkRootWidget <: TkWidget      end
 
 # An image is parameterized by the symbolic image type.
-mutable struct TkImage{T}
+struct TkImage{T} <: WrappedObject
     interp::TclInterp
     name::TclObj
+    function TkImage(::Val{T}, interp::TclInterp, name::TclObj) where {T}
+        T isa Symbol || argument_error("image type must be a symbol")
+        return new{T}(interp, name)
+    end
 end
 
+"""
+    TkBitmap(args...) -> img
+    TkImage{:bitmap}(args...) -> img
+
+Return a Tk *bitmap* image. See [`TkImage`](@ref) for more information.
+
+"""
 const TkBitmap = TkImage{:bitmap}
-const TkPhoto = TkImage{:photo}
+
+"""
+    TkPhoto(args...) -> img
+    TkImage{:photo}(args...) -> img
+
+Return a Tk *photo* image. See [`TkImage`](@ref) for more information.
+
+"""
+const TkPhoto  = TkImage{:photo}
+
+"""
+    TkPixmap(args...) -> img
+    TkImage{:pixmap}(args...) -> img
+
+Return a Tk *pixmap* image. See [`TkImage`](@ref) for more information.
+
+"""
 const TkPixmap = TkImage{:pixmap}
+
+# Alias for specifying an index range in an image/array view.
+const ViewRange{T<:Integer} = Union{Colon,AbstractUnitRange{<:T}}

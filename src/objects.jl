@@ -234,8 +234,8 @@ end
 
 # It is forbidden to access to the fields of a `TclObj` by the `obj.key` syntax.
 Base.propertynames(obj::TclObj) = (:ptr, :refcnt, :type)
-Base.getproperty(obj::TclObj, key::Symbol) = _getproperty(obj, Val(key))
-Base.setproperty!(obj::TclObj, key::Symbol, val) = _setproperty!(obj, Val(key), val)
+@inline Base.getproperty(obj::TclObj, key::Symbol) = _getproperty(obj, Val(key))
+@inline Base.setproperty!(obj::TclObj, key::Symbol, val) = _setproperty!(obj, Val(key), val)
 
 _getproperty(obj::TclObj, ::Val{key}) where {key} = throw(KeyError(key))
 _setproperty!(obj::TclObj, key::Symbol, val) = throw(KeyError(key))
@@ -304,7 +304,7 @@ function _setproperty!(obj::TclObj, ::Val{:ptr}, newptr::ObjPtr)
 end
 
 """
-    Tcl.Private.get_objptr(obj::ManagedObject) -> objptr
+    Tcl.Private.get_objptr(obj::WrappedObject) -> objptr
 
 Return a pointer to the Tcl object associated with `obj`. The returned object is at least
 referenced by its parent `obj` which shall be preserved form being garbage collected while
@@ -312,7 +312,7 @@ referenced by its parent `obj` which shall be preserved form being garbage colle
 
 # See also
 
-[`TclObj`](@ref), [`Tcl.Private.ManagedObject`](@ref), and [`Tcl.Private.new_object`](@ref),
+[`TclObj`](@ref), [`Tcl.Private.WrappedObject`](@ref), and [`Tcl.Private.new_object`](@ref),
 
 """
 get_objptr(obj::TclObj) = pointer(obj)

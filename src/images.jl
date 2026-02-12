@@ -4,477 +4,659 @@
 # Manipulation of Tk images.
 #
 
-import ColorTypes, FixedPointNumbers
+"""
+    TkImage{type}(interp=TclInterp(), option => value, ...) -> img
+    TkImage{type}(interp=TclInterp(), name, option => value, ...) -> img
 
-TkImage(obj::TkObject, kind::Name, args...; kwds...) =
-    TkImage(getinterp(obj), kind, args; kwds...)
+    TkImage{type}(w::TkWidget, option => value, ...) -> img
+    TkImage{type}(w::TkWidget, name, option => value, ...) -> img
 
-TkImage(interp::TclInterp, kind::Name; kwds...) =
-    __wrapimage(interp, kind,
-                Tcl.eval(interp, "image", "create", kind; kwds...))
+Return a Tk image of given `type` (e.g., `:bitmap`, `:pixmap`, or `:photo`).
 
-function TkImage(interp::TclInterp, kind::AbstractString,
-                 name::AbstractString; kwds...)
-    if Tcl.eval(TclStatus, interp, "image", "type", name) == TCL_OK
-        # Image already exists.
-        if kind != getresult(interp)
-            Tcl.error("image exists with a different type")
-        end
-        if length(kwds) > 0
-            Tcl.eval(interp, name, "configure"; kwds...)
-        end
+!!! note
+    `Tk` extension must have been loaded in the interpreter before creating an image.
+    This can be done with [`tk_start`](@ref).
+
+`interp` is the Tcl interpreter where lives the image (the shared interpreter of the thread
+by default). If a Tk widget `w` is specified, its interpreter is used.
+
+If the image `name` is not specified, it is automatically generated. If `name` is specified
+and an image with this name already exists in the interpreter, it is re-used and, if options
+are specified, it is reconfigured.
+
+There may be any `option => value` pairs to (re)configure the image. Options depend on the
+image types.
+
+A Tk image can then be used in any Tcl/Tk script or command where an image is expected.
+
+Tk images implement the abstract array API. To extract the pixels of an image, the
+`img[x,y]` syntax may be used with `x` and `y` pixel indices or ranges. For a `:photo`
+image, pixel values are represented by `RGBA{N0f8}` colors.
+
+A Tk image has a number of properties:
+
+```julia
+img.inuse    # whether an image is in use in a Tk widget
+img.width    # the width of the image in pixels
+size(img, 1) # idem
+img.height   # the height of the image in pixels
+size(img, 2) # idem
+img.size     # (width, height)
+size(img)    # idem
+img.type     # the symbolic type of the image (`:bitmap`, `:pixmap`, `:photo`, etc.)
+img.name     # the image name in its interpreter
+img.interp   # the interpreter hosting the image
+```
+
+# See also
+
+[`TkBitmap`](@ref), [`TkPhoto`](@ref), and [`TkPixmap`](@ref) are aliases for specific image
+types.
+
+[`tk_start`](@ref), and [`TclInterp`](@ref).
+
+"""
+function TkImage{type}(pairs::Pair...) where {type}
+    return TkImage{type}(TclInterp(), pairs...)
+end
+function TkImage{type}(name::Name, pairs::Pair...) where {type}
+    return TkImage{type}(TclInterp(), name, pairs...)
+end
+function TkImage{type}(w::TkWidget, pairs::Pair...) where {type}
+    return TkImage{type}(w.interp, name, pairs...)
+end
+function TkImage{type}(w::TkWidget, name::Name, pairs::Pair...) where {type}
+    return TkImage{type}(w.interp, name, pairs...)
+end
+
+# Create a new image of a given type and automatically named.
+function TkImage{type}(interp::TclInterp, pairs::Pair...) where {type}
+    type isa Symbol || argument_error("image type must be a symbol")
+    name = interp.exec(:image, :create, type, pairs...)
+    return TkImage(Val(type), interp, name)
+end
+
+# Create a new image of a given type and name. If an image of the same name already exists,
+# it is re-wrapped.
+TkImage{type}(interp::TclInterp, name::Name, pairs::Pair...) where {type} =
+    TkImage{type}(interp, TclObj(name), pairs...)
+
+function TkImage{type}(interp::TclInterp, name::TclObj, pairs::Pair...) where {type}
+    type isa Symbol || argument_error("image type must be a symbol")
+    if interp.exec(TclStatus, :image, :type, name) == TCL_OK
+        # Image already exists. Possibly configure it and re-wrap it.
+        interp.result(TclObj) == type || throw(TclError(
+            "image already exists with a different type"))
+        length(pairs) > 0 && interp.exec(Nothing, name, :configure, pairs...)
+        return TkImage(Val(type), interp, name)
     else
-        name = Tcl.eval(interp, "image", "create", kind, name; kwds...)
+        # Image does not exists. Create a new one and wrap it.
+        interp.exec(:image, :create, type, name, pairs...)
+        return TkImage(Val(type), interp, name)
     end
-    return __wrapimage(interp, kind, name)
 end
 
-function __wrapimage(interp::TclInterp, kind::AbstractString,
-                     name::AbstractString)
-    T = Symbol(string(lowercase(kind[1]), lowercase(kind[2:end])))
-    return TkImage{T}(interp, name)
+TclInterp(img::TkImage) = img.interp
+
+# For Tcl, an image is identified by its name.
+TclObj(img::TkImage) = img.name
+Base.convert(::Type{TclObj}, img::TkImage) = TclObj(img)::TclObj
+get_objptr(img::TkImage) = get_objptr(TclObj(img)) # used in `exec`
+Base.print(io::IO, img::TkImage) = print(io, img.name)
+
+#-------------------------------------------------------------------------- Image commands -
+
+# Make Tk image objects callable.
+(img::TkImage)(args...; kwds...) = Tcl.exec(img.interp, img, args...; kwds...)
+(img::TkImage)(::Type{T}, args...; kwds...) where {T} =
+    Tcl.exec(T, img.interp, img, args...; kwds...)
+
+# Reproduce Tk `image command ...`.
+for (prop, type) in (:delete => :Nothing,
+                     :height => :Int,
+                     :inuse  => :Bool,
+                     :type   => :TclObj,
+                     :width  => :Int,
+                     )
+    func = Symbol("image_", prop)
+    @eval begin
+        $func(img::TkImage) = $func(img.interp, img.name)
+        $func(interp::TclInterp, name::Name) =
+            interp.exec($type, :image, $(QuoteNode(prop)), name)
+    end
 end
 
-(img::TkImage)(args...; kdws...) =
-    Tcl.eval(img.interp, img, args...; kwds...)
+# Optimized accessors for Tk photo images.
+image_width(img::TkPhoto) = size(img, 1)
+image_height(img::TkPhoto) = size(img, 2)
 
-getinterp(img::TkImage) = img.interp
+#------------------------------------------------------------------------ Image properties -
 
-getpath(img::TkImage) = img.path
+Base.propertynames(img::TkImage) = (:height, :interp, :inuse, :name, :size, :type, :width,)
+@inline Base.getproperty(img::TkImage, key::Symbol) = _getproperty(img, Val(key))
+_getproperty(img::TkImage, ::Val{:height}) = image_height(img)
+_getproperty(img::TkImage, ::Val{:interp}) = getfield(img, :interp)
+_getproperty(img::TkImage, ::Val{:inuse}) = image_inuse(img)
+_getproperty(img::TkImage, ::Val{:name}) = getfield(img, :name)
+_getproperty(img::TkImage, ::Val{:size}) = size(img)
+_getproperty(img::TkImage{T}, ::Val{:type}) where {T} = T
+_getproperty(img::TkImage, ::Val{:width}) = image_width(img)
+_getproperty(img::TkImage, ::Val{key}) where {key} = throw(KeyError(key))
 
-# FIXME: extend __objptr and add a TclObj field to the TkImage structure and
-# replace getpath(img) below by just img.
-TclObj(img::T) where {T<:TkImage} = TclObj{T}(__newobj(getpath(img)))
+#----------------------------------------------------------- Abstract array API for images -
 
-delete(img::TkImage) =
-    Tcl.eval(getinterp(img), "delete", getpath(img))
+Base.eltype(::Type{<:TkPhoto}) = RGBA{N0f8}
 
-getwidth(img::TkImage) =
-    Tcl.eval(Int, getinterp(img), "width", getpath(img))
+Base.ndims(img::TkImage) = ndims(typeof(img))
+Base.ndims(::Type{<:TkImage}) = 2
 
-getheight(img::TkImage) =
-    Tcl.eval(Int, getinterp(img), "height", getpath(img))
+Base.IteratorSize(::Type{<:TkImage}) = Base.HasShape{2}()
 
-exists(img::TkImage) =
-    Tcl.eval(TclStatus, getinterp(img), "image", "inuse", getpath(img)) == TCL_OK
+Base.length(img::TkImage) = prod(size(img))
 
-Base.resize!(img::TkImage{:Photo}, args...) =
-    setphotosize!(getinterp(img), getpath(img), args...)
-
-Base.size(img::TkImage{:Photo}) =
-    getphotosize(getinterp(img), getpath(img))
-
-function Base.size(img::TkImage{:Photo}, i::Integer)
-    i ≥ 1 || throw(BoundsError("out of bounds dimension index"))
+Base.size(img::TkPhoto) = get_photo_size(img)
+function Base.size(img::TkPhoto, i::Integer)
+    i < 𝟙 && throw(BoundsError("out of bounds dimension index"))
     return (i ≤ 2 ? size(img)[i] : 1)
 end
 
-Base.size(img::TkImage) =
-    getwidth(img), getheight(img)
+Base.size(img::TkImage) = (img.width, img.height)
+Base.size(img::TkImage, i::Integer) =
+    i == 1 ? img.width  :
+    i == 2 ? img.height  :
+    i ≥ 3 ? 1 : throw(BoundsError("out of bounds dimension index"))
 
-function Base.size(img::TkImage, i::Integer)
-    i ≥ 1 || throw(BoundsError("out of bounds dimension index"))
-    return (i == 1 ? getwidth(img) :
-            i == 2 ? getheight(img) :
-            1)
+function Base.getindex(img::TkPhoto, ::Colon, ::Colon)
+    return read_image(Matrix{RGBA{N0f8}}, img)
 end
 
-#------------------------------------------------------------------------------
-# Apply a "color" map to an array of gray levels.
+function Base.getindex(img::TkPhoto, xrng::ViewRange, yrng::ViewRange)
+    return read_image(Matrix{RGBA{N0f8}}, img, xrng, yrng)
+end
 
-colorize(arr::Array{T,N}, lut::AbstractVector{C}; kwds...) where {T<:Real,N,C} =
-    colorize!(Array{C,N}(undef, size(arr)), arr, lut; kwds...)
+function Base.getindex(img::TkPhoto, x::Integer, y::Integer)
+    GC.@preserve img begin
+        block = unsafe_photo_get_image(img)
+        return unsafe_load_pixel(eltype(img), block, x, y)
+    end
+end
 
-function colorize!(dst::Array{C,N}, arr::Array{T,N},
-                   lut::AbstractVector{C};
-                   cmin::Union{Real,Nothing} = nothing,
-                   cmax::Union{Real,Nothing} = nothing) where {T<:Real,N,C}
-    # Get the clipping values (not needed if number of color levels smaller
-    # than 2).
-    local _cmin::T, _cmax::T
-    if length(lut) < 2
-        @assert length(arr) ≥ 1
-        _cmin = _cmax = arr[1]
-    elseif cmin === nothing
-        if cmax === nothing
-            _cmin, _cmax = extrema(arr)
+#------------------------------------------------------------------------------ Image size -
+
+# Resize Tk photo image. If image must be resized, its contents is not preserved.
+Base.resize!(img::TkPhoto, (width, height)::Tuple{Integer,Integer}) =
+    resize!(img, width, height)
+
+Base.resize!(img::TkPhoto, width::Integer, height::Integer) =
+    photo_resize!(img, width, height)
+
+function get_photo_size(img::TkPhoto)
+    GC.@preserve img begin
+        width, height = unsafe_get_photo_size(img)
+        return (Int(width)::Int, Int(height)::Int)
+    end
+end
+
+function get_photo_size(interp::TclInterp, name::Name)
+    GC.@preserve interp name begin
+        width, height = unsafe_get_photo_size(unsafe_find_photo(interp, name))
+        return (Int(width)::Int, Int(height)::Int)
+    end
+end
+
+function photo_resize!(img::TkPhoto, width::Integer, height::Integer)
+    width ≥ 𝟘 || argument_error("width must be nonnegative, got $width")
+    height ≥ 𝟘 || argument_error("height must be nonnegative, got $height")
+    GC.@preserve interp name begin
+        handle = unsafe_find_photo(interp, name)
+        old_width, old_height = unsafe_photo_get_size(handle)
+        if width != old_width || height != old_height
+            # Not clear (from Tcl/Tk doc.) why the following should be done and I had to
+            # dive into the source code TkImgPhoto.c to figure out how to actually resize
+            # the image (just calling Tk_PhotoSetSize with the correct size yields
+            # segmentation fault).
+            status = Tk_PhotoSetSize(interp, handle, zero(Cint), zero(Cint))
+            status == TCL_OK || unsafe_error(interp, "cannot set Tk photo size")
+            status = Tk_PhotoExpand(interp, handle, width, height)
+            status == TCL_OK || unsafe_error(interp, "cannot expand Tk photo size")
+        end
+    end
+    return nothing
+end
+
+#------------------------------------------------------------------------ Read/write image -
+
+function read_image(::Type{Array{T,2}}, img::TkPhoto) where {T<:Colorant}
+    GC.@preserve img begin
+        block = unsafe_photo_get_image(img)
+        return unsafe_copy(Array{T,2}, block)
+    end
+end
+
+# TODO deal with any ordinal range.
+function read_image(::Type{Array{T,2}}, img::TkPhoto,
+                    xrng::ViewRange, yrng::ViewRange) where {T<:Colorant}
+    GC.@preserve img begin
+        block = ImageBlock{UInt8,Int}(unsafe_photo_get_image(img))
+        block = restrict_xrange(block, xrng)
+        block = restrict_yrange(block, yrng)
+        return unsafe_copy(Array{T,2}, block)
+    end
+end
+
+function read_image(::Type{T}, img::TkPhoto,
+                    xrng::Integer, yrng::Integer) where {T<:Colorant}
+    GC.@preserve img begin
+        block = unsafe_photo_get_image(img)
+        block = restrict_xrange(block, xrng)
+        block = restrict_yrange(block, yrng)
+        return unsafe_copy(Array{T,2}, block)
+    end
+end
+
+restrict_xrange(block::ImageBlock, ::Colon) = block
+function restrict_xrange(block::ImageBlock{T,I}, xrng::AbstractUnitRange) where {T,I}
+    ptr = block.pointer
+    if isempty(xrng)
+        width = zero(I)
+    else
+        xoff = first(xrng) - 𝟙
+        (xoff ≥ 𝟘 && last(xrng) ≤ block.width) || error("out of bounds `x` index range")
+        ptr += block.step*xoff
+        width = convert(I, length(xrng))
+    end
+    return ImageBlock{T,I}(block; pointer = ptr, width = width)
+end
+function restrict_xrange(block::ImageBlock{T,I}, x::Integer) where {T,I}
+    (𝟙 ≤ x ≤ block.width) || error("out of bounds `x` index")
+    return ImageBlock{T,I}(block; width = one(I),
+                           pointer = block.pointer + block.step*(x - 𝟙))
+end
+
+restrict_yrange(block::ImageBlock, ::Colon) = block
+function restrict_yrange(block::ImageBlock{T,I}, yrng::AbstractUnitRange) where {T,I}
+    ptr = block.pointer
+    if isempty(yrng)
+        height = zero(I)
+    else
+        yoff = first(yrng) - 𝟙
+        (yoff ≥ 𝟘 && last(yrng) ≤ block.height) || error("out of bounds `y` index range")
+        ptr += block.pitch*yoff
+        height = convert(I, length(yrng))
+    end
+    return ImageBlock{T,I}(block; pointer = ptr, height = height)
+end
+function restrict_yrange(block::ImageBlock{T,I}, y::Integer) where {T,I}
+    (𝟙 ≤ y ≤ block.height) || error("out of bounds `y` index")
+    return ImageBlock{T,I}(block; height = one(I),
+                           pointer = block.pointer + block.pitch*(y - 𝟙))
+end
+
+# Return the `channel` field of the `ImageBlock` given the pixel type.
+channel_offsets(::Type{UInt8}) = (0, 0, 0, -1)
+channel_offsets(::Type{Gray{T}}) where {T} = (0, 0, 0, -1)
+channel_offsets(::Type{RGB{T}}) where {T} = (n = sizof(T); return (0, n, 2n, -1))
+channel_offsets(::Type{BGR{T}}) where {T} = (n = sizof(T); return (2n, n, 0, -1))
+channel_offsets(::Type{RGBA{T}}) where {T} = (n = sizof(T); return (0, n, 2n, 3n))
+channel_offsets(::Type{ARGB{T}}) where {T} = (n = sizof(T); return (n, 2n, 3n, 0))
+channel_offsets(::Type{BGRA{T}}) where {T} = (n = sizof(T); return (2n, n, 0, 3n))
+channel_offsets(::Type{ABGR{T}}) where {T} = (n = sizof(T); return (3n, 2n, n, 0))
+
+# Constructors for `ImageBlock`.
+function ImageBlock(block::ImageBlock; pointer::Ptr{T}, kwds...) where {T}
+    return ImageBlock{T}(block; pointer=pointer, kwds...)
+end
+
+function ImageBlock{T}(block::ImageBlock; kwds...) where {T}
+    return ImageBlock{T,Int}(block; kwds...)
+end
+
+function ImageBlock{T,I}(block::ImageBlock;
+                         pointer::Ptr = block.pointer,
+                         width::Integer = block.width,
+                         height::Integer = block.height,
+                         pitch::Integer = block.pitch,
+                         step::Integer = block.step,
+                         channel::NTuple{4,Integer} = block.channel) where {T,I}
+    return ImageBlock{T,I}(pointer, width, height, pitch, step, channel)
+end
+
+function ImageBlock(; pointer::Ptr{T}, width::Integer, height::Integer,
+                    pitch::Integer, step::Integer,
+                    channel::NTuple{4,Integer}) where {T}
+    return ImageBlock{T,Int}(pointer, width, height, pitch, step, channel)
+end
+
+function ImageBlock{T,I}(; pointer::Ptr, width::Integer, height::Integer,
+                         pitch::Integer, step::Integer,
+                         channel::NTuple{4,Integer}) where {T,I}
+    return ImageBlock{T,I}(pointer, width, height, pitch, step, channel)
+end
+
+Base.convert(::Type{T}, block::T) where {T<:ImageBlock} = block
+Base.convert(::Type{T}, block::ImageBlock) where {T<:ImageBlock} = T(block)::T
+
+# Unsafe.
+ImageBlock(arr::DenseMatrix{T}) where {T} = ImageBlock{T}(arr)
+ImageBlock{T}(arr::DenseMatrix) where {T} = ImageBlock{T,Int}(arr)
+function ImageBlock{T,I}(arr::DenseMatrix{E}) where {T,I,E<:Union{Colorant,UInt8}}
+    width, height = size(arr)
+    step = sizeof(E)
+    return ImageBlock{T,I}(; pointer = pointer(arr),
+                           width = width, height = height,
+                           pitch = width*step, step = step,
+                           channel = channel_offsets(E))
+end
+
+function unsafe_load_pixel(::Type{T}, block::ImageBlock,
+                           x::Integer, y::Integer) where {T<:Colorant}
+    (𝟙 ≤ x ≤ block.width) || error("out of bounds `x` index")
+    (𝟙 ≤ y ≤ block.height) || error("out of bounds `y` index")
+    ptr = Ptr{N0f8}(block.pointer) # always N0f8 format for each component
+    ptr += block.step*(x - 𝟙) + block.pitch*(y - 𝟙)
+    red_off, green_off, blue_off, alpha_off = block.channel
+    if red_off == green_off == blue_off
+        # Gray image.
+        gray = unsafe_load(ptr + red_off)
+        if alpha_off < 0 # no alpha channel
+            return convert(T, Gray(gray))
         else
-            _cmin, _cmax = minimum(arr), cmax
+            alpha = unsafe_load(ptr + alpha_off)
+            return convert(T, RGBA(gray, gray, gray, alpha))
         end
     else
-        if cmax === nothing
-            _cmin, _cmax = cmin, maximum(arr)
-        else
-            _cmin, _cmax = cmin, cmax
+        red   = unsafe_load(ptr +   red_off)
+        green = unsafe_load(ptr + green_off)
+        blue  = unsafe_load(ptr +  blue_off)
+        if alpha_off < 0 # no alpha channel
+            return convert(T, RGB(red, green, blue))
+        elseif alpha_off == red_off + 3
+            alpha = unsafe_load(ptr + alpha_off)
+            return convert(T, RGBA(red, green, blue, alpha))
         end
     end
-    colorize!(dst, arr, _cmin, _cmax, lut)
 end
 
-function threshold!(dst::AbstractArray{C,N},
-                    src::AbstractArray{T,N},
-                    lvl::T, lo::C, mid::C, hi::C) where {T<:Real,N,C}
-    @assert size(dst) == size(src)
-    @inbounds for i in eachindex(dst, src)
-        val = src[i]
-        dst[i] = (val < lvl ? lo :
-                  val > lvl ? hi :
-                  mid)
-    end
-    return dst
-end
-
-function colorize!(dst::Array{C,N},
-                   arr::Array{T,N},
-                   cmin::T, cmax::T,
-                   lut::AbstractVector{C})  :: Array{C,N} where {T<:Real,N,C}
-    @assert size(dst) == size(arr)
-    n = length(lut)
-    @assert length(arr) ≥ 1
-    @assert 1 ≤ n
-
-    if n < 2
-        # Just fill the result with the same look-up table entry.
-        fill!(dst, lut[1])
-    elseif cmin == cmax
-        # Perform a thresholding.
-        threshold!(dst, src, cmin, lut[1], lut[div(n,2)+1], lut[n])
+function unsafe_copy(::Type{Array{T,2}}, block::ImageBlock) where {T<:Colorant}
+    width  = Int(block.width)::Int
+    height = Int(block.height)::Int
+    pitch  = Int(block.pitch)::Int
+    step = Int(block.step)::Int
+    ptr = Ptr{N0f8}(block.pointer) # always N0f8 format for each component
+    arr = Array{T}(undef, width, height) # allocate destination
+    red_off, green_off, blue_off, alpha_off = block.channel
+    if red_off == green_off == blue_off
+        # Gray image.
+        if alpha_off < 0
+            # Gray image (no alpha channel).
+            unsafe_copy!(arr, Ptr{Gray{N0f8}}(ptr + red_off),
+                         width, height, pitch, step)
+        else
+            # Gray image with alpha channel.
+            unsafe_copy_gray_alpha!(arr, ptr + red_off, ptr + alpha_off,
+                                    width, height, pitch, step)
+        end
+    elseif green_off == red_off + 1 && blue_off == red_off + 2
+        if alpha_off < 0
+            # RGB storage order (no alpha channel).
+            unsafe_copy!(arr, Ptr{RGB{N0f8}}(ptr + red_off),
+                         width, height, pitch, step)
+        elseif alpha_off == red_off + 3
+            # RGBA storage order.
+            unsafe_copy!(arr, Ptr{RGBA{N0f8}}(ptr + red_off),
+                         width, height, pitch, step)
+        elseif red_off == alpha_off + 1
+            # ARGB storage order.
+            unsafe_copy!(arr, Ptr{ARGB{N0f8}}(ptr + alpha_off),
+                         width, height, pitch, step)
+        else
+            # 4-channel image in unspecific order.
+            unsafe_copy_rgba!(arr, ptr + red_off, ptr + green_off,
+                              ptr + blue_off, ptr + alpha_off,
+                              width, height, pitch, step)
+        end
+    elseif green_off == blue_off + 1 && red_off == blue_off + 2
+        if alpha_off < 0
+            # BGR storage order (no alpha channel).
+            unsafe_copy!(arr, Ptr{BGR{N0f8}}(ptr + blue_off),
+                         width, height, pitch, step)
+        elseif alpha_off == blue_off + 3
+            # BGRA storage order.
+            unsafe_copy!(arr, Ptr{BGRA{N0f8}}(ptr + blue_off),
+                         width, height, pitch, step)
+        elseif blue_off == alpha_off + 1
+            # ABGR storage order.
+            unsafe_copy!(arr, Ptr{ABGR{N0f8}}(ptr + alpha_off),
+                         width, height, pitch, step)
+        else
+            # 4-channel image in unspecific order.
+            unsafe_copy_rgba!(arr, ptr + red_off, ptr + green_off,
+                              ptr + blue_off, ptr + alpha_off,
+                              width, height, pitch, step)
+        end
+    elseif alpha_off < 0
+        # 3-channel image in unspecific order.
+        unsafe_copy_rgb!(arr, ptr + red_off, ptr + green_off,
+                         ptr + blue_off, width, height, pitch, step)
     else
-        # Use at least Float32 for the computations.
-        R = promote_type(Float32, T)
-        kmin = 1
-        kmax = n
-        scl = R(kmax - kmin)/(R(cmax) - R(cmin))
-        off = R(cmin*kmax - cmax*kmin)/R(kmax - kmin)
-        # FIXME: adjust cmin and cmax to speedup
-        # adj = (cmax - cmin)/(2*(kmax - kmin))
-        # cmin += zadj
-        # cmax -= zadj
-        if scl > zero(R)
-            @inbounds for i in eachindex(dst, src)
-                val = src[i]
-                k = (val ≤ cmin ? kmin :
-                     val ≥ cmax ? kmax :
-                     round(Int, (R(val) - off)*scl)) :: Int
-                dst[i] = lut[k]
-            end
-        else
-            @inbounds for i in eachindex(dst, src)
-                val = src[i]
-                k = (val ≥ cmin ? kmin :
-                     val ≤ cmax ? kmax :
-                     round(Int, (R(val) - off)*scl)) :: Int
-                dst[i] = lut[k]
-            end
+        # 4-channel image in unspecific order.
+        unsafe_copy_rgba!(arr, ptr + red_off, ptr + green_off,
+                          ptr + blue_off, ptr + alpha_off,
+                          width, height, pitch, step)
+    end
+    return arr
+end
+
+# Copy 4-channel image in unspecific order.
+function unsafe_copy_rgba!(arr::AbstractMatrix,
+                           red_ptr::Ptr, green_ptr::Ptr, blue_ptr::Ptr, alpha_ptr::Ptr,
+                           width::Int, height::Int, pitch::Int, step::Int)
+    @inbounds for y in 𝟙:height
+        @simd for x in 𝟙:width
+            off   = pitch*(y - 𝟙) + step*(x - 𝟙)
+            red   = unsafe_load(  red_ptr + off)
+            green = unsafe_load(green_ptr + off)
+            blue  = unsafe_load( blue_ptr + off)
+            alpha = unsafe_load(alpha_ptr + off)
+            arr[x,y] = RGBA(red, green, blue, alpha)
         end
     end
-    return dst
+    return nothing
 end
 
-#------------------------------------------------------------------------------
-# Implement reading/writing of Tk "photo" images.
-
-mutable struct TkPhotoImageBlock
-    # Pointer to the first pixel.
-    ptr::Ptr{UInt8}
-
-    # Width of block, in pixels.
-    width::Cint
-
-    # Height of block, in pixels.
-    height::Cint
-
-    # Address difference between corresponding pixels in successive lines.
-    pitch::Cint
-
-    # Address difference between successive pixels in the same line.
-    pixelsize::Cint
-
-    # Address differences between the red, green, blue and alpha components of
-    # the pixel and the pixel as a whole.
-    red::Cint
-    green::Cint
-    blue::Cint
-    alpha::Cint
-
-    TkPhotoImageBlock() = new(C_NULL,0,0,0,0,0,0,0,0)
-end
-
-findphoto(img::TkImage) = findphoto(getinterp(img), getpath(img))
-
-function findphoto(interp::TclInterp, name::AbstractString)
-    imgptr = ccall((:Tk_FindPhoto, libtk), Ptr{Cvoid},
-                   (Ptr{Tcl_Interp}, Ptr{UInt8}), interp.ptr, name)
-    if imgptr == C_NULL
-        Tcl.error("invalid image name")
-    end
-    return imgptr
-end
-
-getpixels(img::TkImage, args...) =
-    getpixels(getinterp(img), getpath(img), args...)
-
-getpixels(name::Name, args...) =
-    getpixels(getinterp(), name, args...)
-
-getpixels(interp::TclInterp, name::Symbol, args...) =
-    getpixels(interp, string(name), args...)
-
-function getpixels(interp::TclInterp, name::AbstractString,
-                   colormode::Type{T} = Val{:gray}) where {T <: Val}
-    # Get photo image data.
-    imgptr = findphoto(interp, name)
-    block = TkPhotoImageBlock()
-    code = ccall((:Tk_PhotoGetImage, libtk), Cint,
-                 (Ptr{Cvoid}, Ref{TkPhotoImageBlock}),
-                 imgptr, block)
-    if code != 1
-        error("unexpected returned code")
-    end
-    width     = Int(block.width)
-    height    = Int(block.height)
-    pixelsize = Int(block.pixelsize)
-    pitch     = Int(block.pitch)
-    @assert pitch ≥ width*pixelsize
-    @assert rem(pitch, pixelsize) == 0
-    src = unsafe_wrap(Array, block.ptr,
-                      (pixelsize, div(pitch, pixelsize), height), false)
-    r = 1 + Int(block.red)
-    g = 1 + Int(block.green)
-    b = 1 + Int(block.blue)
-    a = 1 + Int(block.alpha)
-
-    return __getpixels(T, src, width, height, r, g, b, a)
-end
-
-function __getpixels(::Type{Val{:gray}}, src::Array{UInt8,3},
-                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
-    # Below is an approximation to:
-    #	GRAY = 0.30*RED + 0.59*GREEN + 0.11*BLUE
-    # rounded to nearest integer.
-    cr = UInt16( 77)
-    cg = UInt16(151)
-    cb = UInt16( 28)
-    c0 = UInt16(128)
-    dst = Array{UInt8,2}(undef, width, height)
-    @inbounds for y in 1:height
-        @simd for x in 1:width
-            dst[x,y] = ((cr*src[r,x,y] + cg*src[g,x,y] +
-                         cb*src[b,x,y] + c0) >> 8)
+# Copy 3-channel image in unspecific order.
+function unsafe_copy_rgb!(arr::AbstractMatrix,
+                          red_ptr::Ptr, green_ptr::Ptr, blue_ptr::Ptr,
+                          width::Int, height::Int, pitch::Int, step::Int)
+    @inbounds for y in 𝟙:height
+        @simd for x in 𝟙:width
+            off   = pitch*(y - 𝟙) + step*(x - 𝟙)
+            red   = unsafe_load(  red_ptr + off)
+            green = unsafe_load(green_ptr + off)
+            blue  = unsafe_load( blue_ptr + off)
+            arr[x,y] = RGB(red, green, blue)
         end
     end
-    return dst
+    return nothing
 end
 
-function __getpixels(::Type{Val{:red}}, src::Array{UInt8,3},
-                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
-    return __getpixels(src, width, height, r)
-end
-
-function __getpixels(::Type{Val{:green}}, src::Array{UInt8,3},
-                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
-    return __getpixels(src, width, height, g)
-end
-
-function __getpixels(::Type{Val{:blue}}, src::Array{UInt8,3},
-                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
-    return __getpixels(src, width, height, b)
-end
-
-function __getpixels(::Type{Val{:alpha}}, src::Array{UInt8,3},
-                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
-    return __getpixels(src, width, height, a)
-end
-
-function __getpixels(src::Array{UInt8,3}, width::Int, height::Int, c::Int)
-    dst = Array{UInt8,3}(undef, width, height)
-    @inbounds for y in 1:height
-        @simd for x in 1:width
-            dst[x,y] = src[c,x,y]
+# Copy 2-channel (gray + alpha) image in unspecific order.
+function unsafe_copy_gray_alpha!(arr::AbstractMatrix,
+                                 gray_ptr::Ptr, alpha_ptr::Ptr,
+                                 width::Int, height::Int, pitch::Int, step::Int)
+    @inbounds for y in 𝟙:height
+        @simd for x in 𝟙:width
+            off   = pitch*(y - 𝟙) + step*(x - 𝟙)
+            gray  = unsafe_load( gray_ptr + off)
+            alpha = unsafe_load(alpha_ptr + off)
+            arr[x,y] = RGBA(gray, gray, gray, alpha)
         end
     end
-    return dst
+    return nothing
 end
 
-function __getpixels(::Type{Val{:rgb}}, src::Array{UInt8,3},
-                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
-    dst = Array{UInt8,3}(undef, 3, width, height)
-    @inbounds for y in 1:height
-        @simd for x in 1:width
-            dst[1,x,y] = src[r,x,y]
-            dst[2,x,y] = src[g,x,y]
-            dst[3,x,y] = src[b,x,y]
+# Copy pixels in packed format.
+function unsafe_copy!(arr::AbstractMatrix, ptr::Ptr,
+                      width::Int, height::Int, pitch::Int, step::Int)
+    @inbounds for y in 𝟙:height
+        @simd for x in 𝟙:width
+            arr[x,y] = unsafe_load(ptr + step*(x - 𝟙))
         end
+        ptr += pitch
     end
-    return dst
+    return nothing
 end
 
-function __getpixels(::Type{Val{:rgba}}, src::Array{UInt8,3},
-                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
-    dst = Array{UInt8,3}(undef, 4, width, height)
-    @inbounds for y in 1:height
-        @simd for x in 1:width
-            dst[1,x,y] = src[r,x,y]
-            dst[2,x,y] = src[g,x,y]
-            dst[3,x,y] = src[b,x,y]
-            dst[4,x,y] = src[a,x,y]
-        end
-    end
-    return dst
+#------------------------------------------------------------------------------ Unsafe API -
+# Unsafe: arguments must be preserved.
+
+unsafe_find_photo(img::TkPhoto) = unsafe_find_photo(img.interp, img.name)
+
+function unsafe_find_photo(interp::Union{TclInterp,InterpPtr}, name::Name)
+    handle = Tk_FindPhoto(interp, name)
+    isnull(handle) && TclError("invalid image name")
+    return handle
 end
 
-function __getpixels(::Type, src::Array{UInt8,3},
-                     width::Int, height::Int, r::Int, g::Int, b::Int, a::Int)
-    error("invalid color mode")
-end
+unsafe_get_photo_size(img::TkPhoto) = unsafe_get_photo_size(unsafe_find_photo(img))
 
-getphotosize(img::TkImage) =
-    getphotosize(getinterp(img), getpath(img))
-
-function getphotosize(interp::TclInterp, name::AbstractString)
-    w, h = __getphotosize(findphoto(interp, name))
-    return (Int(w), Int(h))
-end
-
-function setphotosize!(interp::TclInterp, name::AbstractString,
-                       width::Integer, height::Integer)
-    __setphotosize(interp, findphoto(interp, name), Cint(width), Cint(height))
-end
-
-function __getphotosize(imgptr::Ptr{Cvoid})
-    width, height = Ref{Cint}(0), Ref{Cint}(0)
-    if imgptr != C_NULL
-        ccall((:Tk_PhotoGetSize, libtk), Cvoid,
-              (Ptr{Cvoid}, Ref{Cint}, Ref{Cint}),
-              imgptr, width, height)
-    end
+function unsafe_get_photo_size(handle::Tk_PhotoHandle)
+    width = Ref{Cint}(𝟘)
+    height = Ref{Cint}(𝟘)
+    isnull(handle) || Tk_PhotoGetSize(handle, width, height)
     return (width[], height[])
 end
 
-function __setphotosize(interp::TclInterp, imgptr::Ptr{Cvoid},
-                        width::Cint, height::Cint)
-    code = ccall((:Tk_PhotoSetSize, libtk), Cint,
-                 (Ptr{Tcl_Interp}, Ptr{Cvoid}, Cint, Cint),
-                 interp.ptr, imgptr, width, height)
-    code == TCL_OK || Tcl.error(tclresult(interp))
-    return nothing
-end
+set_photo_size!(interp::TclInterp, name::Name, (width, height)::NTuple{2,Integer}) =
+    set_photo_size!(interp, name, width, height)
 
-function __expandphotosize(interp::TclInterp, imgptr::Ptr{Cvoid},
-                           width::Cint, height::Cint)
-    code = ccall((:Tk_PhotoExpand, libtk), Cint,
-                 (Ptr{Tcl_Interp}, Ptr{Cvoid}, Cint, Cint),
-                 interp.ptr, imgptr, width, height)
-    code == TCL_OK || Tcl.error(tclresult(interp))
-    return nothing
-end
-
-function __setpixels(interp::TclInterp, name::AbstractString,
-                     block::TkPhotoImageBlock,
-                     x::Cint = Cint(0), y::Cint = Cint(0),
-                     composite::Cint = TK_PHOTO_COMPOSITE_SET)
-    # Get photo image.
-    imgptr = findphoto(interp, name)
-    width, height = __getphotosize(imgptr)
-    println("image size: $width x $height")
-
-    # Resize the image if it is too small.
-    if width < x + block.width || height < y + block.height
-        # Not clear (from Tcl/Tk doc.) why the following should be done and I
-        # had to dive into the source code TkImgPhoto.c to figure out how to
-        # actually resize the image (just calling Tk_PhotoSetSize with the
-        # correct size yields segmentation fault).
-        width = max(width, x + block.width)
-        height = max(height, y + block.height)
-        __setphotosize(interp, imgptr, zero(Cint), zero(Cint))
-        __expandphotosize(interp, imgptr, width, height)
+function set_photo_size!(interp::TclInterp, name::Name, width::Integer, height::Integer)
+    GC.@preserve interp begin
+        unsafe_photo_set_size!(interp, unsafe_find_photo(interp, name), Cint(width), Cint(height))
     end
+end
 
-    width, height = __getphotosize(imgptr)
-    println("image size: $width x $height")
-
-
-    # Assume (TCL_MAJOR_VERSION == 8) && (TCL_MINOR_VERSION >= 5), for older
-    # versions, the interpreter argument is missing in Tk_PhotoPutBlock.
-    code = ccall((:Tk_PhotoPutBlock, libtk), Cint,
-                 (Ptr{Tcl_Interp}, Ptr{Cvoid}, Ref{TkPhotoImageBlock},
-                  Cint, Cint, Cint, Cint, Cint),
-                 interp.ptr, imgptr, block, x, y,
-                 block.width, block.height, composite)
-    code == TCL_OK || Tcl.error(tclresult(interp))
-
-    if false
-        # Notify that image has changed (FIXME: not needed as it is done by
-        # Tk_PhotoPutBlock).
-        ccall((:Tk_ImageChanged, libtk), Cvoid,
-              (Ptr{Cvoid}, Cint, Cint, Cint, Cint, Cint, Cint),
-              imgptr, x, y, block.width, block.height,
-              width, height)
+for (jfunc, (cfunc, mesg)) in (:unsafe_photo_set_size! => (:Tk_PhotoSetSize,
+                                                           "cannot set Tk photo size"),
+                               :unsafe_photo_expand! => (:Tk_PhotoExpamd,
+                                                         "cannot expand Tk photo"),
+                               )
+    @eval begin
+        function $jfunc(interp::TclInterp, handle::Tk_PhotoHandle,
+                        width::Integer, height::Integer)
+            # NOTE `interp` can be NULL
+            $jfunc(null_or_checked_pointer(interp), handle, width, height)
+        end
+        function $jfunc(interp::InterpPtr, handle::Tk_PhotoHandle,
+                        width::Integer, height::Integer)
+            status = $cfunc(interp, handle, width, height)
+            status == TCL_OK || unsafe_error(interp, $mesg)
+            return nothing
+        end
     end
+end
 
+unsafe_photo_get_image(img::TkPhoto) = unsafe_photo_get_image(unsafe_find_photo(img))
+unsafe_photo_get_image(interp::Union{TclInterp,InterpPtr}, name::Name) =
+    unsafe_photo_get_image(unsafe_find_photo(interp, name))
+function unsafe_photo_get_image(handle::Tk_PhotoHandle)
+    block = Ref{Tk_PhotoImageBlock}()
+    Tk_PhotoGetImage(handle, block)
+    return block[]
+end
+
+function unsafe_photo_put_block(img::TkPhoto,
+                                block::Tk_PhotoImageBlock,
+                                x::Integer, y::Integer, width::Integer,
+                                height::Integer, compRule::Integer)
+    unsafe_photo_put_block(img.interp, img.name, block, x, y, width, height, compRule)
+end
+function unsafe_photo_put_block(interp::Union{TclInterp,InterpPtr}, name::Name,
+                                block::Tk_PhotoImageBlock,
+                                x::Integer, y::Integer, width::Integer,
+                                height::Integer, compRule::Integer)
+    handle = unsafe_find_photo(interp, name)
+    status = Tk_PhotoPutBlock(interp, handle, Ref(block), x, y, width, height, compRule)
+    status == TCL_OK || unsafe_error(interp, "cannot put block in Tk photo")
     return nothing
 end
 
-setpixels!(img::TkImage{:Photo}, args...) =
-    setpixels!(getinterp(img), getpath(img), args...)
+function unsafe_photo_put_zoomed_block(img::TkPhoto,
+                                       block::Tk_PhotoImageBlock,
+                                       x::Integer, y::Integer,
+                                       width::Integer, height::Integer,
+                                       zoomX::Integer, zoomY::Integer,
+                                       subsampleX::Integer, subsampleY::Integer,
+                                       compRule::Integer)
+    unsafe_photo_put_zoomed_block(img.interp, img.name, block, x, y, width, height,
+                                  zoomX, zoomY, subsampleX, subsampleY, compRule)
+end
+function unsafe_photo_put_zoomed_block(interp::Union{TclInterp,InterpPtr}, name::Name,
+                                       block::Tk_PhotoImageBlock,
+                                       x::Integer, y::Integer,
+                                       width::Integer, height::Integer,
+                                       zoomX::Integer, zoomY::Integer,
+                                       subsampleX::Integer, subsampleY::Integer,
+                                       compRule::Integer)
+    handle = unsafe_find_photo(interp, name)
+    status = Tk_PhotoPutZoomedBlock(interp, handle, ref(block), x, y, width, height,
+                                    zoomX, zoomY, subsampleX, subsampleY, compRule)
+    status == TCL_OK || unsafe_error(interp, "cannot put zoomed block in Tk photo")
+    return nothing
+end
 
-setpixels!(name::Name, args...) = setpixels!(getinterp(), name, args...)
+#-------------------------------------------------------------------------------------------
+# Apply a "color" map to an array of gray levels.
 
-setpixels!(interp::TclInterp, name::Symbol, args...) =
-    setpixels!(interp, string(name), args...)
+struct AffineFunction{Ta,Tb}
+    alpha::Ta
+    beta::Tb
+end
+(f::AffineFunction)(x) = f.alpha*x + f.beta
 
-function setpixels!(interp::TclInterp, name::AbstractString,
-                    src::DenseArray{UInt8,3})
-    block = TkPhotoImageBlock()
-    block.ptr       = pointer(src)
-    block.pixelsize = size(src, 1)
-    block.width     = size(src, 2)
-    block.height    = size(src, 3)
-    block.pitch     = block.pixelsize*block.width
-    if block.pixelsize == 3
-        block.red   = 0;
-        block.green = 1;
-        block.blue  = 2;
-        block.alpha = 0;
-    elseif block.pixelsize == 4
-        block.red   = 0;
-        block.green = 1;
-        block.blue  = 2;
-        block.alpha = 3;
+"""
+    AffineFunction((a, b) => rng) -> f
+
+Return the affine function that uniformly maps the interval of data values `[a,b]` to the
+range of indices `rng`. The range `rng` must not be empty. The affine function is increasing
+if `a < b` and decreasing if `a > b`.
+
+The mapping is *safe* in the sense that `round(f(a)) ≥ first(rng)` and `round(f(b)) ≤
+last(rng)`.
+
+"""
+function AffineFunction(((a,b),rng)::Pair{<:Tuple{<:Any,<:Any},
+                                          <:AbstractUnitRange{<:Integer}},
+                        rnd::RoundingMode = RoundNearest)
+    # Index bounds.
+    len = length(rng)::Int
+    len > 0 || throw(AssertionError("index range must not be empty"))
+    imin = Int(first(rng))::Int
+    imax = Int( last(rng))::Int
+
+    # Make sure `a` and `b` have the same type.
+    a, b = promote(a, b)
+
+    # Infer the precision for computations, using at least single precision.
+    P = get_precision(Float32, typeof(a))
+
+    # Compute affine transform that approximately maps `[a,b]` to `[imin-1/2:imax+1/2]`.
+    two = P(2)
+    rho = one(P) - eps(P) # reduction factor
+    alpha = rho*len/(b - a)
+    if isfinite(alpha)
+        while true
+            beta = ((imin - alpha*a) + (imax - alpha*b))/two
+            round(alpha*a + beta, rnd) ≥ imin && round(alpha*b + beta, rnd) ≤ imax && break
+            alpha *= rho
+        end
     else
-        error("invalid first dimension")
+        alpha = zero(alpha) # preserve precision and units
+        beta = imin/two + imax/two
     end
-    __setpixels(interp, name, block)
-end
-
-const Normed8 = FixedPointNumbers.Normed{UInt8,8}
-const Gray8   = Union{UInt8,TkGray{UInt8},ColorTypes.Gray{Normed8}}
-const RGB24   = Union{TkRGB{UInt8},ColorTypes.RGB{Normed8}}
-const BGR24   = Union{TkBGR{UInt8},ColorTypes.BGR{Normed8}}
-const RGBA32  = Union{TkRGBA{UInt8},ColorTypes.RGBA{Normed8}}
-const BGRA32  = Union{TkBGRA{UInt8},ColorTypes.BGRA{Normed8}}
-const ARGB32  = Union{TkARGB{UInt8},ColorTypes.ARGB{Normed8}}
-const ABGR32  = Union{TkABGR{UInt8},ColorTypes.ABGR{Normed8}}
-
-for (T, r, g, b, a) in ((:Gray8,  0, 0, 0, 0),
-                        (:RGB24,  0, 1, 2, 0),
-                        (:BGR24,  2, 1, 0, 0),
-                        (:RGBA32, 0, 1, 2, 3),
-                        (:BGRA32, 2, 1, 0, 3),
-                        (:ARGB32, 1, 2, 3, 0),
-                        (:ABGR32, 3, 2, 1, 0))
-    @eval function setpixels!(interp::TclInterp, name::AbstractString,
-                              A::DenseArray{T,2}) where {T<:$T}
-        block = TkPhotoImageBlock()
-        block.ptr       = pointer(A)
-        block.pixelsize = sizeof(T)
-        block.width     = size(A, 1)
-        block.height    = size(A, 2)
-        block.pitch     = block.pixelsize*block.width
-        block.red       = $r
-        block.green     = $g
-        block.blue      = $b
-        block.alpha     = $a
-        __setpixels(interp, name, block)
-    end
+    get_precision(alpha) == P || throw(AssertionError(
+        "expected precision `$(P)` for `alpha`, got `$(get_precision(alpha))`"))
+    get_precision(beta) == P || throw(AssertionError(
+        "expected precision `$(P)` for `beta`, got `$(get_precision(beta))`"))
+    return AffineFunction(alpha, beta)
 end
