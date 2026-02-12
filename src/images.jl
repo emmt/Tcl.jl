@@ -309,15 +309,15 @@ function restrict_yrange(block::ImageBlock{T,I}, y::Integer) where {T,I}
                            pointer = block.pointer + block.pitch*(y - 𝟙))
 end
 
-# Return the `channel` field of the `ImageBlock` given the pixel type.
-channel_offsets(::Type{UInt8}) = (0, 0, 0, -1)
-channel_offsets(::Type{Gray{T}}) where {T} = (0, 0, 0, -1)
-channel_offsets(::Type{RGB{T}}) where {T} = (n = sizof(T); return (0, n, 2n, -1))
-channel_offsets(::Type{BGR{T}}) where {T} = (n = sizof(T); return (2n, n, 0, -1))
-channel_offsets(::Type{RGBA{T}}) where {T} = (n = sizof(T); return (0, n, 2n, 3n))
-channel_offsets(::Type{ARGB{T}}) where {T} = (n = sizof(T); return (n, 2n, 3n, 0))
-channel_offsets(::Type{BGRA{T}}) where {T} = (n = sizof(T); return (2n, n, 0, 3n))
-channel_offsets(::Type{ABGR{T}}) where {T} = (n = sizof(T); return (3n, 2n, n, 0))
+# Return the `offset` field of the `ImageBlock` given the pixel type.
+offset_from_pixel_type(::Type{UInt8}) = (0, 0, 0, -1)
+offset_from_pixel_type(::Type{Gray{T}}) where {T} = (0, 0, 0, -1)
+offset_from_pixel_type(::Type{RGB{T}}) where {T} = (n = sizof(T); return (0, n, 2n, -1))
+offset_from_pixel_type(::Type{BGR{T}}) where {T} = (n = sizof(T); return (2n, n, 0, -1))
+offset_from_pixel_type(::Type{RGBA{T}}) where {T} = (n = sizof(T); return (0, n, 2n, 3n))
+offset_from_pixel_type(::Type{ARGB{T}}) where {T} = (n = sizof(T); return (n, 2n, 3n, 0))
+offset_from_pixel_type(::Type{BGRA{T}}) where {T} = (n = sizof(T); return (2n, n, 0, 3n))
+offset_from_pixel_type(::Type{ABGR{T}}) where {T} = (n = sizof(T); return (3n, 2n, n, 0))
 
 # Constructors for `ImageBlock`.
 function ImageBlock(block::ImageBlock; pointer::Ptr{T}, kwds...) where {T}
@@ -334,20 +334,20 @@ function ImageBlock{T,I}(block::ImageBlock;
                          height::Integer = block.height,
                          pitch::Integer = block.pitch,
                          step::Integer = block.step,
-                         channel::NTuple{4,Integer} = block.channel) where {T,I}
-    return ImageBlock{T,I}(pointer, width, height, pitch, step, channel)
+                         offset::NTuple{4,Integer} = block.offset) where {T,I}
+    return ImageBlock{T,I}(pointer, width, height, pitch, step, offset)
 end
 
 function ImageBlock(; pointer::Ptr{T}, width::Integer, height::Integer,
                     pitch::Integer, step::Integer,
-                    channel::NTuple{4,Integer}) where {T}
-    return ImageBlock{T,Int}(pointer, width, height, pitch, step, channel)
+                    offset::NTuple{4,Integer}) where {T}
+    return ImageBlock{T,Int}(pointer, width, height, pitch, step, offset)
 end
 
 function ImageBlock{T,I}(; pointer::Ptr, width::Integer, height::Integer,
                          pitch::Integer, step::Integer,
-                         channel::NTuple{4,Integer}) where {T,I}
-    return ImageBlock{T,I}(pointer, width, height, pitch, step, channel)
+                         offset::NTuple{4,Integer}) where {T,I}
+    return ImageBlock{T,I}(pointer, width, height, pitch, step, offset)
 end
 
 Base.convert(::Type{T}, block::T) where {T<:ImageBlock} = block
@@ -362,7 +362,7 @@ function ImageBlock{T,I}(arr::DenseMatrix{E}) where {T,I,E<:Union{Colorant,UInt8
     return ImageBlock{T,I}(; pointer = pointer(arr),
                            width = width, height = height,
                            pitch = width*step, step = step,
-                           channel = channel_offsets(E))
+                           offset = offset_from_pixel_type(E))
 end
 
 function unsafe_load_pixel(::Type{T}, block::ImageBlock,
@@ -371,7 +371,7 @@ function unsafe_load_pixel(::Type{T}, block::ImageBlock,
     (𝟙 ≤ y ≤ block.height) || error("out of bounds `y` index")
     ptr = Ptr{N0f8}(block.pointer) # always N0f8 format for each component
     ptr += block.step*(x - 𝟙) + block.pitch*(y - 𝟙)
-    red_off, green_off, blue_off, alpha_off = block.channel
+    red_off, green_off, blue_off, alpha_off = block.offset
     if red_off == green_off == blue_off
         # Gray image.
         gray = unsafe_load(ptr + red_off)
@@ -401,7 +401,7 @@ function unsafe_copy(::Type{Array{T,2}}, block::ImageBlock) where {T<:Colorant}
     step = Int(block.step)::Int
     ptr = Ptr{N0f8}(block.pointer) # always N0f8 format for each component
     arr = Array{T}(undef, width, height) # allocate destination
-    red_off, green_off, blue_off, alpha_off = block.channel
+    red_off, green_off, blue_off, alpha_off = block.offset
     if red_off == green_off == blue_off
         # Gray image.
         if alpha_off < 0

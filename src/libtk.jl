@@ -14,43 +14,67 @@ const TK_PHOTO_COMPOSITE_SET     = Cint(1)
 abstract type Tk_PhotoHandle_ end
 const Tk_PhotoHandle = Ptr{Tk_PhotoHandle_}
 
+"""
+    ImageBlock{T,I}(pointer::Ptr, width::Integer, height::Integer, pitch::Integer,
+                    step::Integer, offset::NTuple{4,Integer}) -> block
+
+Return a structure describing a block of pixels in an image. `T` is the pixel type, `I` is
+the integer type for most fields. Fields are:
+
+* `block.pointer::Ptr{T}` is the pointer to the first pixel of the block;
+
+* `block.width::I` is the width, in pixels, of the block;
+
+* `block.height::I` is the height, in pixels, of the block;
+
+* `block.pitch::I` is the offset, in bytes, between corresponding pixels in successive lines
+  of the block;
+
+* `block.step::I` is the offset, in bytes, between successive pixels in the same line of the
+  block;
+
+* `block.offset::NTuple{4,I}` is the tuple of offsets, in bytes, for the *red*, *green*,
+  **blue*, and alpha* components of a pixel (the latter is negative if there is no *alpha*
+  *channel).
+
+There are two other constructors where all fields can be specified by keywords:
+
+```julia
+ImageBlock{T,I}(; kwds...)
+ImageBlock{T,I}(block::ImageBlock; kwds...)
+```
+
+The `block` argument, if specified, provides default values for the fields of the returned
+block. If `block` is unspecified, all keywords are mandatory.
+
+"""
 struct ImageBlock{T #= pixel type =#, I<:Integer}
-    # Offsets are in bytes, dimensions are in pixels.
-    # NOTE Order is important so that `Tk_PhotoImageBlock` is just
-    #      `ImageBlock{UInt8,Cint}`
-    pointer::Ptr{T}      # pointer to the first pixel
-    width::I             # width of block, in pixels
-    height::I            # height of block, in pixels
-    pitch::I             # offset between corresponding pixels in successive lines
-    step::I              # offset between successive pixels in the same line
-    channel::NTuple{4,I} # offsets for the red, green, blue, and alpha and alpha
-                         # components of the pixel (negative if missing)
+    # NOTE Order is important so that `Tk_PhotoImageBlock` is just `ImageBlock{UInt8,Cint}`
+    pointer::Ptr{T}
+    width::I
+    height::I
+    pitch::I
+    step::I
+    offset::NTuple{4,I}
 end
 
 """
     Tk_PhotoImageBlock
 
-Alias to the Julia type equivalent to `Tk_PhotoImageBlock` C structure which, according to
-`<tk.h>` could have been defined as:
+Alias to the Julia type for the `Tk_PhotoImageBlock` C structure which (in `<tk.h>`) is
+defined as something equivalent to:
 
 ```julia
 struct Tk_PhotoImageBlock
     # Offsets are in bytes, dimensions are in pixels.
-    pixelPtr::Ptr{UInt8}   # pointer to the first pixel
-    width::Cint            # width of block, in pixels
-    height::Cint           # height of block, in pixels
-    pitch::Cint            # offset between corresponding pixels in successive lines
-    pixelSize::Cint        # offset between successive pixels in the same line
-    offset::NTuple{4,Cint} # offsets for the red, green, blue, and alpha and alpha
-                           # components of the pixel
+    pointer::Ptr{UInt8} # `pixelPtr` in <tk.h>
+    width::Cint
+    height::Cint
+    pitch::Cint
+    step::Cint # `pixelSize` in <tk.h>
+    offset::NTuple{4,Cint}
 end
 ```
-
-In the `Tk_PhotoImageBlock` alias some field names have changed:
-
-* `pixelPtr -> pointer`;
-* `pixelsSize -> step`;
-* `offset -> channel`;
 
 """
 const Tk_PhotoImageBlock = ImageBlock{UInt8,Cint}

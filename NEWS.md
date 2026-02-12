@@ -39,7 +39,7 @@ Versioning](https://semver.org).
   attempts to modify a shared Tcl object are detected and forbidden by throwing an
   exception.
 
-## Changed
+### Changed
 
 - By default, the package uses artifacts `Tcl_jll` and `Tk_jll`. To use other libraries, one
   can set the environment variables `ENV["JL_TLIBTCL"]` and `ENV["JL_TLIBTK"]` to the
