@@ -104,6 +104,23 @@ Base.convert(::Type{TclObj}, img::TkImage) = TclObj(img)::TclObj
 get_objptr(img::TkImage) = get_objptr(TclObj(img)) # used in `exec`
 Base.print(io::IO, img::TkImage) = print(io, img.name)
 
+Base.show(io::IO, ::MIME"text/plain", img::TkImage) = show(io, img)
+
+function Base.show(io::IO, img::T) where {T<:TkImage}
+    if T == TkBitmap
+        print(io, "TkBitmap (alias for TkImage{:bitmap})")
+    elseif T == TkPhoto
+        print(io, "TkPhoto (alias for TkImage{:photo})")
+    elseif T == TkPixmap
+        print(io, "TkPixmap (alias for TkImage{:pixmap})")
+    else
+        print(io, T)
+    end
+    dims = size(img)
+    print(io, " name = \"", img.name, "\", size = (", dims[1], ", ", dims[2], ")")
+    return nothing
+end
+
 #-------------------------------------------------------------------------- Image commands -
 
 # Make Tk image objects callable.

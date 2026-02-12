@@ -365,15 +365,16 @@ exec(::Type{T}, w::TkWidget, args...) where {T} = exec(T, w.interp, w.path, args
 # We want to have the object type and path both printed in the REPL but want
 # only the object path with the `string` method or for string interpolation.
 # Note that: "$w" calls `string(w)` while "anything $w" calls `show(io, w)`.
+Base.print(io::IO, w::TkWidget) = write(io, w.path)
 
-function Base.show(io::IO, ::MIME"text/plain", w::T) where {T<:TkWidget}
+Base.show(io::IO, ::MIME"text/plain", w::TkWidget) = show(io, w)
+
+function Base.show(io::IO, w::T) where {T<:TkWidget}
     print(io, T, "(\"")
     write(io, w.path)
     print(io, "\")")
     return nothing
 end
-
-Base.show(io::IO, w::TkObject) = write(io, w.path)
 
 """
     tk_start(interp = TclInterp()) -> interp
