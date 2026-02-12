@@ -2,6 +2,7 @@
 
 [![License](http://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat)](LICENSE.md)
 [![Build Status](https://github.com/emmt/Tcl.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/emmt/Tcl.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Coverage](https://codecov.io/gh/emmt/Tcl.jl/graph/badge.svg?token=2ZyJuZeh71)](https://codecov.io/gh/emmt/Tcl.jl)
 
 This package provides an optimized Julia interface to
 [Tcl/Tk](http://www.tcl.tk/).
