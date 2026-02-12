@@ -6,7 +6,7 @@
 
 new_object(c::Colorant) = new_object("#"*hex(RGB(c)))
 
-const GrayRamp = [reinterpret(Gray{N0f8}, b) for b in 0x00:0xff]
+const GrayRamp = range(colorant"black", colorant"white", length=255)
 
 """
     colorize(arr, cmap=GrayRamp; kwds...)
