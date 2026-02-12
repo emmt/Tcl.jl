@@ -58,8 +58,12 @@ Base.pointer(interp::TclInterp) = getfield(interp, :ptr)
 # The string representation of a Tcl object is owned by Tcl's value manager, so getting a C
 # string pointer from this string is always safe unless object pointer is null.
 Base.unsafe_convert(::Type{Cstring}, obj::TclObj) = Tcl_GetString(checked_pointer(obj))
+Base.unsafe_convert(::Type{Cstring}, objptr::ObjPtr) =
+    #= TODO isnull(objptr) ? Cstring(C_NULL) : =# Tcl_GetString(objptr)
 Base.unsafe_convert(::Type{ObjPtr}, obj::TclObj) = checked_pointer(obj)
 Base.unsafe_convert(::Type{InterpPtr}, interp::TclInterp) = checked_pointer(interp)
+Base.cconvert(::Type{Cstring}, obj::TclObj) = obj
+Base.cconvert(::Type{Cstring}, objptr::ObjPtr) = objptr
 
 # For a Tcl object, a valid pointer is simply non-null.
 checked_pointer(obj::TclObj) = nonnull_pointer(obj)
