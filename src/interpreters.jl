@@ -145,7 +145,7 @@ end
 Base.propertynames(interp::TclInterp) = (:concat, :eval, :exec, :list, :ptr,
                                          :result, :threadid)
 
-Base.getproperty(interp::TclInterp, key::Symbol) = _getproperty(interp, Val(key))
+@inline Base.getproperty(interp::TclInterp, key::Symbol) = _getproperty(interp, Val(key))
 _getproperty(interp::TclInterp, ::Val{:concat}) = PrefixedFunction(concat, interp)
 _getproperty(interp::TclInterp, ::Val{:eval}) = PrefixedFunction(Tcl.eval, interp)
 _getproperty(interp::TclInterp, ::Val{:exec}) = PrefixedFunction(exec, interp)
