@@ -107,10 +107,6 @@ function _TclInterp()
         end
         status = @ccall libtcl.Tcl_Init(interp::Ptr{Tcl_Interp})::TclStatus
         status == TCL_OK || @warn "Unable to initialize Tcl interpreter: $(unsafe_string_result(interp))"
-
-        # NOTE: Tk initialization (tk_library, TclZipfs_Mount for Tk, Tk_Init) is
-        # handled lazily by `tk_start()` rather than here, so that creating a Tcl
-        # interpreter does not require a working Tk installation.
     catch
         Tcl_DeleteInterp(interp)
         rethrow()
