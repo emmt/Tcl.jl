@@ -6,10 +6,10 @@ using Base
 
 """
 
-`Tcl.Private` module hosts the private API of the `Tcl` package.
+`Tcl.Impl` module hosts the implementation of the `Tcl` package.
 
 """
-module Private
+module Impl
 
 import ..Tcl
 
@@ -195,10 +195,10 @@ for sym in (
     :tk_messageBox,
     )
 
-    # Import public symbols from the `Private` module, export those prefixed with `Tcl`,
+    # Import public symbols from the `Impl` module, export those prefixed with `Tcl`,
     # `TCL_`, `Tk`, `@Tk`, `Ttk` or `TK_`, and declare the others as "public".
     if sym != :eval
-        @eval import .Private: $sym
+        @eval import .Impl: $sym
     end
     name = string(sym)
     if startswith(name, r"@?(Tcl|tcl_|TCL_|Tt?k|tk_)")

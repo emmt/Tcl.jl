@@ -170,13 +170,13 @@ end
 const preserved_objects = Dict{Any,Int}()
 
 """
-    Tcl.Private.preserve(obj) -> obj
+    Tcl.Impl.preserve(obj) -> obj
 
 Increment the reference count on object `obj` to prevent that `obj` be garbage collected.
 
 !!! warning
-    Any call to `Tcl.Private.release(obj)` must match a previous call to
-    [`Tcl.Private.preserve(obj)`](@ref).
+    Any call to `Tcl.Impl.release(obj)` must match a previous call to
+    [`Tcl.Impl.preserve(obj)`](@ref).
 
 """
 function preserve(obj)
@@ -185,14 +185,14 @@ function preserve(obj)
 end
 
 """
-    Tcl.Private.release(obj)
+    Tcl.Impl.release(obj)
 
 Decrement the reference count of object `obj`. The resources associated with `obj` may be
 garbage collected if it becomes no longer referenced.
 
 !!! warning
-    Any call to `Tcl.Private.release(obj)` must match a previous call to
-    [`Tcl.Private.preserve(obj)`](@ref).
+    Any call to `Tcl.Impl.release(obj)` must match a previous call to
+    [`Tcl.Impl.preserve(obj)`](@ref).
 
 """
 function release(obj)

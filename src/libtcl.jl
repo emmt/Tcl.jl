@@ -214,7 +214,7 @@ function TclFreeObj(objPtr::Ptr{Tcl_Obj})
 end
 
 """
-    Tcl.Private.Tcl_GetRefCount(objptr) -> refcnt
+    Tcl.Impl.Tcl_GetRefCount(objptr) -> refcnt
 
 Return the current reference count of the Tcl object at address `objptr`.
 
@@ -226,7 +226,7 @@ This is not provided in `<tcl.h>` but is useful.
 
 # See also
 
-[`Tcl.Private.Tcl_IncrRefCount`](@ref) and [`Tcl.Private.Tcl_DecrRefCount`](@ref).
+[`Tcl.Impl.Tcl_IncrRefCount`](@ref) and [`Tcl.Impl.Tcl_DecrRefCount`](@ref).
 
 """
 function Tcl_GetRefCount(objPtr::Ptr{Tcl_Obj})
@@ -235,7 +235,7 @@ function Tcl_GetRefCount(objPtr::Ptr{Tcl_Obj})
 end
 
 """
-    Tcl.Private.Tcl_IncrRefCount(objptr) -> objptr
+    Tcl.Impl.Tcl_IncrRefCount(objptr) -> objptr
 
 Increment the reference count of the Tcl object given its pointer and return it.
 
@@ -247,7 +247,7 @@ This method emulates the `Tcl_IncrRefCount` macro defined in `<tcl.h>`.
 
 # See also
 
-[`Tcl.Private.Tcl_DecrRefCount`](@ref) and [`Tcl.Private.Tcl_GetRefCount`](@ref).
+[`Tcl.Impl.Tcl_DecrRefCount`](@ref) and [`Tcl.Impl.Tcl_GetRefCount`](@ref).
 
 """
 function Tcl_IncrRefCount(objPtr::Ptr{Tcl_Obj})
@@ -258,7 +258,7 @@ function Tcl_IncrRefCount(objPtr::Ptr{Tcl_Obj})
 end
 
 """
-    Tcl.Private.Tcl_DecrRefCount(objptr) -> refcnt
+    Tcl.Impl.Tcl_DecrRefCount(objptr) -> refcnt
 
 Decrement the reference count of the Tcl object given its pointer and return its new
 reference count. If `refcnt < 1` holds, the Tcl object has been released and `objptr` shall
@@ -272,7 +272,7 @@ This method emulates the `Tcl_DecrRefCount` macro defined in `<tcl.h>`.
 
 # See also
 
-[`Tcl.Private.Tcl_IncrRefCount`](@ref) and [`Tcl.Private.Tcl_GetRefCount`](@ref).
+[`Tcl.Impl.Tcl_IncrRefCount`](@ref) and [`Tcl.Impl.Tcl_GetRefCount`](@ref).
 
 """
 function Tcl_DecrRefCount(objPtr::Ptr{Tcl_Obj})

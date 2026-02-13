@@ -215,7 +215,7 @@ function winfo_class(interp::TclInterp, path::Name)
 end
 
 """
-    Tcl.Private.winfo_isroot(w) -> bool
+    Tcl.Impl.winfo_isroot(w) -> bool
 
 Return whether `w` is the Tk root widget of window path.
 
@@ -230,7 +230,7 @@ winfo_isroot(w::TkToplevel) = winfo_isroot(w.path)
 winfo_isroot(w::TkWidget) = false
 
 """
-   Tcl.Private.widget_path(top, children...) -> path::String
+   Tcl.Impl.widget_path(top, children...) -> path::String
 
 Return a checked Tk window path.
 

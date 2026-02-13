@@ -32,7 +32,7 @@ end
 
 Abstract super-type of Julia objects that reflect or wrap a Tcl object.
 
-Such objects implement [`Tcl.Private.get_objptr`](@ref) to yield a pointer to their
+Such objects implement [`Tcl.Impl.get_objptr`](@ref) to yield a pointer to their
 associated Tcl object.
 
 """
@@ -74,7 +74,7 @@ end
 const Name = Union{AbstractString,Symbol,TclObj}
 
 """
-    Tcl.Private.FastString
+    Tcl.Impl.FastString
 
 Union of types of objects that can be converted into an UTF-8 `Cstring` by `ccall` without
 overheads. More specifically, for an instance `str` of this union, the following hold:

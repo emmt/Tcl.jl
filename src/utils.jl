@@ -94,26 +94,26 @@ same_thread(interp::TclInterp) =
     "attempt to use a Tcl interpreter in a different thread"))
 
 """
-    Tcl.Private.isnull(ptr) -> bool
+    Tcl.Impl.isnull(ptr) -> bool
 
 Return whether pointer `ptr` is null.
 
 # See also
 
-[`Tcl.Private.null`](@ref).
+[`Tcl.Impl.null`](@ref).
 
 """
 isnull(ptr::Union{Ptr,Cstring}) = ptr === null(ptr)
 
 """
-    Tcl.Private.null(ptr) -> nullptr
-    Tcl.Private.null(typeof(ptr)) -> nullptr
+    Tcl.Impl.null(ptr) -> nullptr
+    Tcl.Impl.null(typeof(ptr)) -> nullptr
 
 Return a null-pointer of the same type as `ptr`.
 
 # See also
 
-[`Tcl.Private.isnull`](@ref).
+[`Tcl.Impl.isnull`](@ref).
 
 """
 null(ptr::Union{Ptr,Cstring}) = null(typeof(ptr))
@@ -211,7 +211,7 @@ end
 #------------------------------------------------------------------------ Automatic names -
 
 """
-    Tcl.Private.auto_name(pfx = "jl_auto_")
+    Tcl.Impl.auto_name(pfx = "jl_auto_")
 
 Return a unique name with given prefix. The result is a string of the form `pfx#` where `#`
 is a unique number.
@@ -230,7 +230,7 @@ const auto_name_dict = Dict{String,UInt64}()
 #-------------------------------------------------------------------------- Tcl type names -
 
 """
-    Tcl.Private.unsafe_get_typename(ptr) -> sym::Symbol
+    Tcl.Impl.unsafe_get_typename(ptr) -> sym::Symbol
 
 Return the symbolic type name of Tcl object pointer `ptr`. The result can be:
 
@@ -304,7 +304,7 @@ get_error_message(ex::Exception) = sprint(io -> showerror(io, ex))
     throw(TclError("unexpected return status: $status"))
 
 """
-    Tcl.Private.unsafe_error(interp)
+    Tcl.Impl.unsafe_error(interp)
 
 Throw a Tcl error with a message stored in the result of `interp`.
 
@@ -317,7 +317,7 @@ Throw a Tcl error with a message stored in the result of `interp`.
     throw(TclError(unsafe_string(Tcl_GetStringResult(interp))))
 
 """
-    Tcl.Private.unsafe_error(interp, mesg)
+    Tcl.Impl.unsafe_error(interp, mesg)
 
 Throw a Tcl error. If `interp` is a non-null pointer to a Tcl interpreter, the error message
 is taken from interpreter's result; otherwise, the error message is `mesg`.
@@ -328,7 +328,7 @@ is taken from interpreter's result; otherwise, the error message is `mesg`.
 
 # See also
 
-[`Tcl.Private.unsafe_get`](@ref).
+[`Tcl.Impl.unsafe_get`](@ref).
 
 """
 @noinline function unsafe_error(interp::InterpPtr, mesg::AbstractString)

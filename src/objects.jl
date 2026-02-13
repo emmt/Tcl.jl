@@ -44,7 +44,7 @@ Tcl objects have the following properties:
 [`Tcl.list`](@ref) or [`Tcl.concat`](@ref) for building Tcl objects to efficiently store
 arguments of Tcl commands.
 
-Private methods [`Tcl.Private.value_type`](@ref) and [`Tcl.Private.new_object`](@ref) may be extended to
+Methods [`Tcl.Impl.value_type`](@ref) and [`Tcl.Impl.new_object`](@ref) may be extended to
 convert other types of value to Tcl object.
 
 """
@@ -304,7 +304,7 @@ function _setproperty!(obj::TclObj, ::Val{:ptr}, newptr::ObjPtr)
 end
 
 """
-    Tcl.Private.get_objptr(obj::WrappedObject) -> objptr
+    Tcl.Impl.get_objptr(obj::WrappedObject) -> objptr
 
 Return a pointer to the Tcl object associated with `obj`. The returned object is at least
 referenced by its parent `obj` which shall be preserved form being garbage collected while
@@ -312,42 +312,42 @@ referenced by its parent `obj` which shall be preserved form being garbage colle
 
 # See also
 
-[`TclObj`](@ref), [`Tcl.Private.WrappedObject`](@ref), and [`Tcl.Private.new_object`](@ref),
+[`TclObj`](@ref), [`Tcl.Impl.WrappedObject`](@ref), and [`Tcl.Impl.new_object`](@ref),
 
 """
 get_objptr(obj::TclObj) = pointer(obj)
 
 """
-    Tcl.Private.value_type(x)
-    Tcl.Private.value_type(typeof(x))
+    Tcl.Impl.value_type(x)
+    Tcl.Impl.value_type(typeof(x))
 
 Return the suitable type for storing a Julia object `x` in a Tcl object.
 
 # See also
 
-[`Tcl.Private.new_object`](@ref) and [`Tcl.Private.new_list`](@ref).
+[`Tcl.Impl.new_object`](@ref) and [`Tcl.Impl.new_list`](@ref).
 
 """
 value_type(x) = value_type(typeof(x))
 
 """
-    Tcl.Private.new_object(x) -> ptr
+    Tcl.Impl.new_object(x) -> ptr
 
 Return a pointer to a new Tcl object storing value `x`. The new object has a reference count
 of `0`.
 
 # See also
 
-[`TclObj`](@ref), [`Tcl.Private.new_list`](@ref), [`Tcl.Private.value_type`](@ref),
-[`Tcl.Private.Tcl_GetRefCount`](@ref), [`Tcl.Private.Tcl_IncrRefCount`](@ref), and
-[`Tcl.Private.Tcl_DecrRefCount`](@ref).
+[`TclObj`](@ref), [`Tcl.Impl.new_list`](@ref), [`Tcl.Impl.value_type`](@ref),
+[`Tcl.Impl.Tcl_GetRefCount`](@ref), [`Tcl.Impl.Tcl_IncrRefCount`](@ref), and
+[`Tcl.Impl.Tcl_DecrRefCount`](@ref).
 
 """
 new_object
 
 """
-    Tcl.Private.unsafe_get(T, objptr) -> val
-    Tcl.Private.unsafe_get(T, interp, objptr) -> val
+    Tcl.Impl.unsafe_get(T, objptr) -> val
+    Tcl.Impl.unsafe_get(T, interp, objptr) -> val
 
 Get a value of type `T` from Tcl object pointer `objptr`. Optional argument `interp` is a
 pointer to a Tcl interpreter which, if non-null, may be used for error messages.
@@ -367,7 +367,7 @@ unsafe_get(::Type{T}, objptr::ObjPtr) where {T} = unsafe_get(T, null(InterpPtr),
 unsafe_get(::Type{String}, interp::InterpPtr, objptr::ObjPtr) = unsafe_get(String, objptr)
 
 """
-    Tcl.Private.unsafe_get(T, interp) -> val
+    Tcl.Impl.unsafe_get(T, interp) -> val
 
 Get the result from Tcl interpreter pointer `interp` as a value of type `T`.
 

@@ -282,8 +282,8 @@ for (name, (decl, func)) in ((:name,)         => ((:(name::Name),),
 end
 
 """
-    Tcl.Private.unsafe_getvar(interp, name, flags) -> value_ptr
-    Tcl.Private.unsafe_getvar(interp, part1, part2, flags) -> value_ptr
+    Tcl.Impl.unsafe_getvar(interp, name, flags) -> value_ptr
+    Tcl.Impl.unsafe_getvar(interp, part1, part2, flags) -> value_ptr
 
 Private function to get the value of a Tcl variable. Return a pointer `value_ptr` to the Tcl
 object storing the value or *null* if the variable does not exists.
@@ -295,7 +295,7 @@ being deleted.
 
 # See also
 
-[`Tcl.getvar`](@ref), [`Tcl.exists`](@ref), and [`Tcl.Private.unsafe_setvar`](@ref).
+[`Tcl.getvar`](@ref), [`Tcl.exists`](@ref), and [`Tcl.Impl.unsafe_setvar`](@ref).
 
 """
 function unsafe_getvar end
@@ -351,8 +351,8 @@ function unsafe_getvar(interp::TclInterp, part1::Name, part2::Name, flags::Integ
 end
 
 """
-    Tcl.Private.unsafe_setvar(interp, name, value, flags) -> new_value_ptr
-    Tcl.Private.unsafe_setvar(interp, part1, part2, value, flags) -> new_value_ptr
+    Tcl.Impl.unsafe_setvar(interp, name, value, flags) -> new_value_ptr
+    Tcl.Impl.unsafe_setvar(interp, part1, part2, value, flags) -> new_value_ptr
 
 Private function to set a Tcl variable. Return a pointer `new_value_ptr` to the Tcl object
 storing the value of the variable after being set or *null* in case of failure.
@@ -364,13 +364,13 @@ variable name part(s) and the value from being deleted.
 
 # See also
 
-[`Tcl.setvar`](@ref) and [`Tcl.Private.unsafe_getvar`](@ref).
+[`Tcl.setvar`](@ref) and [`Tcl.Impl.unsafe_getvar`](@ref).
 
 """
 function unsafe_setvar end
 
 # `unsafe_setvar` always calls `Tcl_ObjSetVar2` and is similar to
-# [`Tcl.Private.unsafe_getvar`](@ref) for managing arguments.
+# [`Tcl.Impl.unsafe_getvar`](@ref) for managing arguments.
 
 function unsafe_setvar(interp::TclInterp, name::Name, value, flags::Integer)
     interp_ptr = checked_pointer(interp)

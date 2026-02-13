@@ -271,9 +271,9 @@ end
 
 @testset "Tcl Lists" begin
     # NULL object pointer yields empty list.
-    objc, objv = @inferred Tcl.Private.unsafe_get_list_elements(Ptr{Tcl.Private.Tcl_Obj}(0))
+    objc, objv = @inferred Tcl.Impl.unsafe_get_list_elements(Ptr{Tcl.Impl.Tcl_Obj}(0))
     @test objc === 0
-    @test objv === Ptr{Ptr{Tcl.Private.Tcl_Obj}}(0)
+    @test objv === Ptr{Ptr{Tcl.Impl.Tcl_Obj}}(0)
 
     # Tcl "list".
     wa = ("", 1, "hello world!", (true, false), -3.75, π)
