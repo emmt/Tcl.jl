@@ -3,15 +3,19 @@
 dir=`dirname "$0"`
 cd "$dir"
 vers=""
-update="false"
+build="false"
 instantiate="false"
 resolve="false"
+update="false"
 while [ $# -gt 0 ]; do
     case "$1" in
         -h | --help )
             prog=$(basename "$0")
-            echo "usage: $prog [-h|--help] [-i|--instantiate] [-r|--resolve] [-u|--update] [version ...]"
+            echo "usage: $prog [-h|--help] [-b|--build] [-i|--instantiate] [-r|--resolve] [-u|--update] [version ...]"
             exit 0
+            ;;
+        -b | --build )
+            build="true"
             ;;
         -i | --instantiate )
             instantiate="true"
@@ -38,6 +42,7 @@ for ver in $vers; do
         using Pkg;
         $update && Pkg.update();
         $instantiate && Pkg.instantiate();
+        $build && Pkg.build();
         $resolve && Pkg.resolve();
         Pkg.test();"
     test -r Manifest.toml && mv -f Manifest.toml ".Manifest-$ver.toml"
