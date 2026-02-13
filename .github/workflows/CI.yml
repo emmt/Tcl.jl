@@ -15,6 +15,9 @@ jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
+    # Allow Windows to fail until Tcl_jll is rebuilt with cross-compiled libtommath
+    # (the pre-built libtommath.dll has a C runtime mismatch with MinGW-built tcl90.dll).
+    continue-on-error: ${{ contains(matrix.os, 'windows') }}
     timeout-minutes: 60
     permissions: # needed to allow julia-actions/cache to proactively delete old caches that it has created
       actions: write

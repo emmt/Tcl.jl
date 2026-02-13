@@ -108,24 +108,9 @@ function _TclInterp()
         status = @ccall libtcl.Tcl_Init(interp::Ptr{Tcl_Interp})::TclStatus
         status == TCL_OK || @warn "Unable to initialize Tcl interpreter: $(unsafe_string_result(interp))"
 
-        # Initialize Tcl interpreter to find Tk library scripts.
-        if isdefined(@__MODULE__, :Tk_jll)
-            tk_library = joinpath(dirname(dirname(Tk_jll.libtk_path)), "lib",
-                                  "tk$(TCL_MAJOR_VERSION).$(TCL_MINOR_VERSION)")
-            @info "Set `tk_library` to \"$(tk_library)\""
-            ptr = Tcl_SetVar(interp, "tk_library", tk_library, TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG)
-            isnull(ptr) && @warn "Unable to set `tk_library`: $(unsafe_string_result(interp))"
-        end
-        if TCL_MAJOR_VERSION >= 9
-            # In Tcl/Tk 9, library scripts are embedded in the dynamic library via zipfs.
-            # Tcl mounts its own zipfs automatically, but we must mount Tk's.
-            status = @ccall libtcl.TclZipfs_Mount(
-                interp::Ptr{Tcl_Interp}, Tk_jll.libtk_path::Cstring, "//zipfs:/lib/tk"::Cstring,
-                C_NULL::Cstring)::TclStatus
-            status == TCL_OK || @warn "Unable to mount Tk zipfs: $(unsafe_string_result(interp))"
-        end
-        status = @ccall libtk.Tk_Init(interp::Ptr{Tcl_Interp})::TclStatus
-        status == TCL_OK || @warn "Unable to initialize Tk interpreter: $(unsafe_string(Tcl_GetStringResult(interp)))"
+        # NOTE: Tk initialization (tk_library, TclZipfs_Mount for Tk, Tk_Init) is
+        # handled lazily by `tk_start()` rather than here, so that creating a Tcl
+        # interpreter does not require a working Tk installation.
     catch
         Tcl_DeleteInterp(interp)
         rethrow()
