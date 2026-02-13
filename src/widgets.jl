@@ -211,7 +211,7 @@ function winfo_class(interp::TclInterp, path::Name)
     # `winfo class .` yields the name of the application which is not what we want. So, we
     # must specifically consider the case of the "." window.
     return winfo_isroot(path) ? TclObj(:Toplevel) : interp.exec(:winfo, :class, path)
-    # TODO for Tix widgets, we may instead use: class = string(interp(path, "configure -class")[4])
+    # TODO for Tix widgets, we may instead use: class = string(interp(path, :configure, "-class")[4])
 end
 
 """
@@ -393,9 +393,9 @@ Load Tk and Ttk packages in `interp` and start the event loop (for all interpret
 """
 function tk_start(interp::TclInterp = TclInterp()) :: TclInterp
     local status::TclStatus
-    status = interp(TclStatus, "package require Tk")
-    status == TCL_OK && (status = interp(TclStatus, "package require Ttk"))
-    status == TCL_OK && (status = interp(TclStatus, "wm withdraw ."))
+    status = interp.eval(TclStatus, "package require Tk")
+    status == TCL_OK && (status = interp.eval(TclStatus, "package require Ttk"))
+    status == TCL_OK && (status = interp.eval(TclStatus, "wm withdraw ."))
     status == TCL_OK || throw(TclError(interp))
     isrunning() || resume()
     return interp

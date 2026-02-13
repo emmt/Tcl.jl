@@ -17,21 +17,26 @@ private interpreter is created.
 !!! warning
     A Tcl interpreter can only be used by the thread where it was created.
 
-The resulting object can be used as a function to evaluate a Tcl script. For example:
+The resulting object can be used as a function to *execute* a Tcl command. For example:
 
-```julia
-interp("set x 42")
+```julia-repl
+julia> interp(:set, :x, 42)
+TclObj(42)
 ```
 
-yields the result of the script (here the string `"42"`). Command arguments can also be
-provide separately:
+The result of the command is returned as a Tcl object storing the value `42`. See
+[`Tcl.exec`](@ref) for more details about execution of Tcl commands.
 
-```
-interp("set", "x", 42)
+To *evaluate* a Tcl script with the interpreter, call `interp.eval(args...)`. The above
+example can also be done by:
+
+```julia-repl
+julia> interp.eval("set x 42")
+TclObj("42")
 ```
 
-yields the value `42` (as an integer). See method [`Tcl.eval`](@ref) for more details
-about script evaluation.
+whose result is a Tcl object storing the string `"42"`. See method [`Tcl.eval`](@ref) for
+more details about script evaluation.
 
 The `interp` object can also be indexed as an array to access global Tcl variables (the
 variable name can be specified as a string or as a symbol):
@@ -42,15 +47,15 @@ interp[:tcl_version] # yields version of Tcl
 interp[:x] = 33      # set the value of "x" and yields its value
 ```
 
-The Tcl interpreter is initialized and will be deleted when no longer in use.
-If Tk has been properly installed, then:
+The Tcl interpreter is initialized and will be deleted when no longer in use. If Tk has been
+properly installed, then:
 
 ```julia
-interp("package require Tk")
+interp.eval("package require Tk")
 ```
 
-should load Tk extension and create the "." toplevel Tk window.  But see
-[`tk_start`](@ref) method to load Tk.
+should load Tk extension and create the "." toplevel Tk window. But see [`tk_start`](@ref)
+method to load Tk.
 
 """
 TclInterp(sym::Symbol) =
@@ -130,8 +135,8 @@ end
 
 # Make a Tcl interpreter callable.
 (interp::TclInterp)(::Type{T}, args...; kwds...) where {T} =
-    Tcl.eval(T, interp, args...; kwds...)
-(interp::TclInterp)(args...; kwds...) = Tcl.eval(interp, args...; kwds...)
+    Tcl.exec(T, interp, args...; kwds...)
+(interp::TclInterp)(args...; kwds...) = Tcl.exec(interp, args...; kwds...)
 
 Base.show(io::IO, ::MIME"text/plain", interp::TclInterp) = show(io, interp)
 function Base.show(io::IO, interp::TclInterp)
@@ -266,6 +271,7 @@ isactive(interp::TclInterp) = !isnull(pointer(interp)) && !iszero(Tcl_InterpActi
 """
     Tcl.exec(T=TclObj, interp=TclInterp(), args...) -> res::T
     interp.exec(T=TclObj, args...) -> res::T
+    interp(T=TclObj, args...) -> res::T
 
 Make a list out of the arguments `args...`, evaluate this list as a Tcl command with
 interpreter `interp`, and return a value of type `T`. Any `key => val` pair in `args...` is
@@ -326,7 +332,6 @@ end
 """
     Tcl.eval(T=TclObj, interp=TclInterp(), args...) -> res::T
     interp.eval(T=TclObj, args...) -> res::T
-    interp(T=TclObj, args...) -> res::T
 
 Concatenate arguments `args...` into a list, evaluate this list as a Tcl script with
 interpreter `interp`, and return a value of type `T`.Any `key => val` pair in `args...` is

@@ -52,7 +52,7 @@ This package provides an optimized Julia interface to [Tcl/Tk](http://www.tcl.tk
   ```julia
   Tcl.eval(script)         # evaluate Tcl script in initial interpreter
   Tcl.eval(interp, script) # evaluate Tcl script with specific interpreter
-  interp(script)           # idem
+  interp.eval(script)      # idem
   ```
 
 * A number of wrappers are provided to simplify the use of widgets.

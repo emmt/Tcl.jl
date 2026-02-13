@@ -52,6 +52,12 @@ Versioning](https://semver.org).
 
 ### Added
 
+- `interp(args...)`, `interp.exec(args...)`, and `Tcl.exec(interp, args...)` execute a Tcl
+  command. thing.
+
+- `interp.eval(args...)` and `Tcl.eval(interp, args...)` concatenate arguments and evaluate
+  a Tcl script.
+
 - `Tcl.do_one_event(flags)` to process any pending events matching `flags`.
 
 - `TclInterp` constructor can yield the shared interpreted for the thread of the caller or a
